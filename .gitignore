@@ -5,3 +5,4 @@ config/nightshift.json
 reports/*
 !reports/.gitkeep
 .DS_Store
+.playwright-mcp
