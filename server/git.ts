@@ -2,6 +2,8 @@ import { statSync } from 'node:fs';
 import type { Commit, FileChange, FileStat, GitBaseline, GitInfo, SinceBaseline } from '../shared/types.ts';
 import { run } from './exec.ts';
 
+// 기준점에 커밋이 없었을 때(빈 저장소) 비교 대상으로 쓰는 Git 의 빈 트리.
+const EMPTY_TREE = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 const LOG_FORMAT = '--format=%H%x1f%an%x1f%cI%x1f%s';
 
 const git = (repo: string, ...args: string[]) => run('git', ['-C', repo, '-c', 'core.quotePath=false', ...args]);
@@ -95,9 +97,9 @@ export async function collectSince(repoPath: string, baseline: GitBaseline): Pro
   const range = baseline.head ? [`${baseline.head}..HEAD`] : [];
   const [log, numstat] = await Promise.all([
     git(repoPath, 'log', '-n', '200', LOG_FORMAT, ...range),
-    baseline.head ? git(repoPath, 'diff', '--numstat', baseline.head) : null,
+    git(repoPath, 'diff', '--numstat', baseline.head ?? EMPTY_TREE),
   ]);
-  const files = numstat?.code === 0 ? parseNumstat(numstat.stdout) : [];
+  const files = numstat.code === 0 ? parseNumstat(numstat.stdout) : [];
   return {
     baseline,
     commits: log.code === 0 ? parseLog(log.stdout) : [],

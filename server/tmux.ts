@@ -23,7 +23,7 @@ export function parseSessions(out: string): Map<string, TmuxSession> {
   const sessions = new Map<string, TmuxSession>();
   for (const line of out.split('\n')) {
     const [name, created, attached, activity, windowActivity] = line.split('\t');
-    if (!name || !created) continue;
+    if (!name || !Number.isFinite(Number(created)) || !created) continue;
     sessions.set(name, {
       createdAt: epochToIso(created),
       attached: Number(attached) > 0,

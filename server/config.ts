@@ -49,8 +49,8 @@ export class ConfigError extends Error {
   }
 }
 
-// tmux 대상 문법(:, .)과 옵션으로 해석될 수 있는 선행 '-'를 막는다.
-const SESSION_RE = /^[^\s:.-][^\s:.]*$/;
+// tmux 대상 문법(:, ., 선행 $ = @ %)과 옵션으로 해석될 수 있는 선행 '-'를 막는다.
+const SESSION_RE = /^[^\s:.$=@%-][^\s:.]*$/;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -129,7 +129,7 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
       if (!repoPath) issues.push(`${where}repoPath: 필수입니다`);
       const tmuxSession = optStr(p, 'tmuxSession', where);
       if (tmuxSession && !SESSION_RE.test(tmuxSession)) {
-        issues.push(`${where}tmuxSession: 공백, ':', '.' 을 포함하거나 '-' 로 시작할 수 없습니다`);
+        issues.push(`${where}tmuxSession: 공백, ':', '.' 을 포함하거나 '-', '$', '=', '@', '%' 로 시작할 수 없습니다`);
       }
       if (!name || !repoPath) return;
       let id = slugify(name);

@@ -14,7 +14,7 @@ const isLoopback = (host: string) => LOOPBACK.has(host.replace(/:\d+$/, ''));
  * - 변경 요청은 Origin 이 자기 자신일 때만 허용 (다른 웹사이트가 test/build 실행을 유발하지 못하게).
  */
 export function guard(config: Pick<Config, 'host'>) {
-  const checkHost = isLoopback(config.host);
+  const checkHost = isLoopback(config.host) || config.host === '::1';
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
     if (checkHost && !isLoopback(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
@@ -44,7 +44,10 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
 
   api.get('/events', (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    const send = (s: unknown) => res.write(`data: ${JSON.stringify(s)}\n\n`);
+    // 느린 클라이언트에는 쌓아 두지 않고 건너뛴다. 스냅샷은 매번 전체 상태라 다음 것만 받아도 된다.
+    const send = (s: unknown) => {
+      if (!res.writableNeedDrain) res.write(`data: ${JSON.stringify(s)}\n\n`);
+    };
     send(monitor.snapshot);
     req.on('close', monitor.subscribe(send));
   });

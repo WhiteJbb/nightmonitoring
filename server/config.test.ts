@@ -38,14 +38,14 @@ describe('parseConfig', () => {
       port: 'x',
       thresholds: { idleMinutes: -1 },
       errorPatterns: 'error',
-      projects: [{ name: 'a' }, { name: 'b', repoPath: '/b', tmuxSession: 'bad:name' }, { name: 'c', repoPath: '/c', tmuxSession: '-t' }],
+      projects: [{ name: 'a' }, { name: 'b', repoPath: '/b', tmuxSession: 'bad:name' }, { name: 'c', repoPath: '/c', tmuxSession: '-t' }, { name: 'd', repoPath: '/d', tmuxSession: '$1' }],
     };
     try {
       parseConfig(bad, '/base');
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).issues).toHaveLength(6);
+      expect((e as ConfigError).issues).toHaveLength(7);
     }
   });
 });
