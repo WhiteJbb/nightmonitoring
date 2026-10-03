@@ -9,7 +9,7 @@ beforeEach(() => mockRun.mockReset());
 
 describe('listSessions', () => {
   it('parses sessions', async () => {
-    mockRun.mockResolvedValue({ code: 0, stdout: 'agent\t1790000000\t1\t1790000600\nother\t1790000100\t0\t1790000100\n', stderr: '', timedOut: false });
+    mockRun.mockResolvedValue({ code: 0, stdout: 'agent\t1790000000\t1\t1790000300\t1790000600\nother\t1790000100\t0\t1790000100\t\n', stderr: '', timedOut: false });
     const { sessions, error } = await listSessions();
     expect(error).toBeUndefined();
     expect(sessions.get('agent')).toEqual({

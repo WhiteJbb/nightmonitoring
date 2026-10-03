@@ -15,18 +15,19 @@ export interface TmuxSessions {
 
 export const OUTPUT_LINES = 100;
 
-const LIST_FORMAT = '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_activity}';
+// session_activity 는 키 입력 위주라, pane 출력으로 갱신되는 window_activity 와 함께 본다.
+const LIST_FORMAT = '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_activity}\t#{window_activity}';
 const epochToIso = (s: string | undefined) => new Date(Number(s) * 1000).toISOString();
 
 export function parseSessions(out: string): Map<string, TmuxSession> {
   const sessions = new Map<string, TmuxSession>();
   for (const line of out.split('\n')) {
-    const [name, created, attached, activity] = line.split('\t');
+    const [name, created, attached, activity, windowActivity] = line.split('\t');
     if (!name || !created) continue;
     sessions.set(name, {
       createdAt: epochToIso(created),
       attached: Number(attached) > 0,
-      lastActivityAt: epochToIso(activity || created),
+      lastActivityAt: epochToIso(String(Math.max(Number(activity) || 0, Number(windowActivity) || 0) || created)),
     });
   }
   return sessions;
