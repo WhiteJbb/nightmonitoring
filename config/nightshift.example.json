@@ -1,0 +1,31 @@
+{
+  "host": "127.0.0.1",
+  "port": 4477,
+  "refreshIntervalSec": 5,
+  "thresholds": {
+    "idleMinutes": 15,
+    "stalledMinutes": 30,
+    "noCommitMinutes": 30
+  },
+  "errorPatterns": ["error", "failed", "exception"],
+  "sessionExitIsError": true,
+  "commandTimeoutSec": 600,
+  "reportsDir": "reports",
+  "projects": [
+    {
+      "name": "My Web App",
+      "repoPath": "~/code/my-web-app",
+      "tmuxSession": "webapp-agent",
+      "testCommand": "npm test",
+      "buildCommand": "npm run build",
+      "logFile": "logs/agent.log"
+    },
+    {
+      "name": "API Server",
+      "repoPath": "~/code/api-server",
+      "tmuxSession": "api-agent",
+      "testCommand": "npm test",
+      "buildCommand": "npm run build"
+    }
+  ]
+}
