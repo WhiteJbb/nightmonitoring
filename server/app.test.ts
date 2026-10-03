@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createApp } from './app.ts';
+import { createApp, guard } from './app.ts';
 import { parseConfig } from './config.ts';
 import { demoCollector } from './demo.ts';
 import { Monitor } from './monitor.ts';
@@ -40,6 +40,18 @@ describe('API', () => {
     expect(cross.status).toBe(403);
     const same = await fetch(`${base}/api/reports/x`, { headers: { Origin: base } });
     expect(same.status).toBe(404);
+  });
+
+  it('rejects non-loopback Host headers, also when bound to ::1', () => {
+    for (const host of ['127.0.0.1', '::1']) {
+      const status = vi.fn(() => ({ json: vi.fn() }));
+      const next = vi.fn();
+      const g = guard({ host }) as unknown as (req: object, res: object, next: () => void) => void;
+      g({ method: 'GET', headers: { host: 'evil.example:4477' } }, { status }, next);
+      expect(status).toHaveBeenCalledWith(403);
+      g({ method: 'GET', headers: { host: 'localhost:4477' } }, { status }, next);
+      expect(next).toHaveBeenCalledOnce();
+    }
   });
 
   it('returns JSON 404 for unknown reports and routes', async () => {

@@ -99,11 +99,17 @@ export class Monitor {
   async tick(): Promise<void> {
     const { collector, config } = this.opts;
     const nowIso = new Date(this.now()).toISOString();
-    const tmuxAll = await collector.tmux(config.projects).catch(() => new Map<string, RawTmux>());
+    let tmuxError: string | undefined;
+    const tmuxAll = await collector.tmux(config.projects).catch((e: Error) => {
+      tmuxError = `tmux 수집 실패: ${e.message}`;
+      return new Map<string, RawTmux>();
+    });
+    const rawTmux = (p: ProjectConfig): RawTmux =>
+      tmuxAll.get(p.id) ?? (p.tmuxSession ? { ...NO_TMUX, configured: true, attachCommand: attachCommand(p.tmuxSession), ...(tmuxError ? { error: tmuxError } : {}) } : NO_TMUX);
     await Promise.all(
       config.projects.map(async (p) => {
         try {
-          this.collected.set(p.id, await this.collectOne(p, tmuxAll.get(p.id) ?? NO_TMUX, nowIso));
+          this.collected.set(p.id, await this.collectOne(p, rawTmux(p), nowIso));
         } catch (e) {
           // 한 프로젝트의 수집 실패가 나머지를 막지 않게 오류 상태로 표시만 한다.
           this.collected.set(p.id, {
@@ -129,7 +135,7 @@ export class Monitor {
       tr.baseline ??= { at: nowIso, branch: git.branch, head: git.head };
       since = await this.opts.collector.since(p, tr.baseline);
       // working tree 지문이 이전 폴링과 달라졌으면 Git 활동으로 본다.
-      const fingerprint = JSON.stringify([git.head, git.changedFiles, git.additions, git.deletions]);
+      const fingerprint = JSON.stringify([git.head, git.branch, git.changedFiles, git.diffStat]);
       if (tr.fingerprint !== null && fingerprint !== tr.fingerprint) tr.gitChangedAt = nowIso;
       tr.fingerprint = fingerprint;
     }

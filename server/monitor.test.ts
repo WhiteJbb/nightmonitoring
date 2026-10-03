@@ -15,7 +15,7 @@ const git = (over: Partial<GitInfo> = {}): GitInfo => ({
   recentCommits: [{ hash: 'h1', author: 'a', date: new Date(T0 - 60 * 60_000).toISOString(), subject: 's' }], todayCommits: [], ...over,
 });
 
-function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: boolean }): Collector {
+function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: boolean; tmuxThrows?: boolean }): Collector {
   return {
     async git(p) {
       if (state.gitThrows && p.id === 'lib') throw new Error('boom');
@@ -23,6 +23,7 @@ function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: bool
     },
     since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
     async tmux() {
+      if (state.tmuxThrows) throw new Error('tmux down');
       const raw: RawTmux = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 40 * 60_000).toISOString(), output: state.output, attachCommand: 'tmux attach -t app' };
       return new Map([['app', raw]]);
     },
@@ -69,6 +70,14 @@ describe('Monitor', () => {
     expect(app!.git.ok).toBe(true);
     expect(lib!.status).toEqual({ state: 'error', reasons: ['수집 실패: boom'] });
     expect(seen[0]!.summary).toMatchObject({ total: 2, sessionsRunning: 1, error: 1 });
+  });
+
+  it('keeps a configured session visible when tmux collection throws', async () => {
+    const m = new Monitor({ config, collector: fakeCollector({ output: [], git: git(), tmuxThrows: true }), runs: noRuns, now: () => T0 });
+    await m.tick();
+    const app = m.snapshot.projects[0]!;
+    expect(app.tmux).toMatchObject({ configured: true, exists: false, attachCommand: 'tmux attach -t app' });
+    expect(app.status).toEqual({ state: 'error', reasons: ['tmux 수집 실패: tmux down'] });
   });
 
   it('demo mode shows every state', async () => {

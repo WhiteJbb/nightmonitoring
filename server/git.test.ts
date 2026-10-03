@@ -93,4 +93,11 @@ describe('collectSince', () => {
     expect(since.commits).toHaveLength(2);
     expect(since).toMatchObject({ additions: 8, deletions: 1 });
   });
+
+  it('diffs against the empty tree when the baseline had no commits', async () => {
+    respond({ 'log -n 200': ok(LOG), 'diff --numstat 4b825dc': ok('7\t0\ta.ts\n') });
+    const since = await collectSince(REPO, { at: '2026-10-04T00:00:00Z', branch: 'main', head: null });
+    expect(since).toMatchObject({ additions: 7, deletions: 0 });
+    expect(since.commits).toHaveLength(2);
+  });
 });

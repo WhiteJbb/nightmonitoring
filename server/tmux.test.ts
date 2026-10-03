@@ -9,7 +9,7 @@ beforeEach(() => mockRun.mockReset());
 
 describe('listSessions', () => {
   it('parses sessions', async () => {
-    mockRun.mockResolvedValue({ code: 0, stdout: 'agent\t1790000000\t1\t1790000300\t1790000600\nother\t1790000100\t0\t1790000100\t\n', stderr: '', timedOut: false });
+    mockRun.mockResolvedValue({ code: 0, stdout: 'agent\t1790000000\t1\t1790000300\t1790000600\nother\t1790000100\t0\t1790000100\t\ngarbage\tx\t0\t\t\n', stderr: '', timedOut: false });
     const { sessions, error } = await listSessions();
     expect(error).toBeUndefined();
     expect(sessions.get('agent')).toEqual({
@@ -18,6 +18,7 @@ describe('listSessions', () => {
       lastActivityAt: new Date(1790000600_000).toISOString(),
     });
     expect(sessions.get('other')?.attached).toBe(false);
+    expect(sessions.has('garbage')).toBe(false);
   });
 
   it('treats "no server running" as zero sessions', async () => {
