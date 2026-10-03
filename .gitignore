@@ -1,0 +1,7 @@
+node_modules
+dist
+.nightshift
+config/nightshift.json
+reports/*
+!reports/.gitkeep
+.DS_Store
