@@ -69,7 +69,7 @@ config.json ──> Monitor ──(refreshIntervalSec 마다)──> Collector(p
 - `run(bin, args)`: `git`, `tmux`만 허용하는 allowlist + `execFile`(셸 미경유) → 인자 escaping 문제가 구조적으로 없다. 타임아웃·출력 상한 있음. 절대 throw하지 않고 `{code, stdout, stderr}`를 돌려준다.
 - `runConfigured(command, cwd, timeout)`: config의 test/build 명령 전용. 셸로 실행하되 명령 문자열은 **config 파일에서만** 온다. API는 프로젝트 id와 `test|build`만 받고 본문은 읽지 않는다. cwd는 등록된 저장소 경로로 고정, 타임아웃 시 프로세스 그룹째 종료, stdout/stderr 분리 저장.
 - 서버는 `127.0.0.1` 바인딩. Host 헤더가 loopback이 아니면 거부(DNS rebinding 방어), 변경 요청은 Origin이 다르면 거부(CSRF 방어).
-- tmux 세션 이름은 config 로드 시 검증(`:`·`.`·공백·선행 `-` 금지), 대상은 `=name:` 정확 일치로 지정.
+- tmux 세션 이름은 config 로드 시 검증(`:`·`.`·공백, 선행 `-` `$` `=` `@` `%` 금지), 대상은 `=name:` 정확 일치로 지정.
 - 보고서 조회는 파일명 정규식 검증으로 경로 탈출 차단.
 
 ## API
