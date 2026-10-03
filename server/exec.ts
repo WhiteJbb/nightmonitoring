@@ -1,5 +1,6 @@
 // child_process 를 쓰는 유일한 모듈. 다른 서버 코드는 반드시 여기를 거친다.
 import { execFile, spawn } from 'node:child_process';
+import { statSync } from 'node:fs';
 
 const ALLOWED_BINS = ['git', 'tmux'] as const;
 export type Bin = (typeof ALLOWED_BINS)[number];
@@ -59,6 +60,9 @@ export const runConfigured: ConfiguredExec = (command, cwd, timeoutMs) =>
     let stdout = '';
     let stderr = '';
     let timedOut = false;
+    if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
+      return resolve({ code: null, stdout, stderr: `작업 디렉터리가 없습니다: ${cwd}`, timedOut });
+    }
     let child;
     try {
       child = spawn(command, { cwd, shell: true, detached: true, stdio: ['ignore', 'pipe', 'pipe'] });
