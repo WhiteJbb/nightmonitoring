@@ -255,18 +255,21 @@ export interface ConfigUpdate {
 
 // ---- 실시간 터미널 보기와 입력 ----
 
-/** GET /api/projects/:id/panes/:paneId — 지금 이 순간의 pane 출력 (TmuxPane.lines 와 같은 형식) */
+/**
+ * GET /api/projects/:id/panes/:paneId?lines=N — 지금 이 순간의 pane 출력 (TmuxPane.lines 와 같은 형식).
+ * lines 는 가져올 줄 수(100~5000, 기본 100). 스크롤백을 올려 볼 때 늘린다.
+ */
 export interface PaneLive {
   lines: string[];
 }
 
 /** 글자가 아닌 키. 이 목록에 있는 것만 보낼 수 있다. */
-export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Left' | 'Right' | 'BSpace' | 'C-c' | 'C-d' | 'C-u' | 'C-l';
+export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Left' | 'Right' | 'PPage' | 'NPage' | 'BSpace' | 'C-c' | 'C-d' | 'C-u' | 'C-l';
 
 /**
  * POST /api/projects/:id/input — pane 에 키 입력을 보낸다. text 와 key 중 정확히 하나.
  * - text: 글자 그대로 입력한다 (최대 4000자). enter 가 true 면 이어서 Enter 를 누른다.
- * - key: 특수 키 하나 (BTab = Shift+Tab, C-c = Ctrl+C).
+ * - key: 특수 키 하나 (BTab = Shift+Tab, PPage/NPage = Page Up/Down, C-c = Ctrl+C).
  * 응답: 200 {ok:true} / 400 {error} / 403 {error} (allowInput 꺼짐, demo, 서버가 loopback·Tailscale 이 아닌 주소에 열림) / 404 {error} (프로젝트·pane 없음)
  */
 export interface InputRequest {

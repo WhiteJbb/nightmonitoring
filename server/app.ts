@@ -9,6 +9,7 @@ import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
 import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
+import { MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
@@ -56,7 +57,7 @@ export interface AppDeps {
   reportsDir: () => string;
   /** 실시간 pane 보기와 키 입력. 없으면(demo) 스냅샷의 출력만 돌려주고 입력은 거부한다 */
   terminal?: {
-    capture: (paneId: string) => Promise<string[]>;
+    capture: (paneId: string, lines: number) => Promise<string[]>;
     /** 실패하면 오류 메시지 */
     send: (input: ParsedInput) => Promise<string | null>;
     log: (projectId: string, input: ParsedInput) => void;
@@ -120,7 +121,9 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
   api.get('/projects/:id/panes/:paneId', async (req, res) => {
     const { pane } = findPane(req.params.id, req.params.paneId);
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
-    res.json({ lines: terminal ? await terminal.capture(pane.id) : pane.lines });
+    // 스크롤백을 더 보려면 ?lines= 로 늘린다. 터무니없는 값은 범위 안으로 자른다.
+    const lines = Math.min(MAX_LIVE_LINES, Math.max(OUTPUT_LINES, Math.floor(Number(req.query.lines)) || OUTPUT_LINES));
+    res.json({ lines: terminal ? await terminal.capture(pane.id, lines) : pane.lines });
   });
 
   // 웹에서 터미널로 키 입력을 보내는 유일한 경로. 임의 명령 실행과 같으므로 여러 겹으로 막는다:

@@ -952,6 +952,9 @@ pre {
 .term-bar .panes {
   margin-bottom: 0;
 }
+.term-bar .more-rows {
+  margin-top: 0;
+}
 .term-bar .conn {
   margin-left: auto;
   font-size: var(--fs-xs);

@@ -17,6 +17,8 @@ export interface TmuxSessions {
 export type PaneMeta = Omit<TmuxPane, 'lines'> & { height: number };
 
 export const OUTPUT_LINES = 100;
+/** 실시간 보기에서 한 번에 가져올 수 있는 최대 줄 수 (tmux 의 기본 스크롤백은 2000줄) */
+export const MAX_LIVE_LINES = 5000;
 export const MAX_PANES = 8;
 
 // session_activity 는 키 입력 위주라, pane 출력으로 갱신되는 window_activity 와 함께 본다.
@@ -78,27 +80,27 @@ export async function listPanes(): Promise<Map<string, PaneMeta[]>> {
   return r.code === 0 ? parsePanes(r.stdout) : new Map();
 }
 
-/** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 OUTPUT_LINES 줄만 남긴다. */
-export function cleanOutput(out: string): string[] {
+/** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */
+export function cleanOutput(out: string, limit = OUTPUT_LINES): string[] {
   const lines = keepSgr(out)
     .split('\n')
     .map((l) => l.trimEnd());
   while (lines.length && stripAnsi(lines[lines.length - 1]!).trim() === '') lines.pop();
-  return lines.slice(-OUTPUT_LINES);
+  return lines.slice(-limit);
 }
 
 /** pane 의 최근 출력을 색상(SGR) 포함으로 가져온다. 실패하면 빈 배열. */
-export async function capturePane(pane: Pick<PaneMeta, 'id' | 'height'>): Promise<string[]> {
-  // 스크롤백 + 화면을 합쳐 OUTPUT_LINES 줄이 되게 시작 줄을 잡는다 (화면이 더 크면 화면 아래쪽만).
-  const start = pane.height - OUTPUT_LINES;
+export async function capturePane(pane: Pick<PaneMeta, 'id' | 'height'>, lines = OUTPUT_LINES): Promise<string[]> {
+  // 스크롤백 + 화면을 합쳐 lines 줄이 되게 시작 줄을 잡는다 (화면이 더 크면 화면 아래쪽만).
+  const start = pane.height - lines;
   const r = await run('tmux', ['-u', 'capture-pane', '-p', '-e', '-J', '-t', pane.id, '-S', String(start)]);
-  return r.code === 0 ? cleanOutput(r.stdout) : [];
+  return r.code === 0 ? cleanOutput(r.stdout, lines) : [];
 }
 
 /** 지금 이 순간의 pane 출력 (폴링 주기를 기다리지 않는 실시간 보기용). */
-export async function capturePaneNow(id: string): Promise<string[]> {
+export async function capturePaneNow(id: string, lines = OUTPUT_LINES): Promise<string[]> {
   const h = await run('tmux', ['display-message', '-p', '-t', id, '#{pane_height}']);
-  return capturePane({ id, height: Number(h.stdout.trim()) || 0 });
+  return capturePane({ id, height: Number(h.stdout.trim()) || 0 }, lines);
 }
 
 /** pane 에 글자를 그대로 입력한다. -l 로 키 이름 해석을 끄고, -- 로 옵션 해석을 막는다. 실패하면 오류 메시지. */

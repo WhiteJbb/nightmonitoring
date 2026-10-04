@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { InputKey } from '../shared/types.ts';
 import { sendKey, sendText } from './tmux.ts';
 
-export const INPUT_KEYS = ['Enter', 'Escape', 'Tab', 'BTab', 'Up', 'Down', 'Left', 'Right', 'BSpace', 'C-c', 'C-d', 'C-u', 'C-l'] as const satisfies readonly InputKey[];
+export const INPUT_KEYS = ['Enter', 'Escape', 'Tab', 'BTab', 'Up', 'Down', 'Left', 'Right', 'PPage', 'NPage', 'BSpace', 'C-c', 'C-d', 'C-u', 'C-l'] as const satisfies readonly InputKey[];
 export const MAX_INPUT_CHARS = 4000;
 
 export type ParsedInput = { pane: string } & ({ text: string; enter: boolean } | { key: InputKey });
