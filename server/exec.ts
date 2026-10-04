@@ -2,7 +2,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 
-const ALLOWED_BINS = ['git', 'tmux'] as const;
+const ALLOWED_BINS = ['git', 'tmux', 'osascript'] as const;
 export type Bin = (typeof ALLOWED_BINS)[number];
 
 export interface ExecResult {
@@ -45,6 +45,15 @@ export function run(bin: Bin, args: string[], timeoutMs = 10_000): Promise<ExecR
       },
     );
   });
+}
+
+/**
+ * macOS 알림. 문자열은 AppleScript 소스에 끼워 넣지 않고 argv 로 넘기므로 escaping 이 필요 없다.
+ * macOS 가 아니면 아무것도 하지 않는다.
+ */
+export async function notify(title: string, message: string): Promise<void> {
+  if (process.platform !== 'darwin') return;
+  await run('osascript', ['-e', 'on run argv', '-e', 'display notification (item 2 of argv) with title (item 1 of argv)', '-e', 'end run', title, message], 5000);
 }
 
 export type ConfiguredExec = (command: string, cwd: string, timeoutMs: number, signal?: AbortSignal) => Promise<ExecResult>;

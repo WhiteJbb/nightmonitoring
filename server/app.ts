@@ -27,10 +27,12 @@ export function guard(config: Pick<Config, 'host'>) {
 }
 
 export interface AppDeps {
+  /** 시작 시점의 config. host 검사에만 쓴다 (host/port 는 재시작해야 바뀐다). */
   config: Config;
   monitor: Monitor;
   runner: Runner;
-  reportsDir: string;
+  /** hot reload 로 바뀔 수 있어 매번 묻는다 */
+  reportsDir: () => string;
 }
 
 export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
@@ -55,7 +57,7 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
   // 요청 본문은 읽지 않는다. 실행되는 명령은 항상 config 에 적힌 것.
   api.post('/projects/:id/run/:kind', (req, res) => {
     const { id, kind } = req.params;
-    const project = config.projects.find((p) => p.id === id);
+    const project = monitor.config.projects.find((p) => p.id === id);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
     if (kind !== 'test' && kind !== 'build') return void res.status(400).json({ error: 'kind 는 test 또는 build 여야 합니다' });
     const outcome = runner.start(project, kind);
@@ -81,15 +83,15 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
     res.json({ ok: true });
   });
 
-  api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir)));
+  api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir())));
 
   api.get('/reports/:name', async (req, res) => {
-    const report = await readReport(reportsDir, req.params.name);
+    const report = await readReport(reportsDir(), req.params.name);
     if (!report) return void res.status(404).json({ error: '보고서를 찾을 수 없습니다' });
     res.json(report);
   });
 
-  api.post('/reports', async (_req, res) => void res.json(await saveReport(reportsDir, monitor.snapshot)));
+  api.post('/reports', async (_req, res) => void res.json(await saveReport(reportsDir(), monitor.snapshot)));
 
   api.use((_req, res) => void res.status(404).json({ error: '없는 API 입니다' }));
   // Express 는 인자 4개인 함수만 오류 핸들러로 인식한다.

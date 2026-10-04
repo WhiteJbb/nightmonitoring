@@ -1,11 +1,15 @@
-import { existsSync } from 'node:fs';
+import { existsSync, watchFile } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
 import { createApp } from './app.ts';
-import { ConfigError, loadConfig } from './config.ts';
+import { ConfigError, defaultConfigPath, loadConfig } from './config.ts';
 import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
+import { notify } from './exec.ts';
 import { Monitor, realCollector } from './monitor.ts';
+import { alertsFor, autoReportDue, localDate } from './notify.ts';
+import { reloadConfig } from './reload.ts';
+import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
 
@@ -18,7 +22,8 @@ const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) 
 
 const dev = flag('--dev');
 const demo = flag('--demo') || process.env.NIGHTSHIFT_DEMO === '1';
-const configPath = path.resolve(option('--config') ?? process.env.NIGHTSHIFT_CONFIG ?? 'config/nightshift.json');
+const configPath = path.resolve(option('--config') ?? process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath('config'));
+const processStartedAt = new Date();
 
 // 예상하지 못한 비동기 오류 하나로 관제 서버가 죽지 않게 한다.
 process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e));
@@ -52,10 +57,36 @@ async function main() {
   });
   runner.onChange = () => monitor.publish();
 
+  const reportsDir = () => (demo ? path.join(monitor.config.reportsDir, 'demo') : monitor.config.reportsDir);
+  let lastAutoReportDate = saved?.lastAutoReportDate ?? null;
+
+  if (!demo) {
+    // 상태 변화 알림과 예약된 Morning Report. 둘 다 실패해도 감시는 계속된다.
+    const prevStates = new Map(monitor.snapshot.projects.map((p) => [p.id, p.status.state]));
+    monitor.subscribe((snapshot) => {
+      const alerts = alertsFor(prevStates, snapshot);
+      if (monitor.config.notifications) for (const a of alerts) void notify(a.title, a.message);
+
+      const now = new Date();
+      if (autoReportDue(now, monitor.config.autoReportTime, lastAutoReportDate, processStartedAt)) {
+        lastAutoReportDate = localDate(now);
+        saveReport(reportsDir(), snapshot, now).then(
+          (r) => console.log(`Morning Report 자동 생성: ${r.name}`),
+          (e: Error) => console.error(`Morning Report 자동 생성 실패: ${e.message}`),
+        );
+      }
+    });
+
+    // 에디터의 원자적 저장(rename)에도 안전하도록 polling 방식으로 감시한다.
+    watchFile(configPath, { interval: 1000 }, (cur, prev) => {
+      if (cur.mtimeMs !== prev.mtimeMs) void reloadConfig({ configPath, baseDir: ROOT, monitor, runner, collectorFor: realCollector });
+    });
+  }
+
   if (stateFile) {
     let last = '';
     monitor.subscribe(() => {
-      const state = { version: 1 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate: saved?.lastAutoReportDate ?? null };
+      const state = { version: 1 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate };
       const json = JSON.stringify(state);
       if (json === last) return;
       last = json;
@@ -75,7 +106,7 @@ async function main() {
   await monitor.tick();
   monitor.start();
 
-  const app = createApp({ config, monitor, runner, reportsDir: demo ? path.join(config.reportsDir, 'demo') : config.reportsDir });
+  const app = createApp({ config, monitor, runner, reportsDir });
   const server = http.createServer(app);
 
   if (dev) {

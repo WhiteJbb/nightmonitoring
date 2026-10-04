@@ -8,7 +8,12 @@
     "noCommitMinutes": 30
   },
   "errorPatterns": ["error", "failed", "exception"],
+  "errorIgnorePatterns": ["0 errors", "no errors", "0 failed"],
+  "promptPatterns": ["Do you want to", "Would you like to", "(y/n)", "[y/n]", "(yes/no)", "Press Enter to continue", "/❯\\s*1\\.\\s*Yes/"],
+  "ignoreSpinnerChanges": true,
   "sessionExitIsError": true,
+  "notifications": true,
+  "autoReportTime": "07:00",
   "commandTimeoutSec": 600,
   "reportsDir": "reports",
   "projects": [

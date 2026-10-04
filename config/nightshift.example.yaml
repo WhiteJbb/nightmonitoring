@@ -1,0 +1,43 @@
+# NightShift 설정 예제 (YAML). config/nightshift.yaml 로 복사해서 사용합니다.
+# JSON 예제(nightshift.example.json)와 같은 내용이며, 둘 중 하나만 있으면 됩니다.
+host: 127.0.0.1
+port: 4477
+refreshIntervalSec: 5
+
+thresholds:
+  idleMinutes: 15       # 출력 변화가 없으면 유휴
+  stalledMinutes: 30    # 출력 변화가 없고
+  noCommitMinutes: 30   # Git 변화도 없으면 정지 의심
+
+# 일반 문자열은 대소문자 무시 부분 일치, "/…/" 는 정규식
+errorPatterns: [error, failed, exception]
+errorIgnorePatterns: ["0 errors", "no errors", "0 failed"]
+promptPatterns:
+  - Do you want to
+  - Would you like to
+  - (y/n)
+  - "[y/n]"
+  - (yes/no)
+  - Press Enter to continue
+  - /❯\s*1\.\s*Yes/
+
+ignoreSpinnerChanges: true
+sessionExitIsError: true
+notifications: true
+autoReportTime: "07:00"   # Morning Report 자동 생성. 끄려면 null
+commandTimeoutSec: 600
+reportsDir: reports
+
+projects:
+  - name: My Web App
+    repoPath: ~/code/my-web-app
+    tmuxSession: webapp-agent
+    testCommand: npm test
+    buildCommand: npm run build
+    logFile: logs/agent.log
+
+  - name: API Server
+    repoPath: ~/code/api-server
+    tmuxSession: api-agent
+    testCommand: npm test
+    buildCommand: npm run build

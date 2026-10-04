@@ -10,7 +10,7 @@ const config = parseConfig({ projects: [{ name: 'app', repoPath: '/repo/app', te
 const exec = vi.fn(async () => ({ code: 0, stdout: '', stderr: '', timedOut: false }));
 const runner = new Runner({ timeoutSec: 1, logDir: null, exec });
 const monitor = new Monitor({ config, collector: demoCollector(), runs: runner.get });
-const server = createApp({ config, monitor, runner, reportsDir: '/nonexistent/reports' }).listen(0, '127.0.0.1');
+const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent/reports' }).listen(0, '127.0.0.1');
 let base = '';
 
 beforeAll(async () => {
