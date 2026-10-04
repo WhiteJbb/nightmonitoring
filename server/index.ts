@@ -15,7 +15,8 @@ import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
-import { capturePaneNow, newSession } from './tmux.ts';
+import type { TermSize } from './tmux.ts';
+import { capturePaneNow, newSession, resizeWindow } from './tmux.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 process.chdir(ROOT);
@@ -145,13 +146,13 @@ async function main() {
         },
       };
   const inputLog = path.join(ROOT, '.nightshift/input.log');
-  const createSession = async (name: string, repoPath: string): Promise<string | null> => {
+  const createSession = async (name: string, repoPath: string, size: TermSize): Promise<string | null> => {
     if (!SESSION_RE.test(name)) return '세션 이름이 올바르지 않습니다';
     const cwd = expandPath(repoPath, ROOT);
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return `디렉터리가 없습니다: ${cwd}`;
-    return newSession(name, cwd);
+    return newSession(name, cwd, size);
   };
-  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession };
+  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, resize: resizeWindow };
   const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 

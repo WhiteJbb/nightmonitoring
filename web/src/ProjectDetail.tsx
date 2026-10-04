@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
+import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
@@ -247,6 +248,8 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   // 좁은 화면에서는 긴 줄이 오른쪽으로 잘리므로 기본으로 접어 보여 준다
   const [wrap, setWrap] = useState(narrowScreen);
   const [showInfo, setShowInfo] = useState(false);
+  const [fitting, setFitting] = useState(false);
+  const [fitError, setFitError] = useState<string | null>(null);
   const isLive = live !== null && live.pane === pane?.id;
   const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
   const parsed = useMemo(() => parseAnsi((wrap ? compactForWrap(text) : text).split('\n')), [text, wrap]);
@@ -300,7 +303,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       } else timer = setTimeout(wake, delay);
     };
     const wake = () => void poll();
-    pollNow.current = wake;
+    // 입력을 보낸 직후에는 올려 보는 중이어도 한 번 읽는다 (PgUp 을 눌렀는데 화면이 그대로면 안 된다)
+    pollNow.current = () => {
+      first = true;
+      wake();
+    };
     document.addEventListener('visibilitychange', wake);
     wake();
     return () => {
@@ -332,6 +339,18 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       </div>
     );
   }
+
+  // pane 이 터미널 영역보다 넓은지 (가로 스크롤이 생기는지). 줄바꿈 보기에서는 접혀 보이므로 묻지 않는다
+  const tooWide = !wrap && pane?.cols !== undefined && pane.cols > fitSize(preRef.current).cols;
+  const fit = () => {
+    if (!pane) return;
+    setFitting(true);
+    setFitError(null);
+    api
+      .fitPane(p.id, pane.id, fitSize(preRef.current))
+      .then(() => pollNow.current(), (e: unknown) => setFitError(errorMessage(e)))
+      .finally(() => setFitting(false));
+  };
 
   const copy = (cmd: string) => {
     navigator.clipboard.writeText(cmd).then(
@@ -410,6 +429,17 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
             <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
               이전 출력 더 보기
             </button>
+          )}
+          {/* 붙어 있는 터미널이 없는 세션만: 화면보다 넓으면 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
+          {p.allowInput && !t.attached && tooWide && (
+            <button type="button" className="more-rows" disabled={fitting} onClick={fit} title="tmux 화면을 이 터미널 영역 크기로 바꿉니다">
+              화면에 맞추기
+            </button>
+          )}
+          {fitError && (
+            <span className="err" role="alert">
+              {fitError}
+            </span>
           )}
           {scrolledUp && (
             <button

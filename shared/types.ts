@@ -74,6 +74,8 @@ export interface TmuxPane {
   command: string;
   /** 세션의 활성 윈도우의 활성 pane 인지 */
   active: boolean;
+  /** pane 의 가로 칸 수. 터미널 영역보다 넓으면 가로 스크롤이 생긴다 */
+  cols?: number;
   /**
    * 최근 출력 (최대 100줄). 색상용 SGR 시퀀스(ESC [ ... m)만 남아 있고 다른 제어 문자는 제거됨.
    * SGR 상태는 줄을 넘어 이어진다.
@@ -298,4 +300,18 @@ export interface NewSessionRequest {
   tmuxSession: string;
   /** 만들자마자 터미널 입력을 허용할지 */
   allowInput: boolean;
+  /** 세션의 화면 크기. 보는 화면에 맞춰 보내면 가로 스크롤이 생기지 않는다 (생략 시 120×40) */
+  cols?: number;
+  rows?: number;
+}
+
+/**
+ * 화면 크기 요청 본문 (칸·줄). 서버가 40~300칸, 10~100줄로 자른다.
+ * - POST /api/projects/:id/session 의 선택적 본문
+ * - POST /api/projects/:id/panes/:paneId/fit — pane 이 속한 tmux 윈도우를 이 크기로 바꾼다.
+ *   터미널이 붙어 있지 않은 세션에만 허용 (붙어 있으면 409). 200 {ok:true} / 403 / 404 / 409
+ */
+export interface TermSize {
+  cols: number;
+  rows: number;
 }

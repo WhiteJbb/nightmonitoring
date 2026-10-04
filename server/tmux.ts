@@ -24,7 +24,7 @@ export const MAX_PANES = 8;
 // session_activity 는 키 입력 위주라, pane 출력으로 갱신되는 window_activity 와 함께 본다.
 const LIST_FORMAT = '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_activity}\t#{window_activity}';
 // window_name 은 임의 문자열이라 맨 뒤에 둔다.
-const PANE_FORMAT = '#{session_name}\t#{pane_id}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_active}\t#{window_active}\t#{pane_height}\t#{window_name}';
+const PANE_FORMAT = '#{session_name}\t#{pane_id}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_active}\t#{window_active}\t#{pane_height}\t#{pane_width}\t#{window_name}';
 const epochToIso = (s: string | undefined) => new Date(Number(s) * 1000).toISOString();
 
 export function parseSessions(out: string): Map<string, TmuxSession> {
@@ -53,7 +53,7 @@ export async function listSessions(): Promise<TmuxSessions> {
 export function parsePanes(out: string): Map<string, PaneMeta[]> {
   const bySession = new Map<string, PaneMeta[]>();
   for (const line of out.split('\n')) {
-    const [session, id, window, index, command, paneActive, windowActive, height, ...name] = line.split('\t');
+    const [session, id, window, index, command, paneActive, windowActive, height, width, ...name] = line.split('\t');
     if (!session || !id || !/^%\d+$/.test(id)) continue;
     const pane: PaneMeta = {
       id,
@@ -63,6 +63,7 @@ export function parsePanes(out: string): Map<string, PaneMeta[]> {
       command: command ?? '',
       active: paneActive === '1' && windowActive === '1',
       height: Number(height) || 0,
+      cols: Number(width) || 0,
     };
     const list = bySession.get(session) ?? [];
     bySession.set(session, list);
@@ -115,14 +116,35 @@ export async function sendKey(id: string, key: string): Promise<string | null> {
   return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
 }
 
+export interface TermSize {
+  cols: number;
+  rows: number;
+}
+export const DEFAULT_SIZE: TermSize = { cols: 120, rows: 40 };
+
+/** 요청으로 받은 크기를 tmux 에 넘겨도 되는 범위의 정수로 만든다. 값이 없거나 이상하면 기본값. */
+export function clampSize(cols: unknown, rows: unknown): TermSize {
+  const int = (v: unknown, min: number, max: number, fallback: number) => {
+    const n = Math.floor(Number(v));
+    return Number.isFinite(n) && n > 0 ? Math.min(max, Math.max(min, n)) : fallback;
+  };
+  return { cols: int(cols, 40, 300, DEFAULT_SIZE.cols), rows: int(rows, 10, 100, DEFAULT_SIZE.rows) };
+}
+
 /**
  * 디렉터리 cwd 에서 셸만 띄운 분리(detached) 세션을 만든다. 실행할 명령은 받지 않는다.
  * 같은 이름의 세션이 이미 있으면 아무것도 하지 않는다. 실패하면 오류 메시지.
  * name 은 호출부가 SESSION_RE 로 검증한 값이어야 한다.
+ * size 는 붙어 있는 터미널이 없을 때의 화면 크기 (터미널이 붙으면 그 크기로 바뀐다).
  */
-export async function newSession(name: string, cwd: string): Promise<string | null> {
+export async function newSession(name: string, cwd: string, size: TermSize = DEFAULT_SIZE): Promise<string | null> {
   if ((await run('tmux', ['has-session', '-t', `=${name}`])).code === 0) return null;
-  // 붙어 있는 클라이언트가 없을 때의 화면 크기. 붙으면 그 터미널 크기로 바뀐다.
-  const r = await run('tmux', ['new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50']);
+  const r = await run('tmux', ['new-session', '-d', '-s', name, '-c', cwd, '-x', String(size.cols), '-y', String(size.rows)]);
   return r.code === 0 ? null : r.stderr.trim() || 'tmux new-session 실패';
+}
+
+/** pane 이 속한 윈도우의 크기를 바꾼다. 프로그램에는 터미널 크기 변경 신호만 간다. 실패하면 오류 메시지. */
+export async function resizeWindow(paneId: string, size: TermSize): Promise<string | null> {
+  const r = await run('tmux', ['resize-window', '-t', paneId, '-x', String(size.cols), '-y', String(size.rows)]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux resize-window 실패';
 }
