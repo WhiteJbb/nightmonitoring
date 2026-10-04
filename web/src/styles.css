@@ -10,6 +10,7 @@
   --amber: #e8c547;
   --orange: #ff8c42;
   --red: #f87171;
+  --violet: #a78bfa;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   --sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
   color-scheme: dark;
@@ -227,6 +228,9 @@ main {
 /* ── 상태 색 ── */
 .state-running {
   --state: var(--green);
+}
+.state-waiting {
+  --state: var(--violet);
 }
 .state-idle {
   --state: var(--amber);
@@ -498,4 +502,130 @@ pre {
 }
 .report-body h3 {
   margin-top: 0;
+}
+
+/* ── 입력 대기 / pane / 이력 / 세션 ── */
+.notice.waiting {
+  border-color: var(--violet);
+  margin-bottom: 12px;
+}
+.notice.waiting strong {
+  color: var(--violet);
+}
+.notice.banner {
+  margin-bottom: 16px;
+}
+.pre-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  margin: -8px 0 16px;
+  color: var(--dim);
+  font-size: 12px;
+}
+.meta button,
+.with-action button,
+.panes button {
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.with-action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 12px;
+}
+.with-action button {
+  font-weight: 400;
+}
+.panes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.panes button {
+  font-family: var(--mono);
+}
+button[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.toggle {
+  display: inline-flex;
+  gap: 4px;
+}
+.new-mark {
+  flex: none;
+  font: 11px var(--mono);
+  color: var(--green);
+  border: 1px solid var(--green);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.history {
+  width: 100%;
+  border-collapse: collapse;
+  font: 12.5px var(--mono);
+}
+.history th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--dim);
+}
+.history th,
+.history td {
+  padding: 3px 6px;
+  border-bottom: 1px solid var(--panel-2);
+}
+
+/* ── 렌더링된 보고서 ── */
+.md h2 {
+  font-size: 17px;
+  margin-bottom: 8px;
+}
+.md h3 {
+  font-size: 15px;
+  margin-top: 28px;
+}
+.md h4 {
+  font-size: 13px;
+  color: var(--text);
+  margin: 16px 0 4px;
+}
+.md ul {
+  margin: 4px 0;
+  padding-left: 18px;
+  list-style: disc;
+}
+.md li {
+  overflow-wrap: anywhere;
+}
+.md li.task {
+  list-style: none;
+  margin-left: -18px;
+}
+.md li.task input {
+  margin: 0 4px 0 0;
+  vertical-align: -2px;
+}
+.md p,
+.md pre,
+.md blockquote {
+  margin: 8px 0;
+}
+.md pre {
+  max-height: 320px;
+}
+.md blockquote {
+  padding: 2px 10px;
+  border-left: 3px solid var(--border);
+  color: var(--dim);
 }
