@@ -282,7 +282,7 @@ test('special-key buttons send { pane, key } to the selected pane', async () => 
     ['Enter', 'Esc', 'Tab', '⇧Tab', '↑', '↓', '←', '→', 'PgUp', 'PgDn', '⌫', 'Ctrl+C', 'Ctrl+D', 'Ctrl+U', 'Ctrl+L'],
   );
   // 터치 화면에서 접히는 키에는 extra 표시가 붙고, "더보기"가 펼침 상태를 바꾼다
-  expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Enter', 'Esc', '↑', '↓', 'Ctrl+C']);
+  expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Esc', '↑', '↓', 'PgUp', 'PgDn']);
   const more = screen.getByRole('button', { name: '더보기' });
   expect(more.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(more);
@@ -299,7 +299,7 @@ test('special-key buttons send { pane, key } to the selected pane', async () => 
     { pane: '%2', key: 'BTab' },
     { pane: '%2', key: 'Escape' },
   ]);
-  expect(screen.getByRole('button', { name: 'Ctrl+C 보내기 (중단)' }).className).toBe('caution');
+  expect(screen.getByRole('button', { name: 'Ctrl+C 보내기 (중단)' }).className).toContain('caution');
 });
 
 test('keys in an empty input are forwarded; with text they edit locally', async () => {
@@ -392,4 +392,22 @@ test('wrap view shortens rule lines and long padding, and toggles a class on the
   expect(info.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(info);
   expect(info.getAttribute('aria-expanded')).toBe('true');
+});
+
+test('on a touch screen a key button does not pull focus into the input (no keyboard pop-up)', async () => {
+  // 터치 환경 흉내: (pointer: fine) 이 거짓
+  vi.stubGlobal('matchMedia', (q: string) => ({ matches: !q.includes('pointer: fine'), media: q, addEventListener() {}, removeEventListener() {} }));
+  serve(() => json(200, { lines: [] }));
+  await renderTab(project(TWO));
+  await tick();
+  const box = screen.getByPlaceholderText('입력 후 Enter');
+  fireEvent.click(screen.getByRole('button', { name: 'Page Up 보내기 (프로그램 안에서 위로)' }));
+  await tick();
+  expect(document.activeElement).not.toBe(box);
+
+  // 글을 보낸 뒤에는 이어서 칠 수 있게 포커스가 입력 칸에 있다
+  fireEvent.change(box, { target: { value: 'hello' } });
+  fireEvent.click(screen.getByRole('button', { name: '보내기' }));
+  await tick();
+  expect(document.activeElement).toBe(box);
 });

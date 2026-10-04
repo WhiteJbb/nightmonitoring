@@ -90,7 +90,9 @@ const POLL_BACKOFF_MS = 3000;
 
 // [tmux 키, 버튼 글자, 설명]
 // 터치 화면에서는 이 키들만 늘 보이고 나머지는 "더보기" 뒤로 접힌다.
-const PRIMARY_KEYS: InputKey[] = ['Enter', 'Escape', 'Up', 'Down', 'C-c'];
+const PRIMARY_KEYS: InputKey[] = ['PPage', 'NPage', 'Up', 'Down', 'Escape'];
+// 마우스 환경인지. 터치 화면에서는 입력 칸에 포커스를 주면 키보드가 올라와 화면을 가린다
+const finePointer = () => typeof window.matchMedia !== 'function' || window.matchMedia('(pointer: fine)').matches;
 const KEYS: [InputKey, string, string][] = [
   ['Enter', 'Enter', 'Enter 보내기'],
   ['Escape', 'Esc', 'Esc 보내기'],
@@ -130,7 +132,9 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
 
   // 입력칸은 잠그지 않는다(포커스 유지). 보내는 중의 전송 시도만 무시한다
   const send = (body: InputRequest) => {
-    inputRef.current?.focus();
+    // 글을 보낸 뒤에는 이어서 칠 수 있게 입력 칸에 포커스를 둔다.
+    // 키 버튼은 마우스 환경에서만 포커스를 되돌린다 (터치 화면에서 PgUp 을 누를 때마다 키보드가 뜨지 않게).
+    if (body.text !== undefined || finePointer()) inputRef.current?.focus();
     if (busy) return;
     setBusy(true);
     const sent = body.text;
