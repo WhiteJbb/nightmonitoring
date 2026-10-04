@@ -60,6 +60,8 @@ export interface AppDeps {
     /** 실패하면 오류 메시지 */
     send: (input: ParsedInput) => Promise<string | null>;
     log: (projectId: string, input: ParsedInput) => void;
+    /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
+    createSession: (name: string, repoPath: string) => Promise<string | null>;
   };
   /** 설정 편집. 없으면 /api/config 는 404 */
   configEditor?: {
@@ -134,6 +136,53 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     const error = await terminal.send(input);
     if (error) return void res.status(500).json({ error });
     res.json({ ok: true });
+  });
+
+  // 세션 만들기는 셸 프로세스를 띄우는 일이라 입력과 같은 범위(loopback·Tailscale)에서만 받는다.
+  // 실행할 명령은 받지 않는다: 항상 기본 셸만 뜬다.
+  const sessionBlocked = (): string | null => {
+    if (!terminal) return 'demo mode 에서는 세션을 만들 수 없습니다';
+    if (!isPrivateBind(config.host)) return '서버가 loopback·Tailscale 이 아닌 주소에 열려 있어 세션을 만들 수 없습니다';
+    return null;
+  };
+
+  api.post('/projects/:id/session', async (req, res) => {
+    const project = monitor.config.projects.find((p) => p.id === req.params.id);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = sessionBlocked();
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
+    const error = await terminal.createSession(project.tmuxSession, project.repoPath);
+    if (error) return void res.status(400).json({ error });
+    await monitor.tick();
+    res.json({ ok: true });
+  });
+
+  api.post('/sessions', express.json({ limit: '32kb' }), async (req, res) => {
+    const blocked = sessionBlocked();
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
+    const view = configEditor.view();
+    if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
+    const { name, repoPath, tmuxSession, allowInput } = (req.body ?? {}) as Record<string, unknown>;
+    if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
+      return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
+    }
+    if (view.projects.some((p) => p.tmuxSession === tmuxSession)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
+
+    // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
+    const error = await terminal.createSession(tmuxSession, repoPath.trim());
+    if (error) return void res.status(400).json({ error });
+    const next = await configEditor.update({
+      version: view.version,
+      settings: view.settings,
+      projects: [
+        ...view.projects.map(({ id, name: n, repoPath: r, tmuxSession: t, logFile, allowInput: a }) => ({ id, name: n, repoPath: r, tmuxSession: t, logFile, allowInput: a })),
+        { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true },
+      ],
+    });
+    await monitor.tick();
+    res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });
   });
 
   api.post('/projects/:id/ack-errors', (req, res) => {

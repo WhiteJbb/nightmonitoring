@@ -112,3 +112,15 @@ export async function sendKey(id: string, key: string): Promise<string | null> {
   const r = await run('tmux', ['send-keys', '-t', id, key]);
   return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
 }
+
+/**
+ * 디렉터리 cwd 에서 셸만 띄운 분리(detached) 세션을 만든다. 실행할 명령은 받지 않는다.
+ * 같은 이름의 세션이 이미 있으면 아무것도 하지 않는다. 실패하면 오류 메시지.
+ * name 은 호출부가 SESSION_RE 로 검증한 값이어야 한다.
+ */
+export async function newSession(name: string, cwd: string): Promise<string | null> {
+  if ((await run('tmux', ['has-session', '-t', `=${name}`])).code === 0) return null;
+  // 붙어 있는 클라이언트가 없을 때의 화면 크기. 붙으면 그 터미널 크기로 바뀐다.
+  const r = await run('tmux', ['new-session', '-d', '-s', name, '-c', cwd, '-x', '200', '-y', '50']);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux new-session 실패';
+}

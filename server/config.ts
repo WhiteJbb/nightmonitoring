@@ -76,7 +76,7 @@ export class ConfigError extends Error {
 }
 
 // tmux 대상 문법(:, ., 선행 $ = @ %)과 옵션으로 해석될 수 있는 선행 '-'를 막는다.
-const SESSION_RE = /^[^\s:.$=@%-][^\s:.]*$/;
+export const SESSION_RE = /^[^\s:.$=@%-][^\s:.]*$/;
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);

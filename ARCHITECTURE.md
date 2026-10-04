@@ -95,6 +95,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 - `allowInput`은 처음에는 파일 전용이었으나, 사용자의 결정으로 설정 화면에서도 켜고 끌 수 있게 했다(켤 때 확인 창). 따라서 **대시보드에 닿을 수 있는 범위가 곧 보안 경계**다. 노출은 loopback, `tailscale serve`(+ `allowedHosts`), Tailscale 주소 바인딩 중 하나로만 한다.
 - `allowedHosts`(파일 전용): loopback 바인딩일 때 Host·Origin 검사에서 추가로 받아들일 호스트 이름. 프록시가 원래 이름을 Host로 넘기든 `127.0.0.1`로 바꿔 넘기든 Origin이 목록에 있으면 변경 요청을 받는다.
 - 모든 입력은 보내기 전에 `.nightshift/input.log`에 JSON 한 줄로 남긴다.
+- **세션 만들기**: `tmux new-session -d -s <이름> -c <경로>`만 실행한다. 실행할 명령은 받지 않아 항상 기본 셸이 뜬다. 이름은 config와 같은 규칙으로 검증하고 경로는 존재하는 디렉터리여야 한다. 세션을 먼저 만들고(이미 있으면 그대로) 설정 편집 경로(`configEdit`)로 프로젝트를 추가하므로 기존 프로젝트의 명령은 건드리지 않는다. 입력과 같은 바인딩 조건(loopback·Tailscale)을 적용하고 demo에서는 거부한다.
 
 ## 설정 편집 (`configEdit.ts`)
 
@@ -129,6 +130,8 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
 | GET | `/api/projects/:id/panes/:paneId` | 지금 이 순간의 pane 출력 (실시간 보기) |
 | POST | `/api/projects/:id/input` | pane 에 글자 또는 허용된 특수 키 전송. 200 / 400 / 403 / 404 |
+| POST | `/api/sessions` | 새 tmux 세션(셸)을 만들고 프로젝트로 등록. 200 `{id}` / 400 / 403 / 409 |
+| POST | `/api/projects/:id/session` | 등록된 프로젝트의 꺼진 세션을 같은 이름으로 다시 만들기 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
 | GET | `/api/config` | 설정 편집 화면용 뷰 (파일의 원문 경로, 잠금 여부) |

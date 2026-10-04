@@ -274,3 +274,23 @@ export interface InputRequest {
   enter?: boolean;
   key?: InputKey;
 }
+
+// ---- tmux 세션 만들기 ----
+
+/**
+ * POST /api/sessions — 저장소 경로에서 새 tmux 세션(셸)을 만들고 프로젝트로 등록한다.
+ * 같은 이름의 세션이 이미 있으면 새로 만들지 않고 그 세션을 등록한다.
+ * 응답: 200 {id} (새 프로젝트 id) / 400 {error, issues?} / 403 {error} (demo, 서버가 loopback·Tailscale 밖에 열림) / 409 {error} (이미 등록된 세션)
+ *
+ * POST /api/projects/:id/session (본문 없음) — 등록된 프로젝트의 세션이 없을 때 그 이름으로 다시 만든다. 200 {ok:true} / 400 / 403 / 404
+ */
+export interface NewSessionRequest {
+  /** 프로젝트 표시 이름 */
+  name: string;
+  /** 세션을 시작할 디렉터리. "~" 사용 가능 */
+  repoPath: string;
+  /** tmux 세션 이름 (공백, ":", "." 불가) */
+  tmuxSession: string;
+  /** 만들자마자 터미널 입력을 허용할지 */
+  allowInput: boolean;
+}
