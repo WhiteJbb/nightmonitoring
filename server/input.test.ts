@@ -27,6 +27,7 @@ describe('parseInput', () => {
     expect(parseInput({ pane: '%3', text: 'hello', enter: true })).toEqual({ pane: '%3', text: 'hello', enter: true });
     expect(parseInput({ pane: '%3', text: '-rf; $(x)' })).toEqual({ pane: '%3', text: '-rf; $(x)', enter: false });
     expect(parseInput({ pane: '%3', key: 'C-c' })).toEqual({ pane: '%3', key: 'C-c' });
+    expect(parseInput({ pane: '%3', key: 'PPage' })).toEqual({ pane: '%3', key: 'PPage' });
   });
 
   it('rejects everything else', () => {
@@ -63,6 +64,15 @@ describe('capturePaneNow', () => {
     mockRun.mockResolvedValueOnce(ok('40\n')).mockResolvedValueOnce(ok('a\n\x1b[31mb\x1b[0m\n'));
     expect(await capturePaneNow('%3')).toEqual(['a', '\x1b[31mb\x1b[0m']);
     expect(mockRun.mock.calls[1]![1]).toEqual(['-u', 'capture-pane', '-p', '-e', '-J', '-t', '%3', '-S', '-60']);
+  });
+
+  it('reaches further back into the scrollback when asked for more lines', async () => {
+    const many = Array.from({ length: 1200 }, (_, i) => `l${i}`).join('\n');
+    mockRun.mockResolvedValueOnce(ok('40\n')).mockResolvedValueOnce(ok(many));
+    const lines = await capturePaneNow('%3', 1000);
+    expect(mockRun.mock.calls[1]![1].at(-1)).toBe('-960');
+    expect(lines).toHaveLength(1000);
+    expect(lines.at(-1)).toBe('l1199');
   });
 });
 
@@ -108,7 +118,12 @@ describe('terminal API', () => {
     expect(await (await fetch(`${base}/open/panes/%251`)).json()).toEqual({ lines: ['live %1'] });
     expect((await fetch(`${base}/open/panes/%252`)).status).toBe(404); // 다른 프로젝트의 pane
     expect((await fetch(`${base}/nope/panes/%251`)).status).toBe(404);
-    expect(terminal.capture).toHaveBeenCalledExactlyOnceWith('%1');
+    expect(terminal.capture).toHaveBeenCalledExactlyOnceWith('%1', 100);
+    // 줄 수는 100~5000 으로 잘린다
+    for (const [q, n] of [['800', 800], ['999999', 5000], ['3', 100], ['abc', 100]] as const) {
+      await fetch(`${base}/open/panes/%251?lines=${q}`);
+      expect(terminal.capture).toHaveBeenLastCalledWith('%1', n);
+    }
   });
 
   it('sends input only to an allowed project and its own panes, and logs it', async () => {

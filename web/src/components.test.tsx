@@ -111,7 +111,7 @@ test('project card shows the git error variant', () => {
 test('terminal falls back to plain output and shows the waiting prompt', () => {
   const base = project();
   render(<TerminalTab project={project({ tmux: { ...base.tmux, waitingPrompt: 'Proceed? (y/n)' } })} now={NOW} />);
-  expect(screen.getByLabelText('최근 터미널 출력 100줄').textContent).toBe('plain output');
+  expect(screen.getByLabelText('최근 터미널 출력').textContent).toBe('plain output');
   expect(screen.getByRole('status').textContent).toContain('Proceed? (y/n)');
   expect(screen.queryByRole('group', { name: 'pane 선택' })).toBeNull();
 });
@@ -119,7 +119,7 @@ test('terminal falls back to plain output and shows the waiting prompt', () => {
 test('pane selector defaults to the active pane, switches, and keeps the selection on rerender', () => {
   const base = project();
   const withPanes = (panes: TmuxPane[]) => project({ tmux: { ...base.tmux, panes } });
-  const term = () => screen.getByLabelText('최근 터미널 출력 100줄');
+  const term = () => screen.getByLabelText('최근 터미널 출력');
   const { rerender } = render(
     <TerminalTab project={withPanes([pane('%1', 0, false, ['\x1b[31mfirst']), pane('%2', 1, true, ['second'])])} now={NOW} />,
   );

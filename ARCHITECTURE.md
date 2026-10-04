@@ -92,7 +92,7 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미널 입력은 사용자의 명시적 요청으로 이 원칙에 **선택적 예외**를 둔 것이므로, 기본은 꺼져 있고 여러 조건을 모두 통과해야 동작한다.
 
 - **실시간 보기**: `GET /projects/:id/panes/:paneId`는 요청 시점에 pane을 다시 캡처한다. UI는 터미널 탭이 보일 때만, 선택한 pane 하나만, 이전 요청이 끝난 뒤에 다음 요청을 보낸다(약 0.7초 간격). 읽기 전용이라 모든 프로젝트에서 동작한다.
-- **입력**: `POST /projects/:id/input`은 `tmux send-keys -t <pane> -l -- <text>`(글자 그대로, 키 이름·옵션 해석 없음)와 `send-keys <key>`(허용 목록 13개 중 하나)만 실행한다. `execFile`이라 셸 해석도 없다.
+- **입력**: `POST /projects/:id/input`은 `tmux send-keys -t <pane> -l -- <text>`(글자 그대로, 키 이름·옵션 해석 없음)와 `send-keys <key>`(허용 목록 15개 중 하나)만 실행한다. `execFile`이라 셸 해석도 없다.
 - **허용 조건** (모두 만족해야 함): ① 그 프로젝트의 `allowInput`이 켜짐 ② 서버가 loopback 또는 Tailscale 주소(100.64.0.0/10, fd7a:115c:a1e0::/48)에 바인딩 — `0.0.0.0`·LAN 주소는 거부 ③ pane id가 현재 스냅샷에서 그 프로젝트 세션의 pane 목록에 있음 ④ Host·Origin 검사 통과 ⑤ JSON 본문 검증 통과(4000자 이하, NUL 없음). demo mode에서는 항상 거부.
 - `allowInput`은 처음에는 파일 전용이었으나, 사용자의 결정으로 설정 화면에서도 켜고 끌 수 있게 했다(켤 때 확인 창). 따라서 **대시보드에 닿을 수 있는 범위가 곧 보안 경계**다. 노출은 loopback, `tailscale serve`(+ `allowedHosts`), Tailscale 주소 바인딩 중 하나로만 한다.
 - `allowedHosts`(파일 전용): loopback 바인딩일 때 Host·Origin 검사에서 추가로 받아들일 호스트 이름. 프록시가 원래 이름을 Host로 넘기든 `127.0.0.1`로 바꿔 넘기든 Origin이 목록에 있으면 변경 요청을 받는다.

@@ -71,6 +71,9 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
   );
 }
 
+// 터미널 탭이 한 번에 가져오는 줄 수와, 더 보기로 늘릴 수 있는 한도 (서버 한도와 같다)
+const LIVE_LINES = 500;
+const MAX_LIVE_LINES = 5000;
 const POLL_MS = 700;
 const POLL_BACKOFF_MS = 3000;
 
@@ -86,6 +89,9 @@ const KEYS: [InputKey, string, string][] = [
   ['Down', '↓', '아래 화살표 보내기'],
   ['Left', '←', '왼쪽 화살표 보내기'],
   ['Right', '→', '오른쪽 화살표 보내기'],
+  // 전체 화면으로 도는 프로그램(Claude Code, less 등)은 스크롤백이 tmux 에 없어서, 프로그램 안에서 직접 넘겨야 한다
+  ['PPage', 'PgUp', 'Page Up 보내기 (프로그램 안에서 위로)'],
+  ['NPage', 'PgDn', 'Page Down 보내기 (프로그램 안에서 아래로)'],
   ['BSpace', '⌫', 'Backspace 보내기 (한 글자 지우기)'],
   ['C-c', 'Ctrl+C', 'Ctrl+C 보내기 (중단)'],
   ['C-d', 'Ctrl+D', 'Ctrl+D 보내기 (EOF·종료)'],
@@ -218,6 +224,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   // 실시간으로 읽어 온 출력. 실패하면 null 로 돌려 스냅샷의 줄로 되돌아간다
   const [live, setLive] = useState<{ pane: string; lines: string[] } | null>(null);
   const pollNow = useRef(() => {});
+  // 올려 볼 수 있는 줄 수. "이전 출력 더 보기"로 늘린다
+  const [lines, setLines] = useState(LIVE_LINES);
+  // 위로 올려 읽는 동안에는 갱신을 멈춘다 (새 출력에 화면이 밀리지 않게)
+  const [scrolledUp, setScrolledUp] = useState(false);
+  const prevHeight = useRef(0);
   const isLive = live !== null && live.pane === pane?.id;
   const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
   const parsed = useMemo(() => parseAnsi(text.split('\n')), [text]);
@@ -225,7 +236,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
   useLayoutEffect(() => {
     const el = preRef.current;
-    if (el && stick.current) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    if (stick.current) el.scrollTop = el.scrollHeight;
+    // 위쪽에 줄이 더 붙었을 때(더 보기) 보고 있던 자리가 그대로 있게 한다
+    else el.scrollTop += el.scrollHeight - prevHeight.current;
+    prevHeight.current = el.scrollHeight;
   }, [text, pane?.id]);
 
   // 고른 pane 을 짧은 주기로 다시 읽는다. 앞 요청이 끝난 뒤에만 다음 요청을 잡는다
@@ -235,10 +250,16 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
     let stopped = false;
     let busy = false;
     let again = false;
+    let first = true; // pane·줄 수가 바뀐 직후에는 올려 읽는 중이어도 한 번은 읽는다
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       clearTimeout(timer);
       if (stopped || document.visibilityState !== 'visible') return;
+      if (!first && !stick.current) {
+        timer = setTimeout(wake, POLL_MS);
+        return;
+      }
+      first = false;
       if (busy) {
         again = true; // 진행 중인 요청은 입력 전의 화면일 수 있으니 끝나자마자 한 번 더 읽는다
         return;
@@ -246,9 +267,9 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       busy = true;
       let delay = POLL_MS;
       try {
-        const { lines } = await api.paneLive(p.id, liveId);
-        if (!Array.isArray(lines)) throw new Error('bad response');
-        if (!stopped) setLive({ pane: liveId, lines });
+        const res = await api.paneLive(p.id, liveId, lines);
+        if (!Array.isArray(res.lines)) throw new Error('bad response');
+        if (!stopped) setLive({ pane: liveId, lines: res.lines });
       } catch {
         delay = POLL_BACKOFF_MS;
         if (!stopped) setLive(null);
@@ -271,7 +292,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       pollNow.current = () => {};
       setLive(null);
     };
-  }, [p.id, liveId]);
+  }, [p.id, liveId, lines]);
 
   if (!t.configured) {
     return (
@@ -348,6 +369,8 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
                   aria-pressed={x.id === pane.id}
                   onClick={() => {
                     stick.current = true;
+                    setScrolledUp(false);
+                    setLines(LIVE_LINES);
                     setPaneId(x.id);
                   }}
                 >
@@ -356,9 +379,29 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
               ))}
             </div>
           )}
-          <span className={isLive ? 'conn conn-live' : 'conn'}>
+          {isLive && lines < MAX_LIVE_LINES && live.lines.length >= lines && (
+            <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
+              이전 출력 더 보기
+            </button>
+          )}
+          {scrolledUp && (
+            <button
+              type="button"
+              className="more-rows"
+              onClick={() => {
+                stick.current = true;
+                setScrolledUp(false);
+                const el = preRef.current;
+                if (el) el.scrollTop = el.scrollHeight;
+                pollNow.current();
+              }}
+            >
+              맨 아래로
+            </button>
+          )}
+          <span className={isLive && !scrolledUp ? 'conn conn-live' : 'conn'}>
             <span className="dot" />
-            {isLive ? '실시간' : refreshSec === undefined ? '스냅샷' : `${refreshSec}초 갱신`}
+            {!isLive ? (refreshSec === undefined ? '스냅샷' : `${refreshSec}초 갱신`) : scrolledUp ? '올려 보는 중 · 갱신 멈춤' : '실시간'}
           </span>
         </div>
       )}
@@ -366,10 +409,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
         ref={preRef}
         className="terminal"
         tabIndex={0}
-        aria-label="최근 터미널 출력 100줄"
+        aria-label="최근 터미널 출력"
         onScroll={(e) => {
           const el = e.currentTarget;
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+          setScrolledUp(!stick.current);
         }}
       >
         {text

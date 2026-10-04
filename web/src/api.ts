@@ -40,8 +40,8 @@ export const api = {
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/run/${kind}`, 'DELETE'),
   ackErrors: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/ack-errors`, 'POST'),
   // pane id 는 "%12" 꼴이라 반드시 인코딩한다
-  paneLive: (id: string, paneId: string) =>
-    req<PaneLive>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}`),
+  paneLive: (id: string, paneId: string, lines: number) =>
+    req<PaneLive>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}?lines=${lines}`),
   createSession: (body: NewSessionRequest) => req<{ id: string }>('/api/sessions', 'POST', body),
   startSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST'),
   sendInput: (id: string, body: InputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/input`, 'POST', body),

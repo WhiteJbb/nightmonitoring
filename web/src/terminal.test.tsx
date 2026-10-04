@@ -80,7 +80,7 @@ const tick = (ms = 0) =>
     for (let i = 0; i < 5; i++) await Promise.resolve();
   });
 
-const term = () => screen.getByLabelText('최근 터미널 출력 100줄');
+const term = () => screen.getByLabelText('최근 터미널 출력');
 const box = () => screen.getByRole<HTMLInputElement>('textbox', { name: 'pane 에 보낼 입력' });
 const type = (value: string) => fireEvent.change(box(), { target: { value } });
 
@@ -105,7 +105,7 @@ test('live poll replaces the snapshot lines, with the pane id URL-encoded, one r
   let n = 0;
   serve(() => json(200, { lines: [`\x1b[31mlive ${++n}`] }));
   await renderTab(project(ONE));
-  expect(gets()).toEqual(['/api/projects/api/panes/%2512']);
+  expect(gets()).toEqual(['/api/projects/api/panes/%2512?lines=500']);
   expect(term().textContent).toBe('live 1');
   expect(screen.getByText('live 1').style.color).toBe('rgb(248, 113, 113)');
   expect(screen.getByText('실시간')).toBeTruthy();
@@ -135,9 +135,9 @@ test('does not start the next poll while one is still pending, and stops on unmo
 
 test('polling follows the pane selection and ignores a stale response', async () => {
   let resolveFirst!: (r: Response) => void;
-  serve((url) => (url.endsWith('%251') ? new Promise<Response>((r) => (resolveFirst = r)) : json(200, { lines: ['two-live'] })));
+  serve((url) => (url.includes('/panes/%251?') ? new Promise<Response>((r) => (resolveFirst = r)) : json(200, { lines: ['two-live'] })));
   await renderTab(project(TWO));
-  expect(gets()).toEqual(['/api/projects/api/panes/%251']);
+  expect(gets()).toEqual(['/api/projects/api/panes/%251?lines=500']);
   expect(term().textContent).toBe('one-snap');
 
   fireEvent.click(screen.getByRole('button', { name: '0:zsh · 1 zsh' }));
@@ -150,7 +150,7 @@ test('polling follows the pane selection and ignores a stale response', async ()
   expect(term().textContent).toBe('two-live');
 
   await tick(1400);
-  expect(gets().slice(1)).toEqual(Array<string>(3).fill('/api/projects/api/panes/%252'));
+  expect(gets().slice(1)).toEqual(Array<string>(3).fill('/api/projects/api/panes/%252?lines=500'));
 });
 
 test('a failed poll falls back to the snapshot lines and backs off', async () => {
@@ -279,7 +279,7 @@ test('special-key buttons send { pane, key } to the selected pane', async () => 
   const group = screen.getByRole('group', { name: '특수 키' });
   const keys = group.querySelectorAll('button:not(.more)');
   expect([...keys].map((b) => b.textContent)).toEqual(
-    ['Enter', 'Esc', 'Tab', '⇧Tab', '↑', '↓', '←', '→', '⌫', 'Ctrl+C', 'Ctrl+D', 'Ctrl+U', 'Ctrl+L'],
+    ['Enter', 'Esc', 'Tab', '⇧Tab', '↑', '↓', '←', '→', 'PgUp', 'PgDn', '⌫', 'Ctrl+C', 'Ctrl+D', 'Ctrl+U', 'Ctrl+L'],
   );
   // 터치 화면에서 접히는 키에는 extra 표시가 붙고, "더보기"가 펼침 상태를 바꾼다
   expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Enter', 'Esc', '↑', '↓', 'Ctrl+C']);
@@ -342,4 +342,35 @@ test('a 403 shows the server error and puts the text back; the next success clea
   await tick();
   expect(screen.queryByRole('alert')).toBeNull();
   expect(box().value).toBe('');
+});
+
+test('scrolling up pauses the refresh; load-more asks for a longer scrollback', async () => {
+  const many = Array.from({ length: 500 }, (_, i) => `line ${i}`);
+  serve(() => json(200, { lines: many }));
+  await renderTab(project(TWO));
+  await tick();
+  expect(gets().at(-1)).toBe('/api/projects/api/panes/%251?lines=500');
+  expect(screen.getByText('실시간')).toBeTruthy();
+
+  // 위로 올리면 갱신이 멈춘다
+  const el = term();
+  Object.defineProperties(el, { scrollHeight: { value: 5000, configurable: true }, clientHeight: { value: 400, configurable: true } });
+  el.scrollTop = 1000;
+  fireEvent.scroll(el);
+  expect(screen.getByText('올려 보는 중 · 갱신 멈춤')).toBeTruthy();
+  const before = gets().length;
+  await vi.advanceTimersByTimeAsync(3000);
+  expect(gets().length).toBe(before);
+
+  // 올려 보는 중에도 "더 보기"는 한 번 읽어 온다 (줄 수 두 배)
+  fireEvent.click(screen.getByRole('button', { name: '이전 출력 더 보기' }));
+  await tick();
+  expect(gets().at(-1)).toBe('/api/projects/api/panes/%251?lines=1000');
+  expect(gets().length).toBe(before + 1);
+
+  // 맨 아래로 돌아가면 다시 갱신한다
+  fireEvent.click(screen.getByRole('button', { name: '맨 아래로' }));
+  await tick();
+  expect(screen.getByText('실시간')).toBeTruthy();
+  expect(gets().length).toBeGreaterThan(before + 1);
 });
