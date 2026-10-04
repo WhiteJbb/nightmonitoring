@@ -31,7 +31,10 @@ describe('parseConfig', () => {
       repoPath: `${homedir()}/code/app`,
       logFile: `${homedir()}/code/app/agent.log`,
       testCommand: null,
+      allowInput: false,
     });
+    expect(parseConfig({ projects: [{ name: 'a', repoPath: '/a', allowInput: true }] }, '/base').projects[0]!.allowInput).toBe(true);
+    expect(() => parseConfig({ projects: [{ name: 'a', repoPath: '/a', allowInput: 'yes' }] }, '/base')).toThrow(/allowInput/);
     expect(c.projects[1]).toMatchObject({ id: 'my-app-2', repoPath: '/base/rel', tmuxSession: null });
   });
 

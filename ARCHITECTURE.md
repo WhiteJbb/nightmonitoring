@@ -25,6 +25,7 @@ server/
   runner.ts            등록된 test/build 실행, 취소, 이력
   state.ts             세션 상태의 디스크 저장·복원 (.nightshift/state.json)
   reload.ts            config hot reload
+  input.ts             UI → tmux 키 입력: 요청 검증, 허용 키 목록, 기록
   configEdit.ts        UI 설정 편집: 편집 가능 필드만 병합·검증·원자적 저장 (YAML 주석 보존)
   notify.ts            상태 전환 알림 판정, 자동 보고서 시각 판정 (순수 함수)
   report.ts            Morning Report Markdown 생성·저장·조회
@@ -84,6 +85,16 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 - **복원**: 프로젝트 id와 저장소 경로가 모두 같을 때만 기준점을 이어 쓴다. 저장 당시 실행 중이던 test/build는 "재시작으로 중단됨(취소)"으로 기록한다.
 - **hot reload (`reload.ts`)**: `fs.watchFile`(polling, 에디터의 rename 저장에도 안전)로 config의 mtime 변화를 감지한다. 검증에 통과하면 교체하고, 실패하면 이전 설정을 유지한 채 `snapshot.configError`로 알린다. id와 저장소 경로가 같은 프로젝트의 추적 상태는 유지하고, 사라지거나 경로가 바뀐 프로젝트는 추적 상태와 실행 결과를 버린다. `host`·`port`는 이미 listen 중이라 무시한다.
 
+## 실시간 보기와 터미널 입력 (`input.ts`)
+
+v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미널 입력은 사용자의 명시적 요청으로 이 원칙에 **선택적 예외**를 둔 것이므로, 기본은 꺼져 있고 여러 조건을 모두 통과해야 동작한다.
+
+- **실시간 보기**: `GET /projects/:id/panes/:paneId`는 요청 시점에 pane을 다시 캡처한다. UI는 터미널 탭이 보일 때만, 선택한 pane 하나만, 이전 요청이 끝난 뒤에 다음 요청을 보낸다(약 0.7초 간격). 읽기 전용이라 모든 프로젝트에서 동작한다.
+- **입력**: `POST /projects/:id/input`은 `tmux send-keys -t <pane> -l -- <text>`(글자 그대로, 키 이름·옵션 해석 없음)와 `send-keys <key>`(허용 목록 13개 중 하나)만 실행한다. `execFile`이라 셸 해석도 없다.
+- **허용 조건** (모두 만족해야 함): ① config 파일의 그 프로젝트에 `allowInput: true` ② 서버가 loopback 바인딩 ③ pane id가 현재 스냅샷에서 그 프로젝트 세션의 pane 목록에 있음 ④ Host·Origin 검사 통과 ⑤ JSON 본문 검증 통과(4000자 이하, NUL 없음). demo mode에서는 항상 거부.
+- `allowInput`은 설정 편집 API의 허용 목록에 없어 UI로는 켤 수 없고, 입력이 허용된 프로젝트의 `tmuxSession` 변경도 UI에서는 거부한다(입력이 다른 세션으로 새는 것을 막기 위함).
+- 모든 입력은 보내기 전에 `.nightshift/input.log`에 JSON 한 줄로 남긴다.
+
 ## 설정 편집 (`configEdit.ts`)
 
 "UI에서 명령을 입력할 수 없다"는 원칙을 유지하면서 설정을 UI에서 고칠 수 있게 한다.
@@ -115,6 +126,8 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 | GET | `/api/events` | SSE, 폴링마다·실행 상태 변경 시 스냅샷 푸시 |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
+| GET | `/api/projects/:id/panes/:paneId` | 지금 이 순간의 pane 출력 (실시간 보기) |
+| POST | `/api/projects/:id/input` | pane 에 글자 또는 허용된 특수 키 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
 | GET | `/api/config` | 설정 편집 화면용 뷰 (파일의 원문 경로, 잠금 여부) |

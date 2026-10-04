@@ -4,6 +4,8 @@ import type { ConfigView } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
+import type { ParsedInput } from './input.ts';
+import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
 import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
@@ -16,8 +18,10 @@ const isLoopback = (host: string) => LOOPBACK.has(host.replace(/:\d+$/, ''));
  * - Host 헤더가 loopback 이 아니면 거부 (DNS rebinding 방어). host 를 loopback 밖으로 바꾼 경우는 사용자가 감수한 것으로 본다.
  * - 변경 요청은 Origin 이 자기 자신일 때만 허용 (다른 웹사이트가 test/build 실행을 유발하지 못하게).
  */
+const isLoopbackBind = (host: string) => isLoopback(host) || host === '::1';
+
 export function guard(config: Pick<Config, 'host'>) {
-  const checkHost = isLoopback(config.host) || config.host === '::1';
+  const checkHost = isLoopbackBind(config.host);
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
     if (checkHost && !isLoopback(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
@@ -36,6 +40,13 @@ export interface AppDeps {
   runner: Runner;
   /** hot reload 로 바뀔 수 있어 매번 묻는다 */
   reportsDir: () => string;
+  /** 실시간 pane 보기와 키 입력. 없으면(demo) 스냅샷의 출력만 돌려주고 입력은 거부한다 */
+  terminal?: {
+    capture: (paneId: string) => Promise<string[]>;
+    /** 실패하면 오류 메시지 */
+    send: (input: ParsedInput) => Promise<string | null>;
+    log: (projectId: string, input: ParsedInput) => void;
+  };
   /** 설정 편집. 없으면 /api/config 는 404 */
   configEditor?: {
     view: () => ConfigView;
@@ -44,7 +55,7 @@ export interface AppDeps {
   };
 }
 
-export function createApp({ config, monitor, runner, reportsDir, configEditor }: AppDeps) {
+export function createApp({ config, monitor, runner, reportsDir, configEditor, terminal }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.use(guard(config));
@@ -80,6 +91,35 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor }:
     if (kind !== 'test' && kind !== 'build') return void res.status(400).json({ error: 'kind 는 test 또는 build 여야 합니다' });
     if (!runner.cancel(id, kind)) return void res.status(409).json({ error: '실행 중이 아닙니다' });
     res.status(202).json({ ok: true });
+  });
+
+  // 스냅샷에 있는 pane(= 이 프로젝트의 세션에 속한 pane)만 대상으로 삼는다.
+  const findPane = (projectId: string, paneId: unknown) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === projectId);
+    return { project, pane: project?.tmux.panes.find((x) => x.id === paneId) };
+  };
+
+  api.get('/projects/:id/panes/:paneId', async (req, res) => {
+    const { pane } = findPane(req.params.id, req.params.paneId);
+    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    res.json({ lines: terminal ? await terminal.capture(pane.id) : pane.lines });
+  });
+
+  // 웹에서 터미널로 키 입력을 보내는 유일한 경로. 임의 명령 실행과 같으므로 여러 겹으로 막는다:
+  // config 파일에서 allowInput 을 켠 프로젝트만, loopback 바인딩일 때만, 그 프로젝트 세션의 pane 으로만.
+  api.post('/projects/:id/input', express.json({ limit: '32kb' }), async (req, res) => {
+    const input = parseInput(req.body);
+    if (typeof input === 'string') return void res.status(400).json({ error: input });
+    const { project, pane } = findPane(req.params.id, input.pane);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    if (!terminal) return void res.status(403).json({ error: 'demo mode 에서는 입력을 보낼 수 없습니다' });
+    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 입력이 꺼져 있습니다. config 파일에서 allowInput: true 로 켜세요.' });
+    if (!isLoopbackBind(config.host)) return void res.status(403).json({ error: '서버가 loopback 이 아닌 주소에 열려 있어 입력을 보낼 수 없습니다' });
+    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    terminal.log(project.id, input);
+    const error = await terminal.send(input);
+    if (error) return void res.status(500).json({ error });
+    res.json({ ok: true });
   });
 
   api.post('/projects/:id/ack-errors', (req, res) => {
