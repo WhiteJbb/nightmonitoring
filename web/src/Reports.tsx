@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Report, ReportMeta } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime } from './format.ts';
+import { Markdown } from './markdown.tsx';
 
 export function Reports() {
   const [list, setList] = useState<ReportMeta[] | null>(null);
@@ -11,6 +12,7 @@ export function Reports() {
   const [reportError, setReportError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
   const [genError, setGenError] = useState<string | null>(null);
+  const [raw, setRaw] = useState(false);
   const wanted = useRef<string | null>(null); // 늦게 도착한 이전 응답을 버리기 위한 표시
 
   const open = (name: string) => {
@@ -107,10 +109,24 @@ export function Reports() {
             </div>
           ) : report ? (
             <>
-              <h3 className="wrap">{report.name}</h3>
-              <pre className="report-content" tabIndex={0}>
-                {report.content}
-              </pre>
+              <h3 className="wrap with-action">
+                {report.name}
+                <span className="toggle" role="group" aria-label="보기 방식">
+                  <button type="button" aria-pressed={!raw} onClick={() => setRaw(false)}>
+                    렌더링
+                  </button>
+                  <button type="button" aria-pressed={raw} onClick={() => setRaw(true)}>
+                    원문
+                  </button>
+                </span>
+              </h3>
+              {raw ? (
+                <pre className="report-content" tabIndex={0}>
+                  {report.content}
+                </pre>
+              ) : (
+                <Markdown source={report.content} />
+              )}
             </>
           ) : selected ? (
             <p className="dim">불러오는 중…</p>
