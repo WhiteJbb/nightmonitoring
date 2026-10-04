@@ -175,4 +175,4 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | TypeScript 문법 오류로 서버가 안 뜸 | `node -v`가 22.18 이상인지 확인 |
 | 화면에 "연결 끊김" | 서버가 종료된 상태. 다시 시작하면 자동으로 재연결됩니다 |
 
-구조와 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md), 구현 결과와 알려진 문제는 [NIGHT_REPORT.md](NIGHT_REPORT.md)를 참고하세요.
+구조와 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md)를 참고하세요.
