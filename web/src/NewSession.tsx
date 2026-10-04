@@ -43,7 +43,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)}>
+      <button type="button" className="new-session-toggle" onClick={() => setOpen(true)}>
         + tmux 세션 만들기
       </button>
     );
