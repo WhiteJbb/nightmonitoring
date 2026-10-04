@@ -9,7 +9,8 @@ import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
-import { alertsFor, autoReportDue, localDate } from './notify.ts';
+import { alertsFor, autoReportDue, localDate, MAC_ALERT_STATES } from './notify.ts';
+import { sendNtfy } from './push.ts';
 import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
@@ -60,6 +61,16 @@ async function main() {
   });
   runner.onChange = () => monitor.publish();
 
+  // 휴대폰에서 눌러 열 수 있는 주소. loopback 은 휴대폰에서 닿지 않으므로 붙이지 않는다.
+  const reachable = !['127.0.0.1', 'localhost', '::1'].includes(config.host);
+  const clickFor = (projectId?: string) =>
+    reachable ? { click: `http://${config.host}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
+  const testPush = async () => {
+    const url = monitor.config.ntfyUrl;
+    if (!url) return 'ntfy 주소가 설정되어 있지 않습니다. 먼저 저장하세요.';
+    return sendNtfy(url, { title: 'NightShift 시험 알림', message: '이 알림이 보이면 휴대폰 푸시가 연결된 것입니다.', ...clickFor() });
+  };
+
   const reportsDir = () => (demo ? path.join(monitor.config.reportsDir, 'demo') : monitor.config.reportsDir);
   let lastAutoReportDate = saved?.lastAutoReportDate ?? null;
   let autoReportBusy = false;
@@ -69,7 +80,13 @@ async function main() {
     const prevStates = new Map(monitor.snapshot.projects.map((p) => [p.id, p.status.state]));
     monitor.subscribe((snapshot) => {
       const alerts = alertsFor(prevStates, snapshot);
-      if (monitor.config.notifications) for (const a of alerts) void notify(a.title, a.message);
+      for (const a of alerts) {
+        if (monitor.config.notifications && MAC_ALERT_STATES.includes(a.state)) void notify(a.title, a.message);
+        const { ntfyUrl, ntfyStates } = monitor.config;
+        if (ntfyUrl && ntfyStates.includes(a.state)) {
+          void sendNtfy(ntfyUrl, { title: a.title, message: a.message, state: a.state, ...clickFor(a.projectId) }).then((error) => error && console.error(error));
+        }
+      }
 
       const now = new Date();
       if (!autoReportBusy && autoReportDue(now, monitor.config.autoReportTime, lastAutoReportDate, processStartedAt)) {
@@ -135,7 +152,7 @@ async function main() {
     return newSession(name, cwd);
   };
   const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession };
-  const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}) });
+  const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 
   if (dev) {

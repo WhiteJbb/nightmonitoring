@@ -40,7 +40,7 @@ interface DraftProject {
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
 type Draft = Record<NumKey | PatternKey, string> &
-  Record<ToggleKey, boolean> & { autoReport: boolean; autoReportTime: string; projects: DraftProject[] };
+  Record<ToggleKey, boolean> & { autoReport: boolean; autoReportTime: string; ntfyUrl: string; projects: DraftProject[] };
 
 function toDraft({ settings: s, projects }: ConfigView): Draft {
   return {
@@ -54,6 +54,7 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
     notifications: s.notifications,
     autoReport: s.autoReportTime !== null,
     autoReportTime: s.autoReportTime ?? '07:00',
+    ntfyUrl: s.ntfyUrl ?? '',
     errorPatterns: s.errorPatterns.join('\n'),
     errorIgnorePatterns: s.errorIgnorePatterns.join('\n'),
     promptPatterns: s.promptPatterns.join('\n'),
@@ -85,6 +86,7 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       notifications: d.notifications,
       autoReportTime: d.autoReport ? d.autoReportTime : null,
       commandTimeoutSec: num(d.commandTimeoutSec),
+      ntfyUrl: d.ntfyUrl.trim() || null,
     },
     projects: d.projects.map((p) => ({
       id: p.id,
@@ -128,6 +130,9 @@ export function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<ApiError | Error | null>(null);
+  // 휴대폰 시험 알림의 결과: null = 아직 안 보냄
+  const [pushResult, setPushResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [pushing, setPushing] = useState(false);
 
   const loaded = (v: ConfigView) => {
     setView(v);
@@ -186,6 +191,17 @@ export function Settings() {
     setSaveError(null);
     setSaved(false);
     load();
+  };
+  const testPush = () => {
+    setPushing(true);
+    setPushResult(null);
+    api
+      .testPush()
+      .then(
+        () => setPushResult({ ok: true, text: '보냈습니다. 휴대폰을 확인하세요.' }),
+        (e: unknown) => setPushResult({ ok: false, text: errorMessage(e) }),
+      )
+      .finally(() => setPushing(false));
   };
   const revert = () => {
     setDraft(toDraft(view));
@@ -266,6 +282,39 @@ export function Settings() {
             <p className="hint">{hint}</p>
           </div>
         ))}
+      </div>
+
+      <h3>휴대폰 알림</h3>
+      <div className="field">
+        <label>
+          <span>ntfy 주소</span>
+          <input
+            type="url"
+            className="mono"
+            spellCheck={false}
+            placeholder="https://ntfy.sh/추측하기-어려운-주제"
+            value={draft.ntfyUrl}
+            disabled={ro}
+            onChange={(e) => set({ ntfyUrl: e.target.value })}
+          />
+        </label>
+        <p className="hint">
+          입력 대기·정지 의심·오류로 바뀔 때 이 주소로 알림을 보냅니다. 휴대폰의 ntfy 앱에서 같은 주제를 구독하세요. 비워
+          두면 보내지 않습니다.
+        </p>
+        {!ro && (
+          <div className="row">
+            {/* 저장된 주소로 보내므로, 고친 내용이 있으면 먼저 저장해야 한다 */}
+            <button type="button" onClick={testPush} disabled={pushing || !view.settings.ntfyUrl || draft.ntfyUrl.trim() !== view.settings.ntfyUrl}>
+              {pushing ? '보내는 중…' : '시험 알림 보내기'}
+            </button>
+            {pushResult && (
+              <span className={pushResult.ok ? 'ok' : 'err'} role={pushResult.ok ? 'status' : 'alert'}>
+                {pushResult.text}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <h3>패턴</h3>

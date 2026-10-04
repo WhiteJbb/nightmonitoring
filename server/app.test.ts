@@ -56,6 +56,21 @@ describe('API', () => {
     }
   });
 
+  it('sends a test push through the injected sender, and refuses without one', async () => {
+    const testPush = vi.fn<() => Promise<string | null>>(async () => null);
+    const withPush = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent/reports', testPush }).listen(0, '127.0.0.1');
+    await new Promise((resolve) => withPush.once('listening', resolve));
+    const url = `http://127.0.0.1:${(withPush.address() as AddressInfo).port}/api/notify/test`;
+    expect((await fetch(url, { method: 'POST' })).status).toBe(200);
+    testPush.mockResolvedValueOnce('ntfy 서버가 429 로 응답했습니다');
+    const failed = await fetch(url, { method: 'POST' });
+    expect(failed.status).toBe(400);
+    expect(await failed.json()).toEqual({ error: 'ntfy 서버가 429 로 응답했습니다' });
+    withPush.close();
+    // 보내는 수단이 없으면(demo) 거부
+    expect((await fetch(`${base}/api/notify/test`, { method: 'POST' })).status).toBe(403);
+  });
+
   it('returns JSON 404 for unknown reports and routes', async () => {
     expect((await fetch(`${base}/api/reports/..%2F..%2Fpackage.json`)).status).toBe(404);
     expect((await fetch(`${base}/api/nope`)).status).toBe(404);

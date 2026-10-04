@@ -6,7 +6,7 @@ import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { DEFAULTS, defaultConfigPath, loadConfig } from './config.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
-import { alertsFor, autoReportDue } from './notify.ts';
+import { alertsFor, autoReportDue, MAC_ALERT_STATES } from './notify.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
 
@@ -95,14 +95,16 @@ describe('reloadConfig', () => {
 describe('alerts', () => {
   const snap = (states: Record<string, string>): Snapshot => ({ projects: Object.entries(states).map(([id, state]) => ({ id, name: id.toUpperCase(), status: { state, reasons: [`${state} reason`] } })) }) as unknown as Snapshot;
 
-  it('alerts only on transitions into waiting, stalled or error', () => {
+  it('alerts on transitions into waiting, idle, stalled or error, never into running', () => {
     const prev = new Map();
     expect(alertsFor(prev, snap({ a: 'error', b: 'running' }))).toEqual([]); // 처음 보는 프로젝트
-    expect(alertsFor(prev, snap({ a: 'error', b: 'waiting' }))).toEqual([{ title: 'NightShift · B: 입력 대기', message: 'waiting reason' }]);
+    expect(alertsFor(prev, snap({ a: 'error', b: 'waiting' }))).toEqual([{ title: 'NightShift · B: 입력 대기', message: 'waiting reason', projectId: 'b', state: 'waiting' }]);
     expect(alertsFor(prev, snap({ a: 'running', b: 'waiting' }))).toEqual([]);
-    expect(alertsFor(prev, snap({ a: 'idle', b: 'stalled' })).map((x) => x.title)).toEqual(['NightShift · B: 정지 의심']);
+    expect(alertsFor(prev, snap({ a: 'idle', b: 'stalled' })).map((x) => [x.title, x.state])).toEqual([['NightShift · A: 유휴', 'idle'], ['NightShift · B: 정지 의심', 'stalled']]);
     expect(alertsFor(prev, snap({ a: 'error' })).map((x) => x.title)).toEqual(['NightShift · A: 오류']);
     expect([...prev.keys()]).toEqual(['a']);
+    // Mac 알림에는 유휴가 포함되지 않는다
+    expect(MAC_ALERT_STATES).toEqual(['waiting', 'stalled', 'error']);
   });
 });
 

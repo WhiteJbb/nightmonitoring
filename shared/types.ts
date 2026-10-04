@@ -202,6 +202,8 @@ export interface EditableSettings {
   /** "HH:MM" 또는 null(끔) */
   autoReportTime: string | null;
   commandTimeoutSec: number;
+  /** 휴대폰 푸시를 보낼 ntfy 주소 (예: "https://ntfy.sh/내-주제"). null 이면 보내지 않는다 */
+  ntfyUrl: string | null;
 }
 
 /**

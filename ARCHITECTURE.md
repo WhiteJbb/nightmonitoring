@@ -27,6 +27,7 @@ server/
   reload.ts            config hot reload
   input.ts             UI → tmux 키 입력: 요청 검증, 허용 키 목록, 기록
   configEdit.ts        UI 설정 편집: 편집 가능 필드만 병합·검증·원자적 저장 (YAML 주석 보존)
+  push.ts              휴대폰 푸시 (ntfy) 전송. 설정했을 때만 외부로 요청
   notify.ts            상태 전환 알림 판정, 자동 보고서 시각 판정 (순수 함수)
   report.ts            Morning Report Markdown 생성·저장·조회
   demo.ts              demo mode용 가짜 수집기
@@ -61,6 +62,7 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 - 스냅샷 하나에 화면에 필요한 모든 것(pane 출력 포함)을 담는다. UI는 SSE로 받은 최신 스냅샷만 그린다. 느린 클라이언트에는 쌓지 않고 건너뛴다.
 - tick, hot reload, 세션 초기화는 `Monitor` 안의 한 줄 큐로 직렬화된다. 이전 설정으로 돌던 수집이 새 설정의 상태를 덮어쓰지 못한다.
 - 알림·저장·예약은 모두 "스냅샷 구독자"다. `Monitor`는 이들을 모른다.
+- 휴대폰 푸시(`push.ts`)는 이 도구가 외부로 요청을 보내는 유일한 경로다. `ntfyUrl`을 설정했을 때만 동작하고, 보내는 내용은 프로젝트 이름·상태·판정 사유·대시보드 주소뿐이다. 한글 제목 때문에 헤더 대신 JSON 본문으로 보내며, 실패는 로그만 남긴다.
 
 ## 상태 판정 (`status.ts`)
 
@@ -134,6 +136,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | POST | `/api/projects/:id/session` | 등록된 프로젝트의 꺼진 세션을 같은 이름으로 다시 만들기 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
+| POST | `/api/notify/test` | 저장된 ntfy 주소로 시험 알림 전송 |
 | GET | `/api/config` | 설정 편집 화면용 뷰 (파일의 원문 경로, 잠금 여부) |
 | PUT | `/api/config` | 설정 저장 후 즉시 적용. 200 / 400(`issues`) / 403(demo) / 409(동시 수정) |
 | GET | `/api/reports` | 보고서 목록 |

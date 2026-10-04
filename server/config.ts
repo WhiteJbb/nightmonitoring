@@ -2,7 +2,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
+import type { ProjectState } from '../shared/types.ts';
 import { compileMatcher } from './logs.ts';
+import { parseNtfyUrl } from './push.ts';
 
 export interface ProjectConfig {
   id: string;
@@ -45,6 +47,10 @@ export interface Config {
   notifications: boolean;
   /** Morning Report 자동 생성 시각 "HH:MM" (로컬 시간). null 이면 끔 */
   autoReportTime: string | null;
+  /** 휴대폰 푸시를 보낼 ntfy 주소. null 이면 보내지 않는다 */
+  ntfyUrl: string | null;
+  /** 어떤 상태로 바뀔 때 휴대폰 푸시를 보낼지 */
+  ntfyStates: ProjectState[];
   commandTimeoutSec: number;
   reportsDir: string;
   projects: ProjectConfig[];
@@ -63,6 +69,8 @@ export const DEFAULTS = {
   sessionExitIsError: true,
   notifications: true,
   autoReportTime: null as string | null,
+  ntfyUrl: null as string | null,
+  ntfyStates: ['waiting', 'stalled', 'error'] as ProjectState[],
   commandTimeoutSec: 600,
   reportsDir: 'reports',
 };
@@ -196,6 +204,15 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     });
   }
 
+  const ntfyUrl = optStr(raw, 'ntfyUrl', '');
+  if (ntfyUrl && !parseNtfyUrl(ntfyUrl)) issues.push('ntfyUrl: "https://ntfy.sh/주제" 형식이어야 합니다 (주제는 영문·숫자·-·_ 64자 이하)');
+  let ntfyStates = DEFAULTS.ntfyStates;
+  if (raw.ntfyStates !== undefined) {
+    const allowed = ['waiting', 'idle', 'stalled', 'error'];
+    if (Array.isArray(raw.ntfyStates) && raw.ntfyStates.every((x) => allowed.includes(x as string))) ntfyStates = raw.ntfyStates as ProjectState[];
+    else issues.push(`ntfyStates: ${allowed.join(', ')} 중에서 고른 배열이어야 합니다`);
+  }
+
   const config: Config = {
     host: optStr(raw, 'host', '') ?? DEFAULTS.host,
     allowedHosts,
@@ -209,6 +226,8 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     sessionExitIsError: bool('sessionExitIsError', DEFAULTS.sessionExitIsError),
     notifications: bool('notifications', DEFAULTS.notifications),
     autoReportTime,
+    ntfyUrl,
+    ntfyStates,
     commandTimeoutSec: num(raw, 'commandTimeoutSec', DEFAULTS.commandTimeoutSec, '', 1),
     reportsDir: expandPath(optStr(raw, 'reportsDir', '') ?? DEFAULTS.reportsDir, baseDir),
     projects,
