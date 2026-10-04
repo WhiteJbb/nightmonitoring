@@ -12,7 +12,7 @@ import { logInput, parseInput, sendInput } from './input.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
 import { Runner } from './runner.ts';
-import { capturePaneNow, newSession } from './tmux.ts';
+import { capturePaneNow, clampSize, newSession, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -89,11 +89,12 @@ describe('logInput', () => {
 });
 
 describe('terminal API', () => {
+  let attached = false;
   const pane = (id: string) => ({ id, window: 0, windowName: 'w', index: 0, command: 'zsh', active: true, lines: [`snapshot ${id}`] });
   const collector: Collector = {
     git: async () => ({ ok: true, branch: 'main', head: 'h', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0, recentCommits: [], todayCommits: [], fingerprint: 'h' }),
     since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
-    tmux: async (projects) => new Map(projects.map((p, i) => [p.id, { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane(`%${i + 1}`)], waitingPrompt: null, attachCommand: null }])),
+    tmux: async (projects) => new Map(projects.map((p, i) => [p.id, { configured: true, exists: true, createdAt: null, attached, lastActivityAt: null, output: [], panes: [pane(`%${i + 1}`)], waitingPrompt: null, attachCommand: null }])),
     logErrors: async () => NO_LOG,
   };
   const servers: { close: () => void }[] = [];
@@ -104,7 +105,7 @@ describe('terminal API', () => {
     const runner = new Runner({ timeoutSec: 1, logDir: null });
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null) };
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null) };
     const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -142,6 +143,21 @@ describe('terminal API', () => {
     expect(terminal.send).toHaveBeenCalledTimes(1);
   });
 
+  it('fits an unattached session to the viewer, but never one with a terminal attached', async () => {
+    const { base, terminal } = await start();
+    const fit = (id: string, paneId: string, body: unknown) => fetch(`${base}/${id}/panes/${encodeURIComponent(paneId)}/fit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    expect((await fit('open', '%1', { cols: 96, rows: 30 })).status).toBe(200);
+    expect(terminal.resize).toHaveBeenCalledExactlyOnceWith('%1', { cols: 96, rows: 30 });
+    expect((await fit('closed', '%2', { cols: 96, rows: 30 })).status).toBe(403); // 입력이 꺼진 프로젝트
+    expect((await fit('open', '%2', { cols: 96, rows: 30 })).status).toBe(404); // 남의 pane
+    attached = true;
+    const again = await start();
+    const res = await fetch(`${again.base}/open/panes/%251/fit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"cols":96,"rows":30}' });
+    expect(res.status).toBe(409);
+    expect(again.terminal.resize).not.toHaveBeenCalled();
+    attached = false;
+  });
+
   it('surfaces tmux failures', async () => {
     const { post, terminal } = await start();
     terminal.send.mockResolvedValueOnce("can't find pane");
@@ -172,8 +188,20 @@ describe('newSession', () => {
     expect(await newSession('agent', '/repo/app')).toBeNull();
     expect(mockRun.mock.calls.map((c) => c[1])).toEqual([
       ['has-session', '-t', '=agent'],
-      ['new-session', '-d', '-s', 'agent', '-c', '/repo/app', '-x', '200', '-y', '50'],
+      ['new-session', '-d', '-s', 'agent', '-c', '/repo/app', '-x', '120', '-y', '40'],
     ]);
+  });
+
+  it('uses the requested size, clamped to a sane range', async () => {
+    expect(clampSize(96, 30)).toEqual({ cols: 96, rows: 30 });
+    expect(clampSize('abc', undefined)).toEqual({ cols: 120, rows: 40 });
+    expect(clampSize(5, 5000)).toEqual({ cols: 40, rows: 100 });
+    expect(clampSize(-3, 0)).toEqual({ cols: 120, rows: 40 });
+    mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: '', timedOut: false }).mockResolvedValueOnce(ok());
+    await newSession('agent', '/repo/app', { cols: 96, rows: 30 });
+    expect(mockRun.mock.calls[1]![1].slice(-4)).toEqual(['-x', '96', '-y', '30']);
+    await resizeWindow('%7', { cols: 88, rows: 30 });
+    expect(mockRun.mock.calls.at(-1)![1]).toEqual(['resize-window', '-t', '%7', '-x', '88', '-y', '30']);
   });
 
   it('leaves an existing session alone and reports failures', async () => {
@@ -205,7 +233,7 @@ describe('session API', () => {
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession };
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, resize: vi.fn(async () => null) };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {
@@ -228,7 +256,7 @@ describe('session API', () => {
   it('creates a session and registers it as a project in one step', async () => {
     const { post, createSession, monitor, file } = await start();
     expect(await post('/sessions', { name: 'New Agent', repoPath: '~/code/new', tmuxSession: 'new-agent', allowInput: true, testCommand: 'id' })).toEqual([200, { id: 'new-agent' }]);
-    expect(createSession).toHaveBeenCalledExactlyOnceWith('new-agent', '~/code/new');
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('new-agent', '~/code/new', { cols: 120, rows: 40 });
     expect(monitor.snapshot.projects.map((p) => p.id)).toEqual(['old', 'nosession', 'new-agent']);
     const added = loadConfig(file, '/base').config.projects[2]!;
     expect(added).toMatchObject({ name: 'New Agent', tmuxSession: 'new-agent', allowInput: true, testCommand: null });
@@ -248,7 +276,10 @@ describe('session API', () => {
   it('restarts the session of a registered project', async () => {
     const { post, createSession } = await start();
     expect(await post('/projects/old/session')).toEqual([200, { ok: true }]);
-    expect(createSession).toHaveBeenCalledExactlyOnceWith('old', '/r/old');
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('old', '/r/old', { cols: 120, rows: 40 });
+    // 보는 화면 크기를 보내면 그 크기로 (범위를 벗어나면 잘라서)
+    await post('/projects/old/session', { cols: 96, rows: 5000 });
+    expect(createSession).toHaveBeenLastCalledWith('old', '/r/old', { cols: 96, rows: 100 });
     expect((await post('/projects/nosession/session'))[0]).toBe(400);
     expect((await post('/projects/nope/session'))[0]).toBe(404);
   });

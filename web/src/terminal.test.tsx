@@ -411,3 +411,45 @@ test('on a touch screen a key button does not pull focus into the input (no keyb
   await tick();
   expect(document.activeElement).toBe(box);
 });
+
+test('a key sent while scrolled up still refreshes the screen once', async () => {
+  let n = 0;
+  serve(() => json(200, { lines: [`screen ${n++}`] }));
+  await renderTab(project(TWO));
+  await tick();
+  const el = term();
+  Object.defineProperties(el, { scrollHeight: { value: 5000, configurable: true }, clientHeight: { value: 400, configurable: true } });
+  el.scrollTop = 1000;
+  fireEvent.scroll(el);
+  await vi.advanceTimersByTimeAsync(2000);
+  const paused = gets().length;
+  const shown = el.textContent;
+
+  fireEvent.click(screen.getByRole('button', { name: 'Page Up 보내기 (프로그램 안에서 위로)' }));
+  await tick();
+  expect(gets().length).toBe(paused + 1);
+  expect(el.textContent).not.toBe(shown);
+  // 그 뒤로는 다시 멈춘 채로 있다
+  await vi.advanceTimersByTimeAsync(2000);
+  expect(gets().length).toBe(paused + 1);
+});
+
+test('offers to fit an unattached session that is wider than the terminal area', async () => {
+  serve(() => json(200, { lines: ['x'] }));
+  const wide = [{ ...TWO[0]!, cols: 200 }, TWO[1]!];
+  await renderTab(project(wide));
+  await tick();
+  // 테스트 환경에서는 요소 크기를 잴 수 없어 화면 폭으로 어림한 칸 수(약 120칸)와 비교한다
+  fireEvent.click(screen.getByRole('button', { name: '화면에 맞추기' }));
+  await tick();
+  const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/panes/%251/fit'))!;
+  expect(call[1]?.method).toBe('POST');
+  expect(JSON.parse(call[1]?.body as string)).toMatchObject({ rows: 40 });
+
+  cleanup();
+  // 터미널이 붙어 있으면 버튼을 보여 주지 않는다
+  const attached = project(wide);
+  attached.tmux.attached = true;
+  await renderTab(attached);
+  expect(screen.queryByRole('button', { name: '화면에 맞추기' })).toBeNull();
+});

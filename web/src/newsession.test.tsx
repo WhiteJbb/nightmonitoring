@@ -61,7 +61,9 @@ test('creates a session, following the project name until the session name is ed
   fireEvent.click(screen.getByRole('button', { name: '만들기' }));
   await waitFor(() => expect(window.location.hash).toBe('#/project/my-app-2'));
   expect(fetchMock.mock.calls[0]![0]).toBe('/api/sessions');
-  expect(lastBody()).toEqual({ name: 'My App 2', repoPath: '~/code/my-app', tmuxSession: 'custom', allowInput: false });
+  // 보는 화면에 맞는 크기를 함께 보낸다 (테스트 환경의 화면 폭 1024px 기준)
+  expect(lastBody()).toMatchObject({ name: 'My App 2', repoPath: '~/code/my-app', tmuxSession: 'custom', allowInput: false, rows: 40 });
+  expect(lastBody().cols).toBeGreaterThanOrEqual(80);
 });
 
 test('terminal input needs a confirm, and errors keep the form', async () => {

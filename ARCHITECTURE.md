@@ -133,6 +133,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | GET | `/api/projects/:id/panes/:paneId` | 지금 이 순간의 pane 출력 (실시간 보기) |
 | POST | `/api/projects/:id/input` | pane 에 글자 또는 허용된 특수 키 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/sessions` | 새 tmux 세션(셸)을 만들고 프로젝트로 등록. 200 `{id}` / 400 / 403 / 409 |
+| POST | `/api/projects/:id/panes/:paneId/fit` | 터미널이 붙어 있지 않은 세션의 화면 크기를 보는 화면에 맞춤. 200 / 403 / 404 / 409 |
 | POST | `/api/projects/:id/session` | 등록된 프로젝트의 꺼진 세션을 같은 이름으로 다시 만들기 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |

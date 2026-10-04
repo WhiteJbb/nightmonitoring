@@ -9,7 +9,8 @@ import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
 import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
-import { MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
+import type { TermSize } from './tmux.ts';
+import { clampSize, MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
@@ -62,7 +63,9 @@ export interface AppDeps {
     send: (input: ParsedInput) => Promise<string | null>;
     log: (projectId: string, input: ParsedInput) => void;
     /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
-    createSession: (name: string, repoPath: string) => Promise<string | null>;
+    createSession: (name: string, repoPath: string, size: TermSize) => Promise<string | null>;
+    /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
+    resize: (paneId: string, size: TermSize) => Promise<string | null>;
   };
   /** 휴대폰 푸시 시험 전송. 실패하면 오류 메시지. 없으면(demo) 거부한다 */
   testPush?: () => Promise<string | null>;
@@ -151,13 +154,30 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     return null;
   };
 
-  api.post('/projects/:id/session', async (req, res) => {
+  // 보는 화면에 맞게 tmux 윈도우 크기를 바꾼다. 터미널이 붙어 있는 세션은 그 터미널 화면까지 바뀌므로 건드리지 않는다.
+  api.post('/projects/:id/panes/:paneId/fit', express.json({ limit: '4kb' }), async (req, res) => {
+    const { project, pane } = findPane(req.params.id, req.params.paneId);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = sessionBlocked();
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 터미널 입력이 꺼져 있습니다. 설정 화면에서 켜세요.' });
+    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    if (project.tmux.attached) return void res.status(409).json({ error: '터미널이 붙어 있는 세션은 크기를 바꾸지 않습니다' });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows));
+    if (error) return void res.status(500).json({ error });
+    await monitor.tick();
+    res.json({ ok: true });
+  });
+
+  api.post('/projects/:id/session', express.json({ limit: '4kb' }), async (req, res) => {
     const project = monitor.config.projects.find((p) => p.id === req.params.id);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
     const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
-    const error = await terminal.createSession(project.tmuxSession, project.repoPath);
+    const size = (req.body ?? {}) as Record<string, unknown>;
+    const error = await terminal.createSession(project.tmuxSession, project.repoPath, clampSize(size.cols, size.rows));
     if (error) return void res.status(400).json({ error });
     await monitor.tick();
     res.json({ ok: true });
@@ -169,14 +189,14 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
-    const { name, repoPath, tmuxSession, allowInput } = (req.body ?? {}) as Record<string, unknown>;
+    const { name, repoPath, tmuxSession, allowInput, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
     }
     if (view.projects.some((p) => p.tmuxSession === tmuxSession)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
 
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
-    const error = await terminal.createSession(tmuxSession, repoPath.trim());
+    const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows));
     if (error) return void res.status(400).json({ error });
     const next = await configEditor.update({
       version: view.version,
