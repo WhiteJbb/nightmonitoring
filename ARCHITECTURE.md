@@ -96,4 +96,4 @@ config.json ──> Monitor ──(refreshIntervalSec 마다)──> Collector(p
 9. Morning Report
 10. demo mode
 11. lint / test / build 검증, 실제 tmux·git으로 확인
-12. README.md, NIGHT_REPORT.md
+12. README.md
