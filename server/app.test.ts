@@ -32,7 +32,9 @@ describe('API', () => {
     expect((await post('app/run/build')).status).toBe(400); // 등록된 build 명령 없음
     const res = await post('app/run/test', { body: JSON.stringify({ command: 'rm -rf /' }), headers: { 'Content-Type': 'application/json' } });
     expect(res.status).toBe(202);
-    expect(exec).toHaveBeenCalledExactlyOnceWith('npm test', '/repo/app', 1000);
+    expect(exec).toHaveBeenCalledExactlyOnceWith('npm test', '/repo/app', 1000, expect.any(AbortSignal));
+    expect((await fetch(`${base}/api/projects/app/run/build`, { method: 'DELETE' })).status).toBe(409);
+    expect((await fetch(`${base}/api/projects/app/run/deploy`, { method: 'DELETE' })).status).toBe(400);
   });
 
   it('rejects cross-origin writes but allows same-origin', async () => {

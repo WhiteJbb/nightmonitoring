@@ -56,6 +56,7 @@ describe('judge', () => {
     expect(judge(input({ runs: { test: run({ exitCode: 1 }), build: null } })).reasons).toEqual(['테스트 실패 (exit 1)']);
     expect(judge(input({ runs: { test: null, build: run({ kind: 'build', exitCode: null, timedOut: true }) } })).reasons).toEqual(['빌드 시간 초과']);
     expect(judge(input({ runs: { test: run({}), build: run({ running: true, exitCode: null }) } })).state).toBe('running');
+    expect(judge(input({ runs: { test: run({ exitCode: null, canceled: true }), build: null } })).state).toBe('running');
   });
 
   it('waiting when a prompt is on screen, below errors', () => {

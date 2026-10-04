@@ -38,6 +38,7 @@ async function main() {
     config,
     collector: demo ? demoCollector() : realCollector(config),
     runs: runner.get,
+    history: runner.history,
     demo,
     configPath,
     configMissing: missing && !demo,

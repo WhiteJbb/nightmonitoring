@@ -64,6 +64,13 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
     res.status(202).json({ ok: true });
   });
 
+  api.delete('/projects/:id/run/:kind', (req, res) => {
+    const { id, kind } = req.params;
+    if (kind !== 'test' && kind !== 'build') return void res.status(400).json({ error: 'kind 는 test 또는 build 여야 합니다' });
+    if (!runner.cancel(id, kind)) return void res.status(409).json({ error: '실행 중이 아닙니다' });
+    res.status(202).json({ ok: true });
+  });
+
   api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir)));
 
   api.get('/reports/:name', async (req, res) => {

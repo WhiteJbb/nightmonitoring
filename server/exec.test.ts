@@ -22,6 +22,15 @@ describe('runConfigured', () => {
     expect(Date.now() - started).toBeLessThan(5000);
   });
 
+  it('kills the process group when aborted', async () => {
+    const ac = new AbortController();
+    const started = Date.now();
+    setTimeout(() => ac.abort(), 100);
+    const r = await runConfigured('sleep 30 & sleep 30', cwd, 60_000, ac.signal);
+    expect(r).toMatchObject({ code: null, timedOut: false });
+    expect(Date.now() - started).toBeLessThan(5000);
+  });
+
   it('does not spawn when the working directory is missing', async () => {
     expect(await runConfigured('echo hi', '/definitely/not/here', 1000)).toMatchObject({ code: null, stdout: '' });
   });

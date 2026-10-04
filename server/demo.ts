@@ -264,15 +264,19 @@ export function seedDemoRuns(runner: Runner, now: () => number = Date.now): void
   runner.seed('api-server', run('test', 12, 0, ' Test Files  9 passed (9)\n      Tests  64 passed (64)\n', ''));
 }
 
-/** demo 에서는 실제 명령을 실행하지 않고 잠시 뒤 정해진 결과를 돌려준다. */
-export const demoExec: ConfiguredExec = (command, cwd) =>
+/** demo 에서는 실제 명령을 실행하지 않고 잠시 뒤 정해진 결과를 돌려준다. 취소도 흉내 낸다. */
+export const demoExec: ConfiguredExec = (command, cwd, _timeoutMs, signal) =>
   new Promise((resolve) => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       const failing = cwd.endsWith('payments-service') && command === 'npm test';
       resolve(
         failing
           ? { code: 1, stdout: FAILED_TEST_STDOUT, stderr: FAILED_TEST_STDERR, timedOut: false }
           : { code: 0, stdout: `[demo] ${command}\n✓ done\n`, stderr: '', timedOut: false },
       );
-    }, 1500);
+    }, 4000);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve({ code: null, stdout: `[demo] ${command}\n`, stderr: '', timedOut: false });
+    });
   });
