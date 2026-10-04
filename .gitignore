@@ -9,3 +9,4 @@ reports/*
 context.md
 NIGHT_REPORT.md
 .claude
+*.log
