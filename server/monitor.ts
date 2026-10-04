@@ -95,12 +95,14 @@ export interface MonitorOptions {
 export class Monitor {
   snapshot: Snapshot;
   private opts: MonitorOptions;
+  private configError: string | null = null;
   private now: () => number;
   private startedAt: string;
   private tracked = new Map<string, Tracked>();
   private collected = new Map<string, Collected>();
   private listeners = new Set<(s: Snapshot) => void>();
   private timer: NodeJS.Timeout | null = null;
+  private stopped = false;
 
   constructor(opts: MonitorOptions) {
     this.opts = opts;
@@ -111,6 +113,32 @@ export class Monitor {
       if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logOffset: saved.logOffset });
     }
     this.snapshot = this.build();
+  }
+
+  get config(): Config {
+    return this.opts.config;
+  }
+
+  /** 실행 중 config 교체 (hot reload). 사라진 프로젝트의 추적 상태는 버리고, 남은 프로젝트의 기준점은 유지한다. */
+  async setConfig(config: Config, collector: Collector, configMissing = false): Promise<void> {
+    const keep = new Map(config.projects.map((p) => [p.id, p.repoPath]));
+    const old = new Map(this.opts.config.projects.map((p) => [p.id, p.repoPath]));
+    for (const id of new Set([...this.tracked.keys(), ...this.collected.keys()])) {
+      if (keep.get(id) !== old.get(id)) {
+        this.tracked.delete(id);
+        this.collected.delete(id);
+      }
+    }
+    this.opts = { ...this.opts, config, collector, configMissing };
+    this.configError = null;
+    await this.tick();
+  }
+
+  /** config 를 다시 읽다 실패했을 때: 이전 설정으로 계속 돌면서 화면에 알린다. */
+  setConfigError(message: string | null): void {
+    if (this.configError === message) return;
+    this.configError = message;
+    this.publish();
   }
 
   /** 디스크에 저장할 상태 (기준점, 변경 시각, 로그 위치). */
@@ -238,8 +266,8 @@ export class Monitor {
       refreshIntervalSec: config.refreshIntervalSec,
       configPath: this.opts.configPath ?? '',
       configMissing: this.opts.configMissing ?? false,
-      configError: null,
-      autoReportTime: null,
+      configError: this.configError,
+      autoReportTime: config.autoReportTime,
       summary: {
         total: projects.length,
         sessionsRunning: projects.filter((p) => p.tmux.exists).length,
@@ -260,13 +288,16 @@ export class Monitor {
 
   /** 이전 tick 이 끝난 뒤에 다음 tick 을 예약하므로 느린 수집이 겹치지 않는다. */
   start(): void {
+    this.stopped = false;
     const loop = () => {
-      this.timer = setTimeout(() => void this.tick().then(loop), this.opts.config.refreshIntervalSec * 1000);
+      // 주기는 매번 현재 config 에서 읽으므로 hot reload 로 바뀐 값이 다음 tick 부터 적용된다.
+      if (!this.stopped) this.timer = setTimeout(() => void this.tick().then(loop), this.opts.config.refreshIntervalSec * 1000);
     };
     loop();
   }
 
   stop(): void {
+    this.stopped = true;
     if (this.timer) clearTimeout(this.timer);
     this.timer = null;
   }

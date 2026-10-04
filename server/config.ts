@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import { compileMatcher } from './logs.ts';
 
 export interface ProjectConfig {
@@ -198,14 +199,26 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
   return config;
 }
 
-/** config 파일이 없으면 프로젝트 없는 기본 설정으로 시작한다 (missing=true). */
+const CONFIG_NAMES = ['nightshift.json', 'nightshift.yaml', 'nightshift.yml'];
+/** config 디렉터리에서 처음 발견되는 설정 파일. 없으면 nightshift.json 경로. */
+export function defaultConfigPath(dir: string): string {
+  const found = CONFIG_NAMES.map((n) => path.join(dir, n)).find((f) => existsSync(f));
+  return found ?? path.join(dir, CONFIG_NAMES[0]!);
+}
+
+/**
+ * 확장자가 .yaml/.yml 이면 YAML, 아니면 JSON 으로 읽는다.
+ * config 파일이 없으면 프로젝트 없는 기본 설정으로 시작한다 (missing=true).
+ */
 export function loadConfig(file: string, baseDir: string): { config: Config; missing: boolean } {
   if (!existsSync(file)) return { config: parseConfig({}, baseDir), missing: true };
+  const yaml = /\.ya?ml$/i.test(file);
   let raw: unknown;
   try {
-    raw = JSON.parse(readFileSync(file, 'utf8'));
+    const text = readFileSync(file, 'utf8');
+    raw = yaml ? parseYaml(text) : JSON.parse(text);
   } catch (e) {
-    throw new ConfigError([`${file}: JSON 파싱 실패 (${(e as Error).message})`]);
+    throw new ConfigError([`${file}: ${yaml ? 'YAML' : 'JSON'} 파싱 실패 (${(e as Error).message})`]);
   }
-  return { config: parseConfig(raw, baseDir), missing: false };
+  return { config: parseConfig(raw ?? {}, baseDir), missing: false };
 }
