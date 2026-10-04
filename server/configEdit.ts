@@ -96,12 +96,14 @@ export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir:
   const issues: string[] = [];
   const next: Obj = { ...raw };
 
+  // 파일에 이미 있는 키이거나 현재 값과 달라진 것만 쓴다 (기본값으로 파일을 채우지 않는다).
+  const changed = (inFile: boolean, value: unknown, effective: unknown) => inFile || JSON.stringify(value) !== JSON.stringify(effective);
   const s = update.settings;
-  for (const key of SETTING_KEYS) if (key in s) next[key] = s[key];
+  for (const key of SETTING_KEYS) if (key in s && changed(key in raw, s[key], current[key])) next[key] = s[key];
   if (isObj(s.thresholds)) {
     const t: Obj = isObj(raw.thresholds) ? { ...raw.thresholds } : {};
-    for (const key of THRESHOLD_KEYS) if (key in s.thresholds) t[key] = s.thresholds[key];
-    next.thresholds = t;
+    for (const key of THRESHOLD_KEYS) if (key in s.thresholds && changed(key in t, s.thresholds[key], current.thresholds[key])) t[key] = s.thresholds[key];
+    if (Object.keys(t).length) next.thresholds = t;
   }
 
   const rawProjects = (raw.projects ?? []) as Obj[];

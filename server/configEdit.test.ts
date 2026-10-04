@@ -81,6 +81,9 @@ describe('applyConfigUpdate', () => {
       { name: 'New', repoPath: '~/code/new', tmuxSession: 'new' },
     ]);
     expect(loadConfig(file, '/base').config.projects.map((p) => p.id)).toEqual(['app-renamed', 'lib', 'new']);
+    // 건드리지 않은 기본값은 파일에 쓰지 않는다
+    expect(raw).not.toHaveProperty('errorPatterns');
+    expect(raw.thresholds).not.toHaveProperty('noCommitMinutes');
   });
 
   it('never takes commands, host or port from the request', async () => {
