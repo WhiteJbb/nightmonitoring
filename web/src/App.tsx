@@ -10,46 +10,27 @@ import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
 
-// 색 시안 고르기 (임시). 하나로 정해지면 이 컴포넌트와 나머지 시안은 지운다.
-const THEMES: [id: string, label: string, swatch: string][] = [
-  ['graphite', '흑연 (무채색)', '#c8d3df'],
-  ['ink', '먹 (따뜻한 색)', '#e2a84a'],
-  ['night', '밤 (차가운 색)', '#7cc0b4'],
-];
-const savedTheme = (): string => {
-  try {
-    return localStorage.getItem('nightshift-theme') ?? 'graphite';
-  } catch {
-    return 'graphite';
-  }
-};
-
-function ThemePicker() {
-  const [theme, setTheme] = useState(savedTheme);
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    try {
-      localStorage.setItem('nightshift-theme', theme);
-    } catch {
-      // 저장이 막힌 환경이면 이번 화면에서만 적용된다
-    }
-  }, [theme]);
-  return (
-    <span className="themes" role="group" aria-label="색 시안">
-      {THEMES.map(([id, label, swatch]) => (
-        <button
-          key={id}
-          type="button"
-          title={label}
-          aria-label={label}
-          aria-pressed={theme === id}
-          style={{ '--swatch': swatch } as React.CSSProperties}
-          onClick={() => setTheme(id)}
-        />
-      ))}
-    </span>
-  );
-}
+// 카드 줄 앞의 작은 표식. 장식이므로 보조 기술에는 숨긴다 (의미는 title 이 전한다).
+const icon = (d: React.ReactNode) => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d}
+  </svg>
+);
+const BRANCH_ICON = icon(
+  <>
+    <circle cx="4" cy="3.2" r="1.6" />
+    <circle cx="4" cy="12.8" r="1.6" />
+    <circle cx="12" cy="5" r="1.6" />
+    <path d="M4 4.8v6.4M12 6.6c0 3.2-8 2-8 4.6" />
+  </>,
+);
+const COMMIT_ICON = icon(
+  <>
+    <circle cx="8" cy="8" r="2.6" />
+    <path d="M1 8h4.4M10.6 8H15" />
+  </>,
+);
+const SESSION_ICON = icon(<path d="M2.5 4.5 6 8l-3.5 3.5M8.5 11.5h5" />);
 
 function subscribeHash(cb: () => void) {
   window.addEventListener('hashchange', cb);
@@ -175,7 +156,6 @@ export function App() {
             {conn === 'live' ? 'live' : conn === 'down' ? '연결 끊김 / 재연결 중' : '연결 중'}
           </span>
           {snapshot && <span>갱신 {dateTime(snapshot.generatedAt)}</span>}
-          <ThemePicker />
         </div>
       </header>
       <main>
@@ -295,7 +275,8 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         {git.ok ? (
           <>
             <div>
-              <span className="mono clip" title={`브랜치: ${git.branch}`}>
+              {BRANCH_ICON}
+              <span className="mono clip branch" title={`브랜치: ${git.branch}`}>
                 {git.branch}
               </span>
               <span className="end" title="커밋되지 않은 변경">
@@ -310,6 +291,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
               </span>
             </div>
             <div>
+              {COMMIT_ICON}
               <span className="clip" title={last?.subject}>
                 {last ? last.subject : <span className="dim">커밋 없음</span>}
               </span>
@@ -328,7 +310,8 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
             <span className="dim">세션 미등록</span>
           ) : (
             <>
-              <span className="mono clip" title={`tmux 세션: ${p.tmuxSession}`}>
+              {SESSION_ICON}
+              <span className="mono clip session" title={`tmux 세션: ${p.tmuxSession}`}>
                 {p.tmuxSession}
               </span>
               {tmux.exists ? (

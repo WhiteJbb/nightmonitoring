@@ -4,11 +4,11 @@ import type { ConfigUpdate, ConfigView } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
 
 const NUMBERS = [
-  ['refreshIntervalSec', '갱신 주기(초)', 1, 'Git·tmux 상태를 다시 읽는 간격'],
-  ['idleMinutes', '유휴 판정(분)', 0, '터미널 출력이 이 시간 동안 없으면 유휴'],
-  ['stalledMinutes', '정지 의심 — 출력(분)', 0, '터미널 출력이 이 시간 동안 없고'],
-  ['noCommitMinutes', '정지 의심 — Git(분)', 0, 'Git 변화도 이 시간 동안 없으면 정지 의심'],
-  ['commandTimeoutSec', '명령 시간 제한(초)', 1, '테스트·빌드 명령을 강제 종료하는 시간'],
+  ['refreshIntervalSec', '갱신 주기(초)', 1, ''],
+  ['idleMinutes', '유휴 판정(분)', 0, ''],
+  ['stalledMinutes', '정지 의심 — 출력(분)', 0, '출력이 이 시간 동안 없고'],
+  ['noCommitMinutes', '정지 의심 — Git(분)', 0, 'Git 변화도 없으면 정지 의심'],
+  ['commandTimeoutSec', '명령 시간 제한(초)', 1, ''],
 ] as const;
 type NumKey = (typeof NUMBERS)[number][0];
 
@@ -222,7 +222,7 @@ export function Settings() {
       <p className="hint">이 값들은 config 파일을 직접 고친 뒤 서버를 다시 시작해야 바뀝니다.</p>
 
       <h3>전역 설정</h3>
-      <div className="settings-grid">
+      <div className="settings-grid nums">
         {NUMBERS.map(([key, label, min, hint]) => (
           <Field key={key} label={label} hint={hint}>
             <input
@@ -236,7 +236,9 @@ export function Settings() {
             />
           </Field>
         ))}
-        <div className="field">
+      </div>
+      <div className="toggles">
+        <div className="toggle-row">
           <label className="check">
             <input
               type="checkbox"
@@ -254,10 +256,9 @@ export function Settings() {
             disabled={ro || !draft.autoReport}
             onChange={(e) => set({ autoReportTime: e.target.value })}
           />
-          <p className="hint">매일 이 시각에 보고서를 만듭니다. 끄면 직접 생성할 때만 만들어집니다.</p>
         </div>
         {TOGGLES.map(([key, label, hint]) => (
-          <div className="field" key={key}>
+          <div className="toggle-row" key={key}>
             <label className="check">
               <input type="checkbox" checked={draft[key]} disabled={ro} onChange={(e) => set({ [key]: e.target.checked })} />
               {label}

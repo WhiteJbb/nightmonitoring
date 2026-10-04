@@ -3,52 +3,6 @@
  * 글자 크기 4단계(12 / 14 / 16 / 20, 코드만 13), 모서리 반경 하나.
  */
 :root {
-  --bg: #0d0d0e;
-  --panel: #151516;
-  --panel-2: #1d1d1f;
-  --border: #262628;
-  --text: #e4e4e1;
-  --dim: #8a8a85;
-  --accent: #c8d3df;
-  --on-accent: #0d0d0e;
-  --term: #09090a;
-  --green: #7fb88d;
-  --amber: #cfae62;
-  --orange: #d48f5a;
-  --red: #dc7670;
-  --violet: #9d93d6;
-
-  --fs-xs: 12px;
-  --fs-sm: 14px;
-  --fs-md: 16px;
-  --fs-lg: 20px;
-  --fs-code: 13px;
-  --r: 6px;
-  /* 기본 ease-out 보다 초반이 빠른 곡선: 누른 즉시 반응하는 느낌 */
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
-  color-scheme: dark;
-}
-/* 따뜻한 먹색 + 호박색 강조 */
-:root[data-theme='ink'] {
-  --bg: #100f0d;
-  --panel: #181613;
-  --panel-2: #211e1a;
-  --border: #2b2823;
-  --text: #ebe5d9;
-  --dim: #958d7f;
-  --accent: #e2a84a;
-  --on-accent: #171310;
-  --term: #0b0a09;
-  --green: #8fb87a;
-  --amber: #d9b25a;
-  --orange: #dd8a4e;
-  --red: #e0736a;
-  --violet: #a99bd8;
-}
-/* 차가운 밤색 + 청록 강조 */
-:root[data-theme='night'] {
   --bg: #0b0d0f;
   --panel: #121518;
   --panel-2: #191d21;
@@ -63,8 +17,19 @@
   --orange: #d98d5f;
   --red: #e07a78;
   --violet: #9a9be0;
-}
 
+  --fs-xs: 12px;
+  --fs-sm: 14px;
+  --fs-md: 16px;
+  --fs-lg: 20px;
+  --fs-code: 13px;
+  --r: 6px;
+  /* 기본 ease-out 보다 초반이 빠른 곡선: 누른 즉시 반응하는 느낌 */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+  color-scheme: dark;
+}
 * {
   box-sizing: border-box;
 }
@@ -302,25 +267,6 @@ button[aria-pressed='true'] {
   background: var(--red);
 }
 
-/* 색 시안 고르기 (임시) */
-.themes {
-  display: inline-flex;
-  gap: 4px;
-}
-.themes button {
-  width: 18px;
-  height: 18px;
-  padding: 0;
-  border-radius: 50%;
-  background: var(--swatch);
-  border: 2px solid var(--bg);
-  outline: 1px solid var(--border);
-}
-.themes button[aria-pressed='true'] {
-  background: var(--swatch);
-  outline-color: var(--text);
-}
-
 main {
   max-width: 1400px;
   margin: 0 auto;
@@ -455,6 +401,20 @@ main {
   align-items: baseline;
   gap: 8px;
   min-width: 0;
+}
+.card-rows svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  align-self: center;
+  color: var(--dim);
+}
+/* 브랜치는 강조색, 커밋은 본문색, 세션은 흐린 색: 줄마다 무엇인지 색과 아이콘으로 구분된다 */
+.card-rows .branch {
+  color: var(--accent);
+}
+.card-rows .session {
+  color: var(--dim);
 }
 .card-rows .clip {
   min-width: 0;
@@ -821,6 +781,37 @@ pre {
 .field .hint {
   margin: 3px 0 0;
 }
+/* 숫자 칸은 한 줄에 나란히, 켜고 끄는 항목은 아래에 한 줄씩 */
+.settings-grid.nums {
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  align-items: start;
+}
+.toggles {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+}
+.toggle-row .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 260px;
+}
+.toggle-row .hint {
+  flex: 1 1 240px;
+  margin: 0;
+}
+.toggle-row input[type='time'] {
+  flex: none;
+  width: auto;
+  margin: 0;
+}
 .settings input:not([type='checkbox']),
 .settings textarea,
 .input-row input {
@@ -865,17 +856,23 @@ pre {
 .project-edit {
   min-width: 0;
   margin: 0 0 12px;
-  padding: 10px 14px 14px;
+  padding: 14px;
   background: var(--panel);
   border: none;
   border-radius: var(--r);
 }
+/* legend 는 기본적으로 상자 윗선에 걸쳐 그려진다. float 로 상자 안에 넣되,
+   뒤따르는 요소에 clear 를 주지 않으면 grid 가 옆으로 밀려 좁은 기둥이 된다 */
 .project-edit legend {
-  padding: 0;
-  font-weight: 600;
   float: left;
   width: 100%;
+  padding: 0;
   margin-bottom: 10px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+.project-edit legend + * {
+  clear: both;
 }
 .project-edit .kv {
   margin: 12px 0;
@@ -990,12 +987,6 @@ pre {
   }
   .tabs button {
     min-height: 44px;
-  }
-  .themes button {
-    min-width: 0;
-    min-height: 0;
-    width: 22px;
-    height: 22px;
   }
   .settings input:not([type='checkbox']),
   .settings textarea,
