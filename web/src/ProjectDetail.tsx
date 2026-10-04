@@ -61,6 +61,7 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
         {tab === 'git' && <GitTab project={p} now={now} />}
         {tab === 'runs' && (
           <>
+            <p className="hint">명령은 설정 파일에서만 바꿀 수 있습니다.</p>
             <RunPanel project={p} kind="test" title="테스트" />
             <RunPanel project={p} kind="build" title="빌드" />
           </>
@@ -313,9 +314,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
         <div className="cmdline">
           <code>{t.attachCommand}</code>
           <button type="button" onClick={() => copy(t.attachCommand!)}>
-            {/* key 가 바뀌면 새로 그려져 등장 전환이 걸린다 */}
-            <span key={copyMsg ?? '복사'} className="swap" aria-live="polite">
-              {copyMsg ?? '복사'}
+            {/* 알림 영역은 그대로 두고 안쪽 글자만 바꿔 그린다: 낭독기가 변화를 읽고, 등장 전환도 걸린다 */}
+            <span aria-live="polite">
+              <span key={copyMsg ?? '복사'} className="swap">
+                {copyMsg ?? '복사'}
+              </span>
             </span>
           </button>
         </div>
@@ -393,20 +396,32 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   );
 }
 
+const COMMITS_SHOWN = 10;
+
+/** 긴 목록은 처음 10개만 보여 주고 나머지는 펼쳐서 본다 (오늘 커밋이 수십 개면 탭이 끝없이 길어진다). */
 function Commits({ commits, now, empty }: { commits: Commit[]; now: string; empty: string }) {
+  const [all, setAll] = useState(false);
   if (commits.length === 0) return <p className="dim">{empty}</p>;
+  const hidden = commits.length - COMMITS_SHOWN;
   return (
-    <ul className="rows commits">
-      {commits.map((c) => (
-        <li key={c.hash}>
-          <span className="hash">{c.hash.slice(0, 7)}</span>
-          <span className="grow wrap">{c.subject}</span>
-          <span className="dim nowrap" title={dateTime(c.date)}>
-            {c.author} · {relTime(c.date, now)}
-          </span>
-        </li>
-      ))}
-    </ul>
+    <>
+      <ul className="rows commits">
+        {(all ? commits : commits.slice(0, COMMITS_SHOWN)).map((c) => (
+          <li key={c.hash}>
+            <span className="hash">{c.hash.slice(0, 7)}</span>
+            <span className="grow wrap subject">{c.subject}</span>
+            <span className="dim nowrap" title={dateTime(c.date)}>
+              {c.author} · {relTime(c.date, now)}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {hidden > 0 && (
+        <button type="button" className="more-rows" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? '접기' : `${hidden}개 더 보기`}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -578,7 +593,7 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
       <h3>{title}</h3>
       <div className="cmdline">
         {command ? <code>{command}</code> : <span className="dim grow">명령이 설정되지 않았습니다</span>}
-        <button type="button" className="primary" onClick={() => request(api.run, '실행')} disabled={!command || busy || running}>
+        <button type="button" onClick={() => request(api.run, '실행')} disabled={!command || busy || running}>
           {running ? '실행 중…' : '실행'}
         </button>
         {running && (
@@ -587,11 +602,7 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
           </button>
         )}
       </div>
-      <p className="hint">
-        {command
-          ? '명령은 설정 파일에서만 바꿀 수 있습니다.'
-          : `설정 파일에 이 프로젝트의 ${title} 명령을 등록하면 실행할 수 있습니다.`}
-      </p>
+      {!command && <p className="hint">설정 파일에 이 프로젝트의 {title} 명령을 등록하면 실행할 수 있습니다.</p>}
       {error && (
         <p className="err" role="alert">
           {error}

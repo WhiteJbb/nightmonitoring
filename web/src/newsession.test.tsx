@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { commonParentDir, NewSession, sessionNameFrom, StartSession } from './NewSession.tsx';
 
@@ -97,4 +97,19 @@ test('start session posts to the project and shows a failure', async () => {
   fetchMock.mockResolvedValueOnce(json(200, { ok: true }));
   fireEvent.click(screen.getByRole('button', { name: '세션 시작' }));
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+});
+
+test('closing fades the form out before removing it', () => {
+  vi.useFakeTimers();
+  try {
+    const { container } = render(<NewSession />);
+    fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
+    fireEvent.click(screen.getByRole('button', { name: '닫기' }));
+    expect(container.querySelector('form')?.className).toContain('closing');
+    act(() => void vi.advanceTimersByTime(120));
+    expect(container.querySelector('form')).toBeNull();
+    expect(screen.getByRole('button', { name: '+ tmux 세션 만들기' })).toBeTruthy();
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -186,6 +186,9 @@ button[aria-pressed='true'] {
     text-decoration: none;
     border-color: var(--dim);
   }
+  .wordmark:hover {
+    text-decoration: none;
+  }
   .topbar nav a:hover {
     color: var(--text);
     text-decoration: none;
@@ -213,9 +216,6 @@ button[aria-pressed='true'] {
   font-weight: 650;
   color: var(--text);
   letter-spacing: -0.01em;
-}
-.wordmark:hover {
-  text-decoration: none;
 }
 .demo-badge {
   font: 600 var(--fs-xs) var(--sans);
@@ -367,6 +367,15 @@ main {
   border-radius: var(--r);
   padding: 14px;
   transition: border-color 150ms ease;
+}
+/* 큰 요소라 아주 조금만 줄인다 */
+.card {
+  transition:
+    transform 140ms var(--ease-out),
+    border-color 150ms ease;
+}
+.card:active {
+  transform: scale(0.99);
 }
 .card-head,
 .detail-head {
@@ -542,6 +551,16 @@ pre {
 .rows li.total {
   color: var(--dim);
   border-bottom: none;
+}
+.rows .subject {
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.more-rows {
+  margin-top: 8px;
+  font-size: var(--fs-xs);
+  padding: 2px 10px;
+  color: var(--dim);
 }
 .hash {
   color: var(--dim);
@@ -973,6 +992,11 @@ pre {
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
 }
+.new-session.closing {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition-duration: 120ms;
+}
 .new-session h3 {
   margin: 0 0 4px;
 }
@@ -1028,7 +1052,8 @@ pre {
 
 /* 움직임 줄이기: 위치 이동은 없애고 색 전환만 남긴다 */
 @media (prefers-reduced-motion: reduce) {
-  button:active:not(:disabled) {
+  button:active:not(:disabled),
+  .card:active {
     transform: none;
   }
   .notice,
