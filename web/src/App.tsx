@@ -127,17 +127,42 @@ export function App() {
           {snapshot && <span className="dim">갱신 {dateTime(snapshot.generatedAt)}</span>}
         </div>
       </header>
-      <main>{page}</main>
+      <main>
+        {snapshot?.configError != null && <ConfigErrorBanner message={snapshot.configError} />}
+        {page}
+      </main>
     </>
   );
 }
 
-function Dashboard({ snapshot }: { snapshot: Snapshot }) {
+export function ConfigErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="notice error banner" role="alert">
+      <strong>config 를 다시 읽지 못했습니다. 이전 설정으로 동작 중입니다.</strong>
+      <p className="mono pre-wrap">{message}</p>
+    </div>
+  );
+}
+
+export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   const s = snapshot.summary;
+  const [resetting, setResetting] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+
+  const reset = () => {
+    if (!window.confirm('새 모니터링 세션을 시작할까요?\n"모니터링 시작 이후" 기준점(커밋·변경 기준점)이 지금 시점으로 초기화됩니다.')) return;
+    setResetting(true);
+    setResetError(null);
+    api
+      .resetSession()
+      .catch((e: unknown) => setResetError(errorMessage(e)))
+      .finally(() => setResetting(false));
+  };
   const tiles: [string, number, string][] = [
     ['전체 프로젝트', s.total, ''],
     ['실행 중인 세션', s.sessionsRunning, ''],
     ['정상', s.running, 'running'],
+    ['입력 대기', s.waiting, 'waiting'],
     ['유휴', s.idle, 'idle'],
     ['정지 의심', s.stalled, 'stalled'],
     ['오류', s.error, 'error'],
@@ -152,6 +177,21 @@ function Dashboard({ snapshot }: { snapshot: Snapshot }) {
           </div>
         ))}
       </dl>
+      <div className="meta">
+        <span>
+          모니터링 시작 {dateTime(snapshot.startedAt)} ({relTime(snapshot.startedAt, snapshot.generatedAt)})
+        </span>
+        <span>갱신 주기 {snapshot.refreshIntervalSec}초</span>
+        {snapshot.autoReportTime !== null && <span>자동 보고서 {snapshot.autoReportTime}</span>}
+        <button type="button" onClick={reset} disabled={resetting}>
+          새 세션 시작
+        </button>
+        {resetError && (
+          <span className="err" role="alert">
+            세션 초기화 실패: {resetError}
+          </span>
+        )}
+      </div>
       {snapshot.projects.length === 0 ? (
         <div className="notice">
           <strong>등록된 프로젝트가 없습니다.</strong>
@@ -179,7 +219,7 @@ function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   );
 }
 
-function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
+export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
   const { git, tmux, status } = p;
   const last = git.recentCommits[0];
   return (

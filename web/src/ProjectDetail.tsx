@@ -1,5 +1,6 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { Commit, FileStat, ProjectSnapshot, ProjectState, RunKind } from '../../shared/types.ts';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { Commit, FileStat, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
+import { parseAnsi } from './ansi.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
 
@@ -65,18 +66,22 @@ export function ProjectDetail({ project: p, now }: Props) {
   );
 }
 
-function TerminalTab({ project: p, now }: Props) {
+export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
   const preRef = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
-  const text = t.output.join('\n');
+  const [paneId, setPaneId] = useState<string | null>(null);
+  // 고른 pane 이 사라지면 활성 pane 으로 돌아간다. pane 정보가 없으면 output(색 없음)을 그대로 쓴다
+  const pane = t.panes.find((x) => x.id === paneId) ?? t.panes.find((x) => x.active) ?? t.panes[0];
+  const text = (pane ? pane.lines : t.output).join('\n');
+  const parsed = useMemo(() => parseAnsi(text.split('\n')), [text]);
 
   // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
   useLayoutEffect(() => {
     const el = preRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
-  }, [text]);
+  }, [text, pane?.id]);
 
   if (!t.configured) {
     return (
@@ -108,6 +113,12 @@ function TerminalTab({ project: p, now }: Props) {
 
   return (
     <>
+      {t.waitingPrompt !== null && (
+        <div className="notice waiting" role="status">
+          <strong>에이전트가 입력을 기다리고 있습니다.</strong>
+          <p className="mono wrap">{t.waitingPrompt}</p>
+        </div>
+      )}
       {t.attachCommand && (
         <div className="cmdline">
           <code>{t.attachCommand}</code>
@@ -130,6 +141,23 @@ function TerminalTab({ project: p, now }: Props) {
         </dd>
       </dl>
       {t.error && <p className="err mono wrap">{t.error}</p>}
+      {t.panes.length > 1 && (
+        <div className="panes" role="group" aria-label="pane 선택">
+          {t.panes.map((x) => (
+            <button
+              key={x.id}
+              type="button"
+              aria-pressed={x.id === pane?.id}
+              onClick={() => {
+                stick.current = true;
+                setPaneId(x.id);
+              }}
+            >
+              {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <pre
         ref={preRef}
         className="terminal"
@@ -140,7 +168,18 @@ function TerminalTab({ project: p, now }: Props) {
           stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
         }}
       >
-        {text || '(출력 없음)'}
+        {text
+          ? parsed.map((spans, i) => (
+              <span key={i}>
+                {spans.map((s, j) => (
+                  <span key={j} style={s.style}>
+                    {s.text}
+                  </span>
+                ))}
+                {i < parsed.length - 1 && '\n'}
+              </span>
+            ))
+          : '(출력 없음)'}
       </pre>
     </>
   );
@@ -163,13 +202,23 @@ function Commits({ commits, now, empty }: { commits: Commit[]; now: string; empt
   );
 }
 
+function FilePath({ file }: { file: { path: string; from?: string } }) {
+  return (
+    <span className="grow wrap">
+      {file.from && <span className="dim">{file.from} → </span>}
+      {file.path}
+    </span>
+  );
+}
+
 function Stats({ files, additions, deletions, empty }: { files: FileStat[]; additions: number; deletions: number; empty: string }) {
   if (files.length === 0) return <p className="dim">{empty}</p>;
   return (
     <ul className="rows">
       {files.map((f) => (
         <li key={f.path}>
-          <span className="grow wrap">{f.path}</span>
+          <FilePath file={f} />
+          {f.untracked && <span className="new-mark">new</span>}
           <span className="add">+{f.additions}</span>
           <span className="del">−{f.deletions}</span>
         </li>
@@ -183,8 +232,19 @@ function Stats({ files, additions, deletions, empty }: { files: FileStat[]; addi
   );
 }
 
-function GitTab({ project: p, now }: Props) {
+export function GitTab({ project: p, now }: Props) {
   const { git, since } = p;
+  const [acking, setAcking] = useState(false);
+  const [ackError, setAckError] = useState<string | null>(null);
+
+  const ack = () => {
+    setAcking(true);
+    setAckError(null);
+    api
+      .ackErrors(p.id)
+      .catch((e: unknown) => setAckError(errorMessage(e)))
+      .finally(() => setAcking(false));
+  };
   return (
     <>
       {git.ok ? (
@@ -209,7 +269,7 @@ function GitTab({ project: p, now }: Props) {
                 {git.changedFiles.map((f) => (
                   <li key={f.path}>
                     <span className="xy">{f.status}</span>
-                    <span className="grow wrap">{f.path}</span>
+                    <FilePath file={f} />
                   </li>
                 ))}
               </ul>
@@ -263,7 +323,17 @@ function GitTab({ project: p, now }: Props) {
 
       {p.logErrors.length > 0 && (
         <section>
-          <h3 className="err">로그 오류 ({p.logErrors.length})</h3>
+          <h3 className="err with-action">
+            로그 오류 ({p.logErrors.length})
+            <button type="button" onClick={ack} disabled={acking}>
+              확인 처리
+            </button>
+          </h3>
+          {ackError && (
+            <p className="err" role="alert">
+              확인 처리 실패: {ackError}
+            </p>
+          )}
           {p.logFile && <p className="mono dim wrap">{p.logFile}</p>}
           <pre className="output err-output">{p.logErrors.join('\n')}</pre>
         </section>
@@ -272,41 +342,42 @@ function GitTab({ project: p, now }: Props) {
   );
 }
 
-function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind: RunKind; title: string }) {
+function Verdict({ run }: { run: RunSummary }) {
+  if (run.canceled) return <span className="dim">취소됨</span>;
+  if (run.timedOut) return <span className="err">시간 초과</span>;
+  return run.exitCode === 0 ? <span className="ok">성공</span> : <span className="err">실패</span>;
+}
+
+export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind: RunKind; title: string }) {
   const command = kind === 'test' ? p.testCommand : p.buildCommand;
   const run = p.runs[kind];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const running = run?.running ?? false;
 
-  const start = () => {
+  const history = p.history[kind];
+
+  const request = (action: typeof api.run, label: string) => {
     setBusy(true);
     setError(null);
-    api
-      .run(p.id, kind)
-      .catch((e: unknown) => setError(errorMessage(e)))
+    action(p.id, kind)
+      .catch((e: unknown) => setError(`${label} 요청 실패: ${errorMessage(e)}`))
       .finally(() => setBusy(false));
   };
-
-  let verdict = null;
-  if (run && !run.running) {
-    verdict = run.timedOut ? (
-      <span className="err">시간 초과</span>
-    ) : run.exitCode === 0 ? (
-      <span className="ok">성공</span>
-    ) : (
-      <span className="err">실패</span>
-    );
-  }
 
   return (
     <section className="run">
       <h3>{title}</h3>
       <div className="cmdline">
         {command ? <code>{command}</code> : <span className="dim grow">명령이 설정되지 않았습니다</span>}
-        <button type="button" className="primary" onClick={start} disabled={!command || busy || running}>
+        <button type="button" className="primary" onClick={() => request(api.run, '실행')} disabled={!command || busy || running}>
           {running ? '실행 중…' : '실행'}
         </button>
+        {running && (
+          <button type="button" onClick={() => request(api.cancelRun, '취소')} disabled={busy}>
+            취소
+          </button>
+        )}
       </div>
       <p className="hint">
         {command
@@ -315,7 +386,7 @@ function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind:
       </p>
       {error && (
         <p className="err" role="alert">
-          실행 요청 실패: {error}
+          {error}
         </p>
       )}
       {!run ? (
@@ -324,7 +395,7 @@ function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind:
         <>
           <dl className="kv inline">
             <dt>결과</dt>
-            <dd>{verdict ?? <span className="warn">실행 중…</span>}</dd>
+            <dd>{run.running ? <span className="warn">실행 중…</span> : <Verdict run={run} />}</dd>
             <dt>종료 코드</dt>
             <dd>{run.exitCode ?? '—'}</dd>
             <dt>소요 시간</dt>
@@ -342,6 +413,33 @@ function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind:
           <pre className="output err-output" tabIndex={0}>
             {run.stderr || '(비어 있음)'}
           </pre>
+        </>
+      )}
+      {history.length > 0 && (
+        <>
+          <h4>실행 이력 ({history.length})</h4>
+          <table className="history">
+            <thead>
+              <tr>
+                <th>시작 시각</th>
+                <th>결과</th>
+                <th>종료 코드</th>
+                <th>소요 시간</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((h, i) => (
+                <tr key={`${h.startedAt}-${i}`}>
+                  <td>{dateTime(h.startedAt)}</td>
+                  <td>
+                    <Verdict run={h} />
+                  </td>
+                  <td>{h.exitCode ?? '—'}</td>
+                  <td>{duration(h.durationMs)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </>
       )}
     </section>
