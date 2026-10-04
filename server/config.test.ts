@@ -10,6 +10,8 @@ describe('parseConfig', () => {
     expect(c.thresholds).toEqual(DEFAULTS.thresholds);
     expect(c.reportsDir).toBe('/base/reports');
     expect(c.projects).toEqual([]);
+    expect(c).toMatchObject({ ignoreSpinnerChanges: true, notifications: true, autoReportTime: null });
+    expect(parseConfig({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] }, '/base')).toMatchObject({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] });
   });
 
   it('resolves paths and generates unique ids', () => {
@@ -38,6 +40,9 @@ describe('parseConfig', () => {
       port: 'x',
       thresholds: { idleMinutes: -1 },
       errorPatterns: 'error',
+      promptPatterns: ['/(/'],
+      notifications: 'yes',
+      autoReportTime: '7am',
       projects: [{ name: 'a' }, { name: 'b', repoPath: '/b', tmuxSession: 'bad:name' }, { name: 'c', repoPath: '/c', tmuxSession: '-t' }, { name: 'd', repoPath: '/d', tmuxSession: '$1' }],
     };
     try {
@@ -45,7 +50,7 @@ describe('parseConfig', () => {
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).issues).toHaveLength(7);
+      expect((e as ConfigError).issues).toHaveLength(10);
     }
   });
 });

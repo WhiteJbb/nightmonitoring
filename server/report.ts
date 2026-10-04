@@ -40,6 +40,7 @@ function nextSteps(p: ProjectSnapshot): string[] {
   const failed = (r: RunResult | null) => r && !r.running && (r.timedOut || r.exitCode !== 0);
   if (!p.git.ok) steps.push(`저장소 경로와 config 를 확인: ${p.git.error ?? ''}`);
   if (p.tmux.configured && !p.tmux.exists) steps.push(`tmux 세션 \`${p.tmuxSession}\` 이 종료됨 — 에이전트가 끝난 것인지 죽은 것인지 확인`);
+  if (p.status.state === 'waiting') steps.push(`입력 대기 중 — \`${p.tmux.attachCommand ?? ''}\` 로 접속해 응답: ${p.tmux.waitingPrompt ?? ''}`);
   if (p.status.state === 'stalled') steps.push(`정지 의심 — \`${p.tmux.attachCommand ?? '저장소'}\` 로 접속해 입력 대기 중인지 확인`);
   if (p.status.state === 'idle') steps.push('유휴 상태 — 작업이 끝났는지, 입력을 기다리는지 확인');
   if (p.logErrors.length) steps.push('로그의 오류 메시지 확인');
@@ -93,7 +94,7 @@ export function buildReport(s: Snapshot, now: Date): string {
     ...(s.demo ? ['> demo mode 에서 생성된 예시 보고서입니다.', ''] : []),
     `- 모니터링 시작: ${localTime(s.startedAt)}`,
     `- 모니터링 종료(보고서 생성): ${localTime(now.toISOString())}`,
-    `- 프로젝트 ${m.total}개: 정상 ${m.running} · 유휴 ${m.idle} · 정지 의심 ${m.stalled} · 오류 ${m.error}`,
+    `- 프로젝트 ${m.total}개: 정상 ${m.running} · 입력 대기 ${m.waiting} · 유휴 ${m.idle} · 정지 의심 ${m.stalled} · 오류 ${m.error}`,
     `- 작업한 프로젝트: ${worked.length ? worked.map((p) => p.name).join(', ') : '없음'}`,
     '',
   ];

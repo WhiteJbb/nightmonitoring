@@ -58,6 +58,12 @@ describe('judge', () => {
     expect(judge(input({ runs: { test: run({}), build: run({ running: true, exitCode: null }) } })).state).toBe('running');
   });
 
+  it('waiting when a prompt is on screen, below errors', () => {
+    const prompting = { ...tmux, waitingPrompt: 'Do you want to proceed?', lastOutputChangeAt: ago(50) };
+    expect(judge(input({ tmux: prompting, lastGitChangeAt: ago(50) }))).toEqual({ state: 'waiting', reasons: ['입력 대기: Do you want to proceed?'] });
+    expect(judge(input({ tmux: prompting, logErrors: ['Error: x'] })).state).toBe('error');
+  });
+
   it('uses git activity alone when no session is configured', () => {
     const none = { ...tmux, configured: false, exists: false, lastOutputChangeAt: null };
     expect(judge(input({ tmux: none, lastGitChangeAt: ago(5) })).state).toBe('running');

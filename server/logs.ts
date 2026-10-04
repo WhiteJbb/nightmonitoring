@@ -6,6 +6,42 @@ const ANSI_RE = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[
 
 export const stripAnsi = (s: string): string => s.replace(ANSI_RE, '');
 
+// eslint-disable-next-line no-control-regex
+const SGR_RE = /^\x1b\[[0-9;:]*m$/;
+/** 색상용 SGR 시퀀스만 남기고 나머지 제어 시퀀스를 제거한다. */
+export const keepSgr = (s: string): string => s.replace(ANSI_RE, (m) => (SGR_RE.test(m) ? m : ''));
+
+/**
+ * 패턴 목록을 줄 판정 함수로 만든다. "/…/flags" 는 정규식, 그 외는 대소문자 무시 부분 일치.
+ * 정규식이 잘못되면 throw (config 검증에서 잡는다).
+ */
+export function compileMatcher(patterns: string[]): (line: string) => boolean {
+  const tests = patterns.map((p) => {
+    const m = /^\/(.+)\/([a-z]*)$/.exec(p);
+    if (m) {
+      const re = new RegExp(m[1]!, m[2]!.replace(/[gy]/g, ''));
+      return (line: string) => re.test(line);
+    }
+    const needle = p.toLowerCase();
+    return (line: string) => line.toLowerCase().includes(needle);
+  });
+  return (line) => tests.some((t) => t(line));
+}
+
+// 숫자(경과 시간·토큰 수), 점자 스피너, 흔한 스피너 글리프.
+const VOLATILE_RE = /[\d\u2800-\u28ff✢✳✶✻✽✺·∗*|/\\—-]/g;
+/** 스피너·카운터만 도는 화면을 "변화 없음"으로 보기 위한 비교용 정규화. */
+export const stripVolatile = (s: string): string => s.replace(VOLATILE_RE, '');
+
+const PROMPT_SCAN_LINES = 15;
+/** 화면 마지막 줄들에서 입력 대기 프롬프트를 찾는다. 없으면 null. */
+export function findPrompt(lines: string[], patterns: string[]): string | null {
+  if (!patterns.length) return null;
+  const match = compileMatcher(patterns);
+  const recent = lines.filter((l) => l.trim() !== '').slice(-PROMPT_SCAN_LINES);
+  return recent.find(match)?.trim() ?? null;
+}
+
 const TAIL_BYTES = 64 * 1024;
 const TAIL_LINES = 200;
 const MAX_MATCHES = 20;
@@ -27,19 +63,13 @@ export async function tailFile(file: string): Promise<string[]> {
   }
 }
 
-// ponytail: 대소문자 무시 부분 문자열 매칭이라 "0 errors" 같은 줄도 걸린다.
-// 오탐이 문제되면 config 의 errorPatterns 를 좁히거나 정규식 지원을 추가할 것.
-export function findErrors(lines: string[], patterns: string[]): string[] {
-  const needles = patterns.map((p) => p.toLowerCase());
-  if (!needles.length) return [];
-  return lines
-    .filter((line) => {
-      const lower = line.toLowerCase();
-      return needles.some((n) => lower.includes(n));
-    })
-    .slice(-MAX_MATCHES);
+export function findErrors(lines: string[], patterns: string[], ignore: string[] = []): string[] {
+  if (!patterns.length) return [];
+  const isError = compileMatcher(patterns);
+  const isIgnored = compileMatcher(ignore);
+  return lines.filter((line) => isError(line) && !isIgnored(line)).slice(-MAX_MATCHES);
 }
 
-export async function scanLog(file: string, patterns: string[]): Promise<string[]> {
-  return findErrors(await tailFile(file), patterns);
+export async function scanLog(file: string, patterns: string[], ignore: string[] = []): Promise<string[]> {
+  return findErrors(await tailFile(file), patterns, ignore);
 }

@@ -1,9 +1,9 @@
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
-import { scanLog } from './logs.ts';
+import { findPrompt, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import { judge } from './status.ts';
-import { capturePane, listSessions } from './tmux.ts';
+import { capturePane, listPanes, listSessions } from './tmux.ts';
 
 export type RawTmux = Omit<TmuxInfo, 'lastOutputChangeAt'>;
 
@@ -27,23 +27,26 @@ export function realCollector(config: Config): Collector {
   return {
     git: (p) => collectGit(p.repoPath),
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
-    logErrors: (p) => (p.logFile ? scanLog(p.logFile, config.errorPatterns) : Promise.resolve([])),
+    logErrors: (p) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns) : Promise.resolve([])),
     async tmux(projects) {
-      const { sessions, error } = await listSessions();
+      const [{ sessions, error }, panesBySession] = await Promise.all([listSessions(), listPanes()]);
       const out = new Map<string, RawTmux>();
       await Promise.all(
         projects.map(async (p) => {
           const name = p.tmuxSession;
           if (!name) return;
           const s = sessions.get(name);
+          const panes = s
+            ? await Promise.all((panesBySession.get(name) ?? []).map(async ({ height, ...meta }) => ({ ...meta, lines: await capturePane({ id: meta.id, height }) })))
+            : [];
           out.set(p.id, {
             configured: true,
             exists: !!s,
             createdAt: s?.createdAt ?? null,
             attached: s?.attached ?? false,
             lastActivityAt: s?.lastActivityAt ?? null,
-            output: s ? await capturePane(name) : [],
-            panes: [],
+            output: (panes.find((x) => x.active) ?? panes[0])?.lines.map(stripAnsi) ?? [],
+            panes,
             waitingPrompt: null,
             attachCommand: attachCommand(name),
             ...(error ? { error } : {}),
@@ -142,8 +145,13 @@ export class Monitor {
     }
 
     let lastOutputChangeAt: string | null = null;
+    let waitingPrompt: string | null = null;
     if (raw.exists) {
-      const text = raw.output.join('\n');
+      // 어느 pane 이든 출력이 바뀌면 활동이다. pane 정보가 없으면 활성 pane 출력만 본다.
+      const plain = raw.panes.length ? raw.panes.map((pane) => pane.lines.map(stripAnsi)) : [raw.output];
+      const joined = plain.map((lines) => lines.join('\n')).join('\f');
+      const text = this.opts.config.ignoreSpinnerChanges ? stripVolatile(joined) : joined;
+      for (const lines of plain) waitingPrompt ??= findPrompt(lines, this.opts.config.promptPatterns);
       if (tr.output !== null && text !== tr.output) tr.outputChangedAt = nowIso;
       tr.output = text;
       // 최초 관측 시에는 비교 대상이 없으므로 tmux 가 보고한 활동 시각을 쓴다.
@@ -157,7 +165,7 @@ export class Monitor {
       git,
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
-      tmux: { ...raw, lastOutputChangeAt },
+      tmux: { ...raw, lastOutputChangeAt, waitingPrompt },
       logErrors,
     };
   }
