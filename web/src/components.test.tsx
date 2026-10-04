@@ -95,7 +95,8 @@ test('project card shows state label and reasons', () => {
   expect(screen.getByText('입력 대기').className).toContain('state-waiting');
   expect(screen.getByText('확인 프롬프트에서 대기 중')).toBeTruthy();
   expect(screen.getByRole('link').className).toContain('state-waiting');
-  expect(screen.getByText('브랜치')).toBeTruthy();
+  // 라벨 없이 값만 나오고, 무엇인지는 title 로 알려 준다
+  expect(screen.getByTitle(/^브랜치: /)).toBeTruthy();
 });
 
 test('project card shows the git error variant', () => {
@@ -104,7 +105,7 @@ test('project card shows the git error variant', () => {
   render(<ProjectCard p={p} now={NOW} />);
   expect(screen.getByText('오류')).toBeTruthy();
   expect(screen.getByText('not a git repository')).toBeTruthy();
-  expect(screen.queryByText('브랜치')).toBeNull();
+  expect(screen.queryByTitle(/^브랜치: /)).toBeNull();
 });
 
 test('terminal falls back to plain output and shows the waiting prompt', () => {
@@ -233,15 +234,8 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
     projects: [project({ status: { state: 'waiting', reasons: [] } })],
   };
   const { container } = render(<Dashboard snapshot={snapshot} />);
-  expect([...container.querySelectorAll('.tile dt')].map((d) => d.textContent)).toEqual([
-    '전체 프로젝트',
-    '실행 중인 세션',
-    '정상',
-    '입력 대기',
-    '유휴',
-    '정지 의심',
-    '오류',
-  ]);
+  // 요약 줄에는 0 인 상태가 나오지 않는다
+  expect([...container.querySelectorAll('.stat')].map((d) => d.textContent)).toEqual(['프로젝트1', '실행 중인 세션1', '입력 대기1']);
   const meta = container.querySelector('.meta')?.textContent ?? '';
   expect(meta).toContain('2시간 전');
   expect(meta).toContain('갱신 주기 5초');

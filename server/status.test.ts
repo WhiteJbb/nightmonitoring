@@ -39,6 +39,12 @@ describe('judge', () => {
     expect(judge(input({ tmux: outputIdle(45), lastGitChangeAt: ago(5) })).state).toBe('idle');
   });
 
+  it('writes long idle times in hours', () => {
+    expect(judge(input({ tmux: outputIdle(829), lastGitChangeAt: ago(900) })).reasons).toEqual(['13시간 49분 동안 출력·Git 변화 없음']);
+    expect(judge(input({ tmux: outputIdle(120), lastGitChangeAt: ago(5) })).reasons).toEqual(['2시간 동안 터미널 출력 변화 없음']);
+    expect(judge(input({ tmux: outputIdle(45), lastGitChangeAt: ago(45) })).reasons).toEqual(['45분 동안 출력·Git 변화 없음']);
+  });
+
   it('respects custom thresholds', () => {
     const thresholds = { idleMinutes: 1, stalledMinutes: 2, noCommitMinutes: 2 };
     expect(judge(input({ thresholds, tmux: outputIdle(3), lastGitChangeAt: ago(3) })).state).toBe('stalled');

@@ -22,18 +22,15 @@ export function relTime(iso: string | null | undefined, now: string): string {
   return `${Math.floor(hour / 24)}일 전`;
 }
 
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** 오늘이면 "14:23", 다른 날이면 "10/4 14:23". 초는 보여 주지 않는다 (경과 시간은 relTime 이 맡는다). */
 export function dateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString('ko-KR', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  });
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return d.toDateString() === new Date().toDateString() ? time : `${d.getMonth() + 1}/${d.getDate()} ${time}`;
 }
 
 export function duration(ms: number | null): string {

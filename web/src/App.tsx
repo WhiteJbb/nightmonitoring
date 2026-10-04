@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import type React from 'react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
@@ -8,6 +9,47 @@ import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
+
+// 색 시안 고르기 (임시). 하나로 정해지면 이 컴포넌트와 나머지 시안은 지운다.
+const THEMES: [id: string, label: string, swatch: string][] = [
+  ['graphite', '흑연 (무채색)', '#c8d3df'],
+  ['ink', '먹 (따뜻한 색)', '#e2a84a'],
+  ['night', '밤 (차가운 색)', '#7cc0b4'],
+];
+const savedTheme = (): string => {
+  try {
+    return localStorage.getItem('nightshift-theme') ?? 'graphite';
+  } catch {
+    return 'graphite';
+  }
+};
+
+function ThemePicker() {
+  const [theme, setTheme] = useState(savedTheme);
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem('nightshift-theme', theme);
+    } catch {
+      // 저장이 막힌 환경이면 이번 화면에서만 적용된다
+    }
+  }, [theme]);
+  return (
+    <span className="themes" role="group" aria-label="색 시안">
+      {THEMES.map(([id, label, swatch]) => (
+        <button
+          key={id}
+          type="button"
+          title={label}
+          aria-label={label}
+          aria-pressed={theme === id}
+          style={{ '--swatch': swatch } as React.CSSProperties}
+          onClick={() => setTheme(id)}
+        />
+      ))}
+    </span>
+  );
+}
 
 function subscribeHash(cb: () => void) {
   window.addEventListener('hashchange', cb);
@@ -132,7 +174,8 @@ export function App() {
             <span className="dot" aria-hidden="true" />
             {conn === 'live' ? 'live' : conn === 'down' ? '연결 끊김 / 재연결 중' : '연결 중'}
           </span>
-          {snapshot && <span className="dim">갱신 {dateTime(snapshot.generatedAt)}</span>}
+          {snapshot && <span>갱신 {dateTime(snapshot.generatedAt)}</span>}
+          <ThemePicker />
         </div>
       </header>
       <main>
@@ -166,9 +209,8 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
       .catch((e: unknown) => setResetError(errorMessage(e)))
       .finally(() => setResetting(false));
   };
-  const tiles: [string, number, string][] = [
-    ['전체 프로젝트', s.total, ''],
-    ['실행 중인 세션', s.sessionsRunning, ''],
+  // 0 인 상태는 보여 주지 않는다. 문제가 있을 때만 그 상태가 줄에 나타난다.
+  const states: [string, number, string][] = [
     ['정상', s.running, 'running'],
     ['입력 대기', s.waiting, 'waiting'],
     ['유휴', s.idle, 'idle'],
@@ -178,12 +220,22 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   return (
     <>
       <dl className="summary">
-        {tiles.map(([label, value, state]) => (
-          <div key={label} className={state && value > 0 ? `tile state-${state}` : 'tile'}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
+        <div className="stat">
+          <dt>프로젝트</dt>
+          <dd>{s.total}</dd>
+        </div>
+        <div className="stat">
+          <dt>실행 중인 세션</dt>
+          <dd>{s.sessionsRunning}</dd>
+        </div>
+        {states
+          .filter(([, value]) => value > 0)
+          .map(([label, value, state]) => (
+            <div key={state} className={`stat state-${state}`}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
       </dl>
       <div className="meta">
         <span>
@@ -238,48 +290,61 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         <Badge state={status.state} />
       </div>
       <Reasons reasons={status.reasons} />
-      <dl className="kv truncate">
-        <dt>경로</dt>
-        <dd title={p.repoPath}>{p.repoPath}</dd>
+      {/* 라벨 없이 위계로 읽힌다. 무엇인지는 title 로 보조한다 */}
+      <div className="card-rows">
         {git.ok ? (
           <>
-            <dt>브랜치</dt>
-            <dd title={git.branch}>
-              <span className={git.clean ? 'ok' : 'warn'}>{git.clean ? '변경 없음' : '변경 있음'}</span> ·{' '}
-              {git.branch}
-            </dd>
-            <dt>변경</dt>
-            <dd>
-              파일 {git.changedFiles.length}개 <span className="add">+{git.additions}</span>{' '}
-              <span className="del">−{git.deletions}</span>
-            </dd>
-            <dt>최근 커밋</dt>
-            <dd title={last?.subject}>{last ? `${relTime(last.date, now)} · ${last.subject}` : '커밋 없음'}</dd>
+            <div>
+              <span className="mono clip" title={`브랜치: ${git.branch}`}>
+                {git.branch}
+              </span>
+              <span className="end" title="커밋되지 않은 변경">
+                {git.clean ? (
+                  '변경 없음'
+                ) : (
+                  <>
+                    파일 {git.changedFiles.length}개 <span className="add">+{git.additions}</span>{' '}
+                    <span className="del">−{git.deletions}</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <div>
+              <span className="clip" title={last?.subject}>
+                {last ? last.subject : <span className="dim">커밋 없음</span>}
+              </span>
+              {last && (
+                <span className="end" title="마지막 커밋">
+                  {relTime(last.date, now)}
+                </span>
+              )}
+            </div>
           </>
         ) : (
-          <>
-            <dt>Git</dt>
-            <dd className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</dd>
-          </>
+          <div className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</div>
         )}
-        <dt>tmux</dt>
-        <dd>
+        <div>
           {!tmux.configured ? (
             <span className="dim">세션 미등록</span>
           ) : (
             <>
-              <span className={tmux.exists ? 'ok' : 'err'}>{tmux.exists ? '실행 중' : '세션 없음'}</span> ·{' '}
-              {p.tmuxSession}
+              <span className="mono clip" title={`tmux 세션: ${p.tmuxSession}`}>
+                {p.tmuxSession}
+              </span>
+              {tmux.exists ? (
+                <span className="end" title="마지막 터미널 활동">
+                  {relTime(tmux.lastOutputChangeAt ?? tmux.lastActivityAt, now)}
+                </span>
+              ) : (
+                <span className="end err">세션 없음</span>
+              )}
             </>
           )}
-        </dd>
-        {tmux.configured && (
-          <>
-            <dt>마지막 활동</dt>
-            <dd>{relTime(tmux.lastOutputChangeAt ?? tmux.lastActivityAt, now)}</dd>
-          </>
-        )}
-      </dl>
+        </div>
+      </div>
+      <div className="card-path" title={p.repoPath}>
+        {p.repoPath}
+      </div>
     </a>
   );
 }
