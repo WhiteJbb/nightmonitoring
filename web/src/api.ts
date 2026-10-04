@@ -46,6 +46,7 @@ export const api = {
   startSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST'),
   sendInput: (id: string, body: InputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/input`, 'POST', body),
   resetSession: () => req<{ ok: true }>('/api/session/reset', 'POST'),
+  testPush: () => req<{ ok: true }>('/api/notify/test', 'POST'),
   reports: () => req<ReportMeta[]>('/api/reports'),
   report: (name: string) => req<Report>(`/api/reports/${encodeURIComponent(name)}`),
   generateReport: () => req<Report>('/api/reports', 'POST'),

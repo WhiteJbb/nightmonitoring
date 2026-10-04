@@ -813,6 +813,17 @@ pre {
 .field .hint {
   margin: 3px 0 0;
 }
+.field .row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.settings input[type='url'] {
+  max-width: 520px;
+  font-size: var(--fs-code);
+}
 /* 숫자 칸은 한 줄에 나란히, 켜고 끄는 항목은 아래에 한 줄씩 */
 .settings-grid.nums {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));

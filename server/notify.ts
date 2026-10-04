@@ -1,10 +1,15 @@
 import type { ProjectState, Snapshot } from '../shared/types.ts';
 
-const ALERT_STATES: Partial<Record<ProjectState, string>> = { waiting: '입력 대기', stalled: '정지 의심', error: '오류' };
+// 유휴는 Mac 알림에서는 빠지지만, 휴대폰 푸시는 ntfyStates 로 고를 수 있어 전환 자체는 여기서 만든다.
+const ALERT_STATES: Partial<Record<ProjectState, string>> = { waiting: '입력 대기', idle: '유휴', stalled: '정지 의심', error: '오류' };
+/** Mac 알림을 띄우는 상태 */
+export const MAC_ALERT_STATES: ProjectState[] = ['waiting', 'stalled', 'error'];
 
 export interface Alert {
   title: string;
   message: string;
+  projectId: string;
+  state: ProjectState;
 }
 
 /**
@@ -17,7 +22,7 @@ export function alertsFor(prev: Map<string, ProjectState>, snapshot: Snapshot): 
     const before = prev.get(p.id);
     const label = ALERT_STATES[p.status.state];
     if (before !== undefined && before !== p.status.state && label) {
-      alerts.push({ title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label });
+      alerts.push({ title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label, projectId: p.id, state: p.status.state });
     }
     prev.set(p.id, p.status.state);
   }

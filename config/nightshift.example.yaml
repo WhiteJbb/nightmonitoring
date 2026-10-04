@@ -25,6 +25,7 @@ ignoreSpinnerChanges: true
 sessionExitIsError: true
 notifications: true
 autoReportTime: "07:00"   # Morning Report 자동 생성. 끄려면 null
+ntfyUrl: null             # 휴대폰 푸시. 예: https://ntfy.sh/추측하기-어려운-주제
 commandTimeoutSec: 600
 reportsDir: reports
 

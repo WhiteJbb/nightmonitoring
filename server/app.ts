@@ -63,6 +63,8 @@ export interface AppDeps {
     /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
     createSession: (name: string, repoPath: string) => Promise<string | null>;
   };
+  /** 휴대폰 푸시 시험 전송. 실패하면 오류 메시지. 없으면(demo) 거부한다 */
+  testPush?: () => Promise<string | null>;
   /** 설정 편집. 없으면 /api/config 는 404 */
   configEditor?: {
     view: () => ConfigView;
@@ -71,7 +73,7 @@ export interface AppDeps {
   };
 }
 
-export function createApp({ config, monitor, runner, reportsDir, configEditor, terminal }: AppDeps) {
+export function createApp({ config, monitor, runner, reportsDir, configEditor, terminal, testPush }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.use(guard(config));
@@ -204,6 +206,13 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
       res.json(await configEditor.update(req.body));
     });
   }
+
+  api.post('/notify/test', async (_req, res) => {
+    if (!testPush) return void res.status(403).json({ error: 'demo mode 에서는 알림을 보낼 수 없습니다' });
+    const error = await testPush();
+    if (error) return void res.status(400).json({ error });
+    res.json({ ok: true });
+  });
 
   api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir())));
 

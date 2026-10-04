@@ -14,6 +14,7 @@
   "sessionExitIsError": true,
   "notifications": true,
   "autoReportTime": "07:00",
+  "ntfyUrl": null,
   "commandTimeoutSec": 600,
   "reportsDir": "reports",
   "projects": [

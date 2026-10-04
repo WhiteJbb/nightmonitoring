@@ -22,6 +22,7 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
       notifications: false,
       autoReportTime: '07:30',
       commandTimeoutSec: 600,
+      ntfyUrl: null,
     },
     projects: [
       {
