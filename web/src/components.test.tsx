@@ -16,6 +16,7 @@ function project(over: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
     testCommand: 'npm test',
     buildCommand: null,
     logFile: '/repos/api/app.log',
+    allowInput: false,
     git: {
       ok: true,
       branch: 'main',

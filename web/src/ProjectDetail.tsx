@@ -1,5 +1,6 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { Commit, FileStat, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
 import { parseAnsi } from './ansi.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
@@ -29,9 +30,11 @@ type Tab = (typeof TABS)[number][0];
 interface Props {
   project: ProjectSnapshot;
   now: string;
+  /** 스냅샷 갱신 주기(초). 실시간 보기가 안 될 때의 표시에 쓴다 */
+  refreshSec?: number;
 }
 
-export function ProjectDetail({ project: p, now }: Props) {
+export function ProjectDetail({ project: p, now, refreshSec }: Props) {
   const [tab, setTab] = useState<Tab>('terminal');
   return (
     <>
@@ -53,7 +56,7 @@ export function ProjectDetail({ project: p, now }: Props) {
         ))}
       </div>
       <div role="tabpanel">
-        {tab === 'terminal' && <TerminalTab project={p} now={now} />}
+        {tab === 'terminal' && <TerminalTab project={p} now={now} refreshSec={refreshSec} />}
         {tab === 'git' && <GitTab project={p} now={now} />}
         {tab === 'runs' && (
           <>
@@ -66,7 +69,137 @@ export function ProjectDetail({ project: p, now }: Props) {
   );
 }
 
-export function TerminalTab({ project: p, now }: Props) {
+const POLL_MS = 700;
+const POLL_BACKOFF_MS = 3000;
+
+// [tmux 키, 버튼 글자, 설명]
+const KEYS: [InputKey, string, string][] = [
+  ['Enter', 'Enter', 'Enter 보내기'],
+  ['Escape', 'Esc', 'Esc 보내기'],
+  ['Tab', 'Tab', 'Tab 보내기'],
+  ['BTab', '⇧Tab', 'Shift+Tab 보내기'],
+  ['Up', '↑', '위 화살표 보내기'],
+  ['Down', '↓', '아래 화살표 보내기'],
+  ['Left', '←', '왼쪽 화살표 보내기'],
+  ['Right', '→', '오른쪽 화살표 보내기'],
+  ['BSpace', '⌫', 'Backspace 보내기 (한 글자 지우기)'],
+  ['C-c', 'Ctrl+C', 'Ctrl+C 보내기 (중단)'],
+  ['C-d', 'Ctrl+D', 'Ctrl+D 보내기 (EOF·종료)'],
+  ['C-u', 'Ctrl+U', 'Ctrl+U 보내기 (줄 지우기)'],
+  ['C-l', 'Ctrl+L', 'Ctrl+L 보내기 (화면 지우기)'],
+];
+const CAUTION: InputKey[] = ['C-c', 'C-d'];
+
+// 입력칸이 비어 있을 때 그대로 pane 으로 넘기는 키
+const FORWARD: Record<string, InputKey> = {
+  ArrowUp: 'Up',
+  ArrowDown: 'Down',
+  ArrowLeft: 'Left',
+  ArrowRight: 'Right',
+  Escape: 'Escape',
+  Backspace: 'BSpace',
+};
+
+function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string; onSent: () => void }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // 입력칸은 잠그지 않는다(포커스 유지). 보내는 중의 전송 시도만 무시한다
+  const send = (body: InputRequest) => {
+    inputRef.current?.focus();
+    if (busy) return;
+    setBusy(true);
+    const sent = body.text;
+    if (sent !== undefined) setText('');
+    api
+      .sendInput(projectId, body)
+      .then(
+        () => {
+          setError(null);
+          onSent();
+        },
+        (e: unknown) => {
+          setError(errorMessage(e));
+          // 보내지 못한 글은 되돌려 놓는다 (그사이 새로 친 것이 있으면 그대로 둔다)
+          if (sent !== undefined) setText((cur) => (cur === '' ? sent : cur));
+        },
+      )
+      .finally(() => setBusy(false));
+  };
+  const sendText = (enter: boolean) => {
+    if (text !== '') send(enter ? { pane, text, enter: true } : { pane, text });
+    else if (enter) send({ pane, key: 'Enter' });
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    // 한글 등 IME 조합 중의 Enter 는 조합 확정이지 전송이 아니다
+    if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const forward = FORWARD[e.key];
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      sendText(true);
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      if (text === '') send({ pane, key: e.shiftKey ? 'BTab' : 'Tab' });
+    } else if (text === '' && forward) {
+      e.preventDefault();
+      send({ pane, key: forward });
+    }
+  };
+
+  return (
+    <div className="input-bar">
+      <div className="input-row">
+        <input
+          ref={inputRef}
+          type="text"
+          className="mono"
+          aria-label="pane 에 보낼 입력"
+          placeholder="입력 후 Enter"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          maxLength={4000}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+        <button type="button" className="primary" disabled={busy} onClick={() => sendText(true)}>
+          보내기
+        </button>
+        <button type="button" disabled={busy || text === ''} onClick={() => sendText(false)}>
+          Enter 없이 입력
+        </button>
+      </div>
+      <div className="keys" role="group" aria-label="특수 키">
+        {KEYS.map(([key, label, title]) => (
+          <button
+            key={key}
+            type="button"
+            className={CAUTION.includes(key) ? 'caution' : undefined}
+            title={title}
+            aria-label={title}
+            disabled={busy}
+            onClick={() => send({ pane, key })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p className="err" role="alert">
+          {error}
+        </p>
+      )}
+      <p className="hint">입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다.</p>
+    </div>
+  );
+}
+
+export function TerminalTab({ project: p, now, refreshSec }: Props) {
   const t = p.tmux;
   const preRef = useRef<HTMLPreElement>(null);
   const stick = useRef(true);
@@ -74,7 +207,11 @@ export function TerminalTab({ project: p, now }: Props) {
   const [paneId, setPaneId] = useState<string | null>(null);
   // 고른 pane 이 사라지면 활성 pane 으로 돌아간다. pane 정보가 없으면 output(색 없음)을 그대로 쓴다
   const pane = t.panes.find((x) => x.id === paneId) ?? t.panes.find((x) => x.active) ?? t.panes[0];
-  const text = (pane ? pane.lines : t.output).join('\n');
+  // 실시간으로 읽어 온 출력. 실패하면 null 로 돌려 스냅샷의 줄로 되돌아간다
+  const [live, setLive] = useState<{ pane: string; lines: string[] } | null>(null);
+  const pollNow = useRef(() => {});
+  const isLive = live !== null && live.pane === pane?.id;
+  const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
   const parsed = useMemo(() => parseAnsi(text.split('\n')), [text]);
 
   // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
@@ -82,6 +219,51 @@ export function TerminalTab({ project: p, now }: Props) {
     const el = preRef.current;
     if (el && stick.current) el.scrollTop = el.scrollHeight;
   }, [text, pane?.id]);
+
+  // 고른 pane 을 짧은 주기로 다시 읽는다. 앞 요청이 끝난 뒤에만 다음 요청을 잡는다
+  const liveId = t.exists && pane ? pane.id : null;
+  useEffect(() => {
+    if (liveId === null) return;
+    let stopped = false;
+    let busy = false;
+    let again = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      clearTimeout(timer);
+      if (stopped || document.visibilityState !== 'visible') return;
+      if (busy) {
+        again = true; // 진행 중인 요청은 입력 전의 화면일 수 있으니 끝나자마자 한 번 더 읽는다
+        return;
+      }
+      busy = true;
+      let delay = POLL_MS;
+      try {
+        const { lines } = await api.paneLive(p.id, liveId);
+        if (!Array.isArray(lines)) throw new Error('bad response');
+        if (!stopped) setLive({ pane: liveId, lines });
+      } catch {
+        delay = POLL_BACKOFF_MS;
+        if (!stopped) setLive(null);
+      }
+      busy = false;
+      if (stopped) return;
+      if (again) {
+        again = false;
+        void poll();
+      } else timer = setTimeout(wake, delay);
+    };
+    const wake = () => void poll();
+    pollNow.current = wake;
+    document.addEventListener('visibilitychange', wake);
+    wake();
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener('visibilitychange', wake);
+      pollNow.current = () => {};
+      setLive(null);
+    };
+  }, [p.id, liveId]);
 
   if (!t.configured) {
     return (
@@ -141,21 +323,29 @@ export function TerminalTab({ project: p, now }: Props) {
         </dd>
       </dl>
       {t.error && <p className="err mono wrap">{t.error}</p>}
-      {t.panes.length > 1 && (
-        <div className="panes" role="group" aria-label="pane 선택">
-          {t.panes.map((x) => (
-            <button
-              key={x.id}
-              type="button"
-              aria-pressed={x.id === pane?.id}
-              onClick={() => {
-                stick.current = true;
-                setPaneId(x.id);
-              }}
-            >
-              {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
-            </button>
-          ))}
+      {pane && (
+        <div className="term-bar">
+          {t.panes.length > 1 && (
+            <div className="panes" role="group" aria-label="pane 선택">
+              {t.panes.map((x) => (
+                <button
+                  key={x.id}
+                  type="button"
+                  aria-pressed={x.id === pane.id}
+                  onClick={() => {
+                    stick.current = true;
+                    setPaneId(x.id);
+                  }}
+                >
+                  {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <span className={isLive ? 'conn conn-live' : 'conn'}>
+            <span className="dot" />
+            {isLive ? '실시간' : refreshSec === undefined ? '스냅샷' : `${refreshSec}초 갱신`}
+          </span>
         </div>
       )}
       <pre
@@ -181,6 +371,13 @@ export function TerminalTab({ project: p, now }: Props) {
             ))
           : '(출력 없음)'}
       </pre>
+      {p.allowInput ? (
+        pane && <InputBar projectId={p.id} pane={pane.id} onSent={() => pollNow.current()} />
+      ) : (
+        <p className="hint">
+          입력을 보내려면 config 파일에서 이 프로젝트에 <code>allowInput: true</code> 를 적으세요. (설정 화면에서는 켤 수 없습니다)
+        </p>
+      )}
     </>
   );
 }

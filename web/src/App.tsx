@@ -94,7 +94,7 @@ export function App() {
   } else if (projectId !== null) {
     const project = snapshot.projects.find((p) => p.id === projectId);
     page = project ? (
-      <ProjectDetail key={project.id} project={project} now={snapshot.generatedAt} />
+      <ProjectDetail key={project.id} project={project} now={snapshot.generatedAt} refreshSec={snapshot.refreshIntervalSec} />
     ) : (
       <div className="notice error">
         <strong>프로젝트를 찾을 수 없습니다.</strong>
