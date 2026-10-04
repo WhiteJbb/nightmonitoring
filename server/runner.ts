@@ -42,7 +42,7 @@ export class Runner {
 
     const started = Date.now();
     const base = { kind, command, startedAt: new Date(started).toISOString() };
-    runs[kind] = { ...base, running: true, finishedAt: null, exitCode: null, timedOut: false, durationMs: null, stdout: '', stderr: '' };
+    runs[kind] = { ...base, running: true, finishedAt: null, exitCode: null, timedOut: false, canceled: false, durationMs: null, stdout: '', stderr: '' };
     this.onChange();
 
     const exec = this.opts.exec ?? runConfigured;
@@ -56,6 +56,7 @@ export class Runner {
           finishedAt: new Date(finished).toISOString(),
           exitCode: r.code,
           timedOut: r.timedOut,
+          canceled: false,
           durationMs: finished - started,
           stdout: r.stdout,
           stderr: r.stderr,

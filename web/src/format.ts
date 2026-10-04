@@ -2,6 +2,7 @@ import type { ProjectState } from '../../shared/types.ts';
 
 export const STATE_LABEL: Record<ProjectState, string> = {
   running: '정상 실행',
+  waiting: '입력 대기',
   idle: '유휴',
   stalled: '정지 의심',
   error: '오류',

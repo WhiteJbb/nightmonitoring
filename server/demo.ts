@@ -141,6 +141,7 @@ export function demoCollector(now: () => number = Date.now): Collector {
         deletions: total(diffStat, 'deletions'),
         recentCommits: commits,
         todayCommits: commits.filter((c) => new Date(c.date).toDateString() === new Date(now()).toDateString()),
+        fingerprint: JSON.stringify([commits[0]?.hash, d.files]),
       };
     },
     async since(p, baseline) {
@@ -168,6 +169,8 @@ export function demoCollector(now: () => number = Date.now): Collector {
           attached: d.name === 'api-server',
           lastActivityAt: d.sessionAlive ? ago(d.quietMinutes ?? 0) : null,
           output: d.sessionAlive ? [...d.output, ...live] : [],
+          panes: [],
+          waitingPrompt: null,
           attachCommand: attachCommand(d.session),
         });
       }
@@ -200,6 +203,7 @@ export function seedDemoRuns(runner: Runner, now: () => number = Date.now): void
     finishedAt: new Date(now() - minAgo * 60_000 + 8400).toISOString(),
     exitCode,
     timedOut: false,
+    canceled: false,
     durationMs: 8400,
     stdout,
     stderr,
