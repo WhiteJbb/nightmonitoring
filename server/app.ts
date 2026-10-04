@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express';
 import type { ConfigView } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError } from './config.ts';
+import { ConfigConflict } from './configEdit.ts';
 import type { Monitor } from './monitor.ts';
 import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
@@ -115,6 +116,7 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor }:
   // Express 는 인자 4개인 함수만 오류 핸들러로 인식한다.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   api.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof ConfigConflict) return void res.status(409).json({ error: err.message });
     if (err instanceof ConfigError) return void res.status(400).json({ error: 'config 가 올바르지 않습니다', issues: err.issues });
     // 잘못된 JSON 본문 등 클라이언트 오류는 그 상태 코드로 돌려준다.
     if (err.status && err.status >= 400 && err.status < 500) return void res.status(err.status).json({ error: err.message });

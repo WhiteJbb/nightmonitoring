@@ -7,6 +7,7 @@ import { Settings } from './Settings.tsx';
 function view(over: Partial<ConfigView> = {}): ConfigView {
   return {
     path: '/home/me/nightshift.json',
+    version: 'v1',
     format: 'json',
     editable: true,
     readOnlyReason: null,
@@ -141,6 +142,7 @@ test('saving sends the edited ConfigUpdate and shows the confirmation', async ()
   const saved = view({ settings: { ...v.settings, refreshIntervalSec: 10 } });
   const body = await save(json(200, saved));
   expect(body).toEqual({
+    version: 'v1',
     settings: {
       ...v.settings,
       refreshIntervalSec: 10,
@@ -205,6 +207,31 @@ test('a 400 with issues lists every issue and keeps the edits', async () => {
   expect(input('입력 대기 패턴').value).toBe('/(/');
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '저장' }).disabled).toBe(false);
   expect(screen.queryByText('저장됨 — 바로 적용되었습니다')).toBeNull();
+});
+
+test('a 409 offers to reload the latest file, discarding the edits', async () => {
+  await renderLoaded();
+  change(input('유휴 판정(분)'), '20');
+  const body = await save(json(409, { error: 'config 파일이 다른 곳에서 수정되었습니다' }));
+  expect(body.version).toBe('v1');
+
+  const alert = await screen.findByRole('alert');
+  expect(alert.textContent).toContain('config 파일이 다른 곳에서 수정되었습니다');
+  expect(input('유휴 판정(분)').value).toBe('20');
+
+  const latest = view({ version: 'v2' });
+  latest.settings.thresholds.idleMinutes = 33;
+  fetchMock.mockResolvedValueOnce(json(200, latest));
+  fireEvent.click(within(alert).getByRole('button', { name: '다시 불러오기' }));
+  await waitFor(() => expect(input('유휴 판정(분)').value).toBe('33'));
+  expect(screen.queryByRole('alert')).toBeNull();
+
+  // 다시 불러온 뒤의 저장은 새 version 을 보낸다
+  change(input('유휴 판정(분)'), '21');
+  fetchMock.mockResolvedValueOnce(json(200, latest));
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+  expect(JSON.parse(fetchMock.mock.calls[3]![1]?.body as string).version).toBe('v2');
 });
 
 test('revert restores the last loaded state', async () => {
