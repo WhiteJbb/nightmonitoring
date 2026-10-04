@@ -10,7 +10,7 @@ export type RawTmux = Omit<TmuxInfo, 'lastOutputChangeAt'>;
 /** Monitor 가 데이터를 얻는 유일한 통로. 실제 구현과 demo 구현이 있다. */
 export interface Collector {
   git(p: ProjectConfig): Promise<GitInfo>;
-  since(p: ProjectConfig, baseline: GitBaseline): Promise<SinceBaseline>;
+  since(p: ProjectConfig, baseline: GitBaseline, git: GitInfo): Promise<SinceBaseline>;
   tmux(projects: ProjectConfig[]): Promise<Map<string, RawTmux>>;
   logErrors(p: ProjectConfig): Promise<string[]>;
 }
@@ -26,7 +26,7 @@ const NO_TMUX: RawTmux = { configured: false, exists: false, createdAt: null, at
 export function realCollector(config: Config): Collector {
   return {
     git: (p) => collectGit(p.repoPath),
-    since: (p, baseline) => collectSince(p.repoPath, baseline),
+    since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
     logErrors: (p) => (p.logFile ? scanLog(p.logFile, config.errorPatterns) : Promise.resolve([])),
     async tmux(projects) {
       const { sessions, error } = await listSessions();
@@ -135,7 +135,7 @@ export class Monitor {
     let since: SinceBaseline | null = null;
     if (git.ok) {
       tr.baseline ??= { at: nowIso, branch: git.branch, head: git.head };
-      since = await this.opts.collector.since(p, tr.baseline);
+      since = await this.opts.collector.since(p, tr.baseline, git);
       // working tree 지문이 이전 폴링과 달라졌으면 Git 활동으로 본다.
       if (tr.fingerprint !== null && git.fingerprint !== tr.fingerprint) tr.gitChangedAt = nowIso;
       tr.fingerprint = git.fingerprint;
