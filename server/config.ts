@@ -73,7 +73,7 @@ const SESSION_RE = /^[^\s:.$=@%-][^\s:.]*$/;
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function expandPath(p: string, baseDir: string): string {
+export function expandPath(p: string, baseDir: string): string {
   if (p === '~' || p.startsWith('~/')) p = path.join(homedir(), p.slice(1));
   return path.resolve(baseDir, p);
 }

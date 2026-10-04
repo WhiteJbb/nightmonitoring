@@ -1,6 +1,8 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
+import type { ConfigView } from '../shared/types.ts';
 import type { Config } from './config.ts';
+import { ConfigError } from './config.ts';
 import type { Monitor } from './monitor.ts';
 import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
@@ -33,9 +35,15 @@ export interface AppDeps {
   runner: Runner;
   /** hot reload 로 바뀔 수 있어 매번 묻는다 */
   reportsDir: () => string;
+  /** 설정 편집. 없으면 /api/config 는 404 */
+  configEditor?: {
+    view: () => ConfigView;
+    /** 본문을 검증해 저장하고 즉시 적용한다. 잘못된 값이면 ConfigError */
+    update: (body: unknown) => Promise<ConfigView>;
+  };
 }
 
-export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
+export function createApp({ config, monitor, runner, reportsDir, configEditor }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.use(guard(config));
@@ -83,6 +91,16 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
     res.json({ ok: true });
   });
 
+  if (configEditor) {
+    api.get('/config', (_req, res) => void res.json(configEditor.view()));
+    // 본문을 읽는 유일한 경로. 편집 가능한 필드만 반영되며 명령 문자열은 받지 않는다 (configEdit.ts).
+    api.put('/config', express.json({ limit: '256kb' }), async (req, res) => {
+      const view = configEditor.view();
+      if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '수정할 수 없습니다' });
+      res.json(await configEditor.update(req.body));
+    });
+  }
+
   api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir())));
 
   api.get('/reports/:name', async (req, res) => {
@@ -96,7 +114,10 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
   api.use((_req, res) => void res.status(404).json({ error: '없는 API 입니다' }));
   // Express 는 인자 4개인 함수만 오류 핸들러로 인식한다.
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  api.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  api.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
+    if (err instanceof ConfigError) return void res.status(400).json({ error: 'config 가 올바르지 않습니다', issues: err.issues });
+    // 잘못된 JSON 본문 등 클라이언트 오류는 그 상태 코드로 돌려준다.
+    if (err.status && err.status >= 400 && err.status < 500) return void res.status(err.status).json({ error: err.message });
     console.error(err);
     res.status(500).json({ error: err.message });
   });

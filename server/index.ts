@@ -4,6 +4,7 @@ import path from 'node:path';
 import express from 'express';
 import { createApp } from './app.ts';
 import { ConfigError, defaultConfigPath, loadConfig } from './config.ts';
+import { applyConfigUpdate, readConfigView, readOnlyView } from './configEdit.ts';
 import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { notify } from './exec.ts';
 import { Monitor, realCollector } from './monitor.ts';
@@ -113,7 +114,18 @@ async function main() {
   await monitor.tick();
   monitor.start();
 
-  const app = createApp({ config, monitor, runner, reportsDir });
+  const configEditor = demo
+    ? { view: () => readOnlyView(monitor.config, configPath, 'demo mode 에서는 설정을 수정할 수 없습니다.'), update: async () => readOnlyView(monitor.config, configPath, '') }
+    : {
+        view: () => readConfigView(configPath, ROOT),
+        update: async (body: unknown) => {
+          applyConfigUpdate(configPath, ROOT, body);
+          // 파일 감시를 기다리지 않고 바로 적용한다 (감시가 뒤이어 한 번 더 읽어도 무해하다).
+          await reloadConfig({ configPath, baseDir: ROOT, monitor, runner, collectorFor: realCollector });
+          return readConfigView(configPath, ROOT);
+        },
+      };
+  const app = createApp({ config, monitor, runner, reportsDir, configEditor });
   const server = http.createServer(app);
 
   if (dev) {
