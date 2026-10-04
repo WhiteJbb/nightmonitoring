@@ -736,3 +736,51 @@ button.danger:hover:not(:disabled) {
   max-height: 40vh;
   overflow: auto;
 }
+
+/* ── 실시간 터미널 / 입력 ── */
+.term-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  margin-bottom: 6px;
+}
+.term-bar .panes {
+  margin-bottom: 0;
+}
+.term-bar .conn {
+  margin-left: auto;
+  font: 12px var(--mono);
+}
+.input-bar {
+  margin-top: 8px;
+}
+.input-row,
+.keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.input-row input {
+  flex: 1 1 200px;
+  min-width: 0;
+  color: var(--text);
+  background: #06080b;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+.keys {
+  margin-top: 6px;
+}
+.keys button {
+  font: 12px var(--mono);
+  padding: 2px 8px;
+}
+.keys button.caution {
+  border-color: color-mix(in srgb, var(--red) 55%, var(--border));
+}
+.keys button.caution:hover:not(:disabled) {
+  border-color: var(--red);
+  color: var(--red);
+}

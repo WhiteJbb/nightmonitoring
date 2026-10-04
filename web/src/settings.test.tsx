@@ -33,6 +33,8 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
         testCommand: 'npm test -- --run',
         buildCommand: null,
         repoPathLocked: true,
+        allowInput: false,
+        tmuxSessionLocked: false,
       },
       {
         id: 'web',
@@ -43,6 +45,8 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
         testCommand: null,
         buildCommand: null,
         repoPathLocked: false,
+        allowInput: false,
+        tmuxSessionLocked: false,
       },
     ],
     fileOnly: { host: '127.0.0.1', port: 4517, reportsDir: '/home/me/reports' },
@@ -128,6 +132,26 @@ test('locked repoPath is disabled, unlocked one is not', async () => {
   expect(input('저장소 경로', project('api-server')).disabled).toBe(true);
   expect(within(project('api-server')).getByText(/config 파일에서만 바꿀 수 있습니다/)).toBeTruthy();
   expect(input('저장소 경로', project('web-app')).disabled).toBe(false);
+});
+
+test('terminal input row is read-only text, and a locked tmux session is disabled', async () => {
+  const v = view();
+  v.projects[0] = { ...v.projects[0]!, allowInput: true, tmuxSessionLocked: true };
+  await renderLoaded(v);
+  const api = project('api-server');
+  expect(within(api).getByText('터미널 입력').nextElementSibling?.textContent).toBe('허용됨');
+  expect(input('tmux 세션', api).disabled).toBe(true);
+  expect(within(api).getByText('입력이 허용된 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다')).toBeTruthy();
+
+  const web = project('web-app');
+  expect(within(web).getByText('터미널 입력').nextElementSibling?.textContent).toBe('꺼짐 (config 파일에서 allowInput: true 로 켭니다)');
+  expect(input('tmux 세션', web).disabled).toBe(false);
+  expect(within(web).getByText('비워 두면 세션을 감시하지 않습니다')).toBeTruthy();
+
+  // allowInput 은 PUT 본문에 들어가지 않는다
+  change(input('갱신 주기(초)'), '10');
+  const body = await save(json(200, v));
+  expect(body.projects[0]).toEqual({ id: 'api', name: 'api-server', repoPath: '~/code/api', tmuxSession: 'api', logFile: 'app.log' });
 });
 
 test('saving sends the edited ConfigUpdate and shows the confirmation', async () => {
