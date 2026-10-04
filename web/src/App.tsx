@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
+import type React from 'react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
@@ -8,6 +9,28 @@ import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
+
+// 카드 줄 앞의 작은 표식. 장식이므로 보조 기술에는 숨긴다 (의미는 title 이 전한다).
+const icon = (d: React.ReactNode) => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d}
+  </svg>
+);
+const BRANCH_ICON = icon(
+  <>
+    <circle cx="4" cy="3.2" r="1.6" />
+    <circle cx="4" cy="12.8" r="1.6" />
+    <circle cx="12" cy="5" r="1.6" />
+    <path d="M4 4.8v6.4M12 6.6c0 3.2-8 2-8 4.6" />
+  </>,
+);
+const COMMIT_ICON = icon(
+  <>
+    <circle cx="8" cy="8" r="2.6" />
+    <path d="M1 8h4.4M10.6 8H15" />
+  </>,
+);
+const SESSION_ICON = icon(<path d="M2.5 4.5 6 8l-3.5 3.5M8.5 11.5h5" />);
 
 function subscribeHash(cb: () => void) {
   window.addEventListener('hashchange', cb);
@@ -132,7 +155,7 @@ export function App() {
             <span className="dot" aria-hidden="true" />
             {conn === 'live' ? 'live' : conn === 'down' ? '연결 끊김 / 재연결 중' : '연결 중'}
           </span>
-          {snapshot && <span className="dim">갱신 {dateTime(snapshot.generatedAt)}</span>}
+          {snapshot && <span>갱신 {dateTime(snapshot.generatedAt)}</span>}
         </div>
       </header>
       <main>
@@ -166,9 +189,8 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
       .catch((e: unknown) => setResetError(errorMessage(e)))
       .finally(() => setResetting(false));
   };
-  const tiles: [string, number, string][] = [
-    ['전체 프로젝트', s.total, ''],
-    ['실행 중인 세션', s.sessionsRunning, ''],
+  // 0 인 상태는 보여 주지 않는다. 문제가 있을 때만 그 상태가 줄에 나타난다.
+  const states: [string, number, string][] = [
     ['정상', s.running, 'running'],
     ['입력 대기', s.waiting, 'waiting'],
     ['유휴', s.idle, 'idle'],
@@ -178,12 +200,22 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   return (
     <>
       <dl className="summary">
-        {tiles.map(([label, value, state]) => (
-          <div key={label} className={state && value > 0 ? `tile state-${state}` : 'tile'}>
-            <dt>{label}</dt>
-            <dd>{value}</dd>
-          </div>
-        ))}
+        <div className="stat">
+          <dt>프로젝트</dt>
+          <dd>{s.total}</dd>
+        </div>
+        <div className="stat">
+          <dt>실행 중인 세션</dt>
+          <dd>{s.sessionsRunning}</dd>
+        </div>
+        {states
+          .filter(([, value]) => value > 0)
+          .map(([label, value, state]) => (
+            <div key={state} className={`stat state-${state}`}>
+              <dt>{label}</dt>
+              <dd>{value}</dd>
+            </div>
+          ))}
       </dl>
       <div className="meta">
         <span>
@@ -238,48 +270,64 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         <Badge state={status.state} />
       </div>
       <Reasons reasons={status.reasons} />
-      <dl className="kv truncate">
-        <dt>경로</dt>
-        <dd title={p.repoPath}>{p.repoPath}</dd>
+      {/* 라벨 없이 위계로 읽힌다. 무엇인지는 title 로 보조한다 */}
+      <div className="card-rows">
         {git.ok ? (
           <>
-            <dt>브랜치</dt>
-            <dd title={git.branch}>
-              <span className={git.clean ? 'ok' : 'warn'}>{git.clean ? '변경 없음' : '변경 있음'}</span> ·{' '}
-              {git.branch}
-            </dd>
-            <dt>변경</dt>
-            <dd>
-              파일 {git.changedFiles.length}개 <span className="add">+{git.additions}</span>{' '}
-              <span className="del">−{git.deletions}</span>
-            </dd>
-            <dt>최근 커밋</dt>
-            <dd title={last?.subject}>{last ? `${relTime(last.date, now)} · ${last.subject}` : '커밋 없음'}</dd>
+            <div>
+              {BRANCH_ICON}
+              <span className="mono clip branch" title={`브랜치: ${git.branch}`}>
+                {git.branch}
+              </span>
+              <span className="end" title="커밋되지 않은 변경">
+                {git.clean ? (
+                  '변경 없음'
+                ) : (
+                  <>
+                    파일 {git.changedFiles.length}개 <span className="add">+{git.additions}</span>{' '}
+                    <span className="del">−{git.deletions}</span>
+                  </>
+                )}
+              </span>
+            </div>
+            <div>
+              {COMMIT_ICON}
+              <span className="clip" title={last?.subject}>
+                {last ? last.subject : <span className="dim">커밋 없음</span>}
+              </span>
+              {last && (
+                <span className="end" title="마지막 커밋">
+                  {relTime(last.date, now)}
+                </span>
+              )}
+            </div>
           </>
         ) : (
-          <>
-            <dt>Git</dt>
-            <dd className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</dd>
-          </>
+          <div className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</div>
         )}
-        <dt>tmux</dt>
-        <dd>
+        <div>
           {!tmux.configured ? (
             <span className="dim">세션 미등록</span>
           ) : (
             <>
-              <span className={tmux.exists ? 'ok' : 'err'}>{tmux.exists ? '실행 중' : '세션 없음'}</span> ·{' '}
-              {p.tmuxSession}
+              {SESSION_ICON}
+              <span className="mono clip session" title={`tmux 세션: ${p.tmuxSession}`}>
+                {p.tmuxSession}
+              </span>
+              {tmux.exists ? (
+                <span className="end" title="마지막 터미널 활동">
+                  {relTime(tmux.lastOutputChangeAt ?? tmux.lastActivityAt, now)}
+                </span>
+              ) : (
+                <span className="end err">세션 없음</span>
+              )}
             </>
           )}
-        </dd>
-        {tmux.configured && (
-          <>
-            <dt>마지막 활동</dt>
-            <dd>{relTime(tmux.lastOutputChangeAt ?? tmux.lastActivityAt, now)}</dd>
-          </>
-        )}
-      </dl>
+        </div>
+      </div>
+      <div className="card-path" title={p.repoPath}>
+        {p.repoPath}
+      </div>
     </a>
   );
 }

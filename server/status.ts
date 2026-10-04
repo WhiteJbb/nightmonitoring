@@ -15,7 +15,13 @@ export interface StatusInput {
 const minutesSince = (iso: string | null, now: number): number =>
   iso ? Math.max(0, (now - Date.parse(iso)) / 60_000) : Infinity;
 
-const fmt = (min: number) => (Number.isFinite(min) ? `${Math.floor(min)}분 동안` : '모니터링 시작 이후');
+// 829분 같은 표기 대신 "13시간 49분" 으로 읽히게 한다.
+function fmt(min: number): string {
+  if (!Number.isFinite(min)) return '모니터링 시작 이후';
+  const m = Math.floor(min);
+  if (m < 60) return `${m}분 동안`;
+  return m % 60 ? `${Math.floor(m / 60)}시간 ${m % 60}분 동안` : `${Math.floor(m / 60)}시간 동안`;
+}
 
 function runFailure(label: string, r: RunResult | null): string | null {
   if (!r || r.running || r.canceled) return null;
