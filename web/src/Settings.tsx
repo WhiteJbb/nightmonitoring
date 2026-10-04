@@ -35,6 +35,8 @@ interface DraftProject {
   testCommand: string | null;
   buildCommand: string | null;
   repoPathLocked: boolean;
+  allowInput: boolean;
+  tmuxSessionLocked: boolean;
 }
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
@@ -101,6 +103,8 @@ const BLANK_PROJECT: DraftProject = {
   testCommand: null,
   buildCommand: null,
   repoPathLocked: false,
+  allowInput: false,
+  tmuxSessionLocked: false,
 };
 
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
@@ -310,13 +314,20 @@ export function Settings() {
                 onChange={(e) => setProject(i, { repoPath: e.target.value })}
               />
             </Field>
-            <Field label="tmux 세션" hint="비워 두면 세션을 감시하지 않습니다">
+            <Field
+              label="tmux 세션"
+              hint={
+                p.tmuxSessionLocked
+                  ? '입력이 허용된 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다'
+                  : '비워 두면 세션을 감시하지 않습니다'
+              }
+            >
               <input
                 type="text"
                 className="mono"
                 spellCheck={false}
                 value={p.tmuxSession}
-                disabled={ro}
+                disabled={ro || p.tmuxSessionLocked}
                 onChange={(e) => setProject(i, { tmuxSession: e.target.value })}
               />
             </Field>
@@ -336,6 +347,10 @@ export function Settings() {
             <dd className="wrap">{p.testCommand ?? <span className="dim">등록 안 됨</span>}</dd>
             <dt>빌드 명령</dt>
             <dd className="wrap">{p.buildCommand ?? <span className="dim">등록 안 됨</span>}</dd>
+            <dt>터미널 입력</dt>
+            <dd className="wrap">
+              {p.allowInput ? '허용됨' : <span className="dim">꺼짐 (config 파일에서 allowInput: true 로 켭니다)</span>}
+            </dd>
           </dl>
           {!ro && (
             <button type="button" className="danger" onClick={() => removeProject(i)}>

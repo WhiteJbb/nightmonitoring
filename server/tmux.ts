@@ -94,3 +94,21 @@ export async function capturePane(pane: Pick<PaneMeta, 'id' | 'height'>): Promis
   const r = await run('tmux', ['-u', 'capture-pane', '-p', '-e', '-J', '-t', pane.id, '-S', String(start)]);
   return r.code === 0 ? cleanOutput(r.stdout) : [];
 }
+
+/** 지금 이 순간의 pane 출력 (폴링 주기를 기다리지 않는 실시간 보기용). */
+export async function capturePaneNow(id: string): Promise<string[]> {
+  const h = await run('tmux', ['display-message', '-p', '-t', id, '#{pane_height}']);
+  return capturePane({ id, height: Number(h.stdout.trim()) || 0 });
+}
+
+/** pane 에 글자를 그대로 입력한다. -l 로 키 이름 해석을 끄고, -- 로 옵션 해석을 막는다. 실패하면 오류 메시지. */
+export async function sendText(id: string, text: string): Promise<string | null> {
+  const r = await run('tmux', ['send-keys', '-t', id, '-l', '--', text]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
+}
+
+/** pane 에 특수 키 하나를 보낸다. key 는 호출부가 허용 목록으로 검증한 값이어야 한다. */
+export async function sendKey(id: string, key: string): Promise<string | null> {
+  const r = await run('tmux', ['send-keys', '-t', id, key]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
+}

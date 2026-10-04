@@ -47,8 +47,8 @@ describe('readConfigView', () => {
     expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, reportsDir: '/base/reports' } });
     expect(v.settings.thresholds).toEqual({ idleMinutes: 10, stalledMinutes: 30, noCommitMinutes: 30 });
     expect(v.projects).toEqual([
-      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true },
-      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false },
+      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true, allowInput: false, tmuxSessionLocked: false },
+      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false, allowInput: false, tmuxSessionLocked: false },
     ]);
   });
 
@@ -153,6 +153,25 @@ describe('applyConfigUpdate', () => {
     expect(u.version).toBe('none');
     await writeFile(file, '{}');
     expect(() => applyConfigUpdate(file, '/base', u)).toThrow(ConfigConflict);
+  });
+
+  it('keeps allowInput file-only and locks the session of an input-enabled project', async () => {
+    const file = path.join(dir, 'input.json');
+    await writeFile(file, JSON.stringify({ projects: [{ name: 'Agent', repoPath: '/r/a', tmuxSession: 'agent', allowInput: true }, { name: 'Plain', repoPath: '/r/p', tmuxSession: 'plain' }] }));
+    const v = readConfigView(file, '/base');
+    expect(v.projects.map((p) => [p.allowInput, p.tmuxSessionLocked])).toEqual([[true, true], [false, false]]);
+
+    const retarget = toUpdate(v);
+    retarget.projects[0]!.tmuxSession = 'plain';
+    expect(issuesOf(() => applyConfigUpdate(file, '/base', retarget))[0]).toContain('allowInput');
+
+    // 요청으로는 allowInput 을 켤 수 없고, 기존 값은 이름을 바꿔도 유지된다
+    const u = toUpdate(v) as unknown as { version: string; settings: unknown; projects: Record<string, unknown>[] };
+    u.projects[0]!.name = 'Agent 2';
+    u.projects[1]!.allowInput = true;
+    u.projects.push({ id: null, name: 'New', repoPath: '/r/n', tmuxSession: 'new', allowInput: true });
+    applyConfigUpdate(file, '/base', u);
+    expect(loadConfig(file, '/base').config.projects.map((p) => p.allowInput)).toEqual([true, false, false]);
   });
 
   it('the same path written differently is not a move', async () => {

@@ -12,6 +12,8 @@ export interface ProjectConfig {
   testCommand: string | null;
   buildCommand: string | null;
   logFile: string | null;
+  /** UI 에서 이 프로젝트의 tmux 세션으로 키 입력을 보낼 수 있는지 (파일에서만 설정) */
+  allowInput: boolean;
 }
 
 export interface Thresholds {
@@ -161,6 +163,7 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
       if (tmuxSession && !SESSION_RE.test(tmuxSession)) {
         issues.push(`${where}tmuxSession: 공백, ':', '.' 을 포함하거나 '-', '$', '=', '@', '%' 로 시작할 수 없습니다`);
       }
+      if (p.allowInput !== undefined && typeof p.allowInput !== 'boolean') issues.push(`${where}allowInput: true 또는 false 여야 합니다`);
       if (!name || !repoPath) return;
       let id = slugify(name);
       for (let n = 2; ids.has(id); n++) id = `${slugify(name)}-${n}`;
@@ -175,6 +178,7 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
         testCommand: optStr(p, 'testCommand', where),
         buildCommand: optStr(p, 'buildCommand', where),
         logFile: logFile ? expandPath(logFile, repo) : null,
+        allowInput: p.allowInput === true,
       });
     });
   }

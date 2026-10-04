@@ -159,6 +159,7 @@ export function demoConfig(base: Config): Config {
       testCommand: 'npm test',
       buildCommand: 'npm run build',
       logFile: null,
+      allowInput: false,
     })),
   };
 }
