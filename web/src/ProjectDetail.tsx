@@ -71,6 +71,17 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
   );
 }
 
+/**
+ * 줄바꿈 보기용 정리. 넓은 화면 폭에 맞춰 그려진 출력을 좁은 화면에서 접으면
+ * 가로줄 하나가 여러 줄로 감기고, 오른쪽 정렬용 공백이 빈 줄처럼 보인다.
+ * 가로줄은 짧게 자르고 긴 공백은 줄인다. (색 시퀀스는 건드리지 않는다)
+ */
+export function compactForWrap(text: string): string {
+  return text.replace(/([─━═_-])\1{23,}/g, (run) => run.slice(0, 24)).replace(/ {8,}/g, '  ');
+}
+
+const narrowScreen = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+
 // 터미널 탭이 한 번에 가져오는 줄 수와, 더 보기로 늘릴 수 있는 한도 (서버 한도와 같다)
 const LIVE_LINES = 500;
 const MAX_LIVE_LINES = 5000;
@@ -229,9 +240,12 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   // 위로 올려 읽는 동안에는 갱신을 멈춘다 (새 출력에 화면이 밀리지 않게)
   const [scrolledUp, setScrolledUp] = useState(false);
   const prevHeight = useRef(0);
+  // 좁은 화면에서는 긴 줄이 오른쪽으로 잘리므로 기본으로 접어 보여 준다
+  const [wrap, setWrap] = useState(narrowScreen);
+  const [showInfo, setShowInfo] = useState(false);
   const isLive = live !== null && live.pane === pane?.id;
   const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
-  const parsed = useMemo(() => parseAnsi(text.split('\n')), [text]);
+  const parsed = useMemo(() => parseAnsi((wrap ? compactForWrap(text) : text).split('\n')), [text, wrap]);
 
   // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
   useLayoutEffect(() => {
@@ -331,6 +345,8 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
           <p className="mono wrap">{t.waitingPrompt}</p>
         </div>
       )}
+      {/* 좁은 화면에서는 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게 */}
+      <div className={showInfo ? 'term-info open' : 'term-info'}>
       {t.attachCommand && (
         <div className="cmdline">
           <code>{t.attachCommand}</code>
@@ -357,6 +373,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
           <span className="dim"> ({dateTime(t.lastOutputChangeAt ?? t.lastActivityAt)})</span>
         </dd>
       </dl>
+      </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
       {pane && (
         <div className="term-bar">
@@ -379,6 +396,12 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
               ))}
             </div>
           )}
+          <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
+            세션 정보
+          </button>
+          <button type="button" className="more-rows" aria-pressed={wrap} title="긴 줄을 화면 폭에 맞춰 접습니다" onClick={() => setWrap(!wrap)}>
+            줄바꿈
+          </button>
           {isLive && lines < MAX_LIVE_LINES && live.lines.length >= lines && (
             <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
               이전 출력 더 보기
@@ -407,7 +430,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       )}
       <pre
         ref={preRef}
-        className="terminal"
+        className={wrap ? 'terminal wrap-lines' : 'terminal'}
         tabIndex={0}
         aria-label="최근 터미널 출력"
         onScroll={(e) => {
