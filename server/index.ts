@@ -7,6 +7,7 @@ import { ConfigError, loadConfig } from './config.ts';
 import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { Monitor, realCollector } from './monitor.ts';
 import { Runner } from './runner.ts';
+import { loadState, saveState } from './state.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 process.chdir(ROOT);
@@ -34,6 +35,11 @@ async function main() {
   });
   if (demo) seedDemoRuns(runner);
 
+  // demo 는 저장하지 않는다. --fresh 는 저장된 세션을 무시하고 새로 시작한다.
+  const stateFile = demo ? null : path.join(ROOT, '.nightshift/state.json');
+  const saved = stateFile && !flag('--fresh') ? loadState(stateFile) : null;
+  if (saved) runner.restore(saved.runner);
+
   const monitor = new Monitor({
     config,
     collector: demo ? demoCollector() : realCollector(config),
@@ -42,8 +48,30 @@ async function main() {
     demo,
     configPath,
     configMissing: missing && !demo,
+    restore: saved?.monitor ?? null,
   });
   runner.onChange = () => monitor.publish();
+
+  if (stateFile) {
+    let last = '';
+    monitor.subscribe(() => {
+      const state = { version: 1 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate: saved?.lastAutoReportDate ?? null };
+      const json = JSON.stringify(state);
+      if (json === last) return;
+      last = json;
+      try {
+        saveState(stateFile, state);
+      } catch (e) {
+        console.error(`상태 저장 실패: ${(e as Error).message}`);
+      }
+    });
+  }
+  for (const sig of ['SIGINT', 'SIGTERM'] as const) {
+    process.on(sig, () => {
+      runner.cancelAll();
+      process.exit(0);
+    });
+  }
   await monitor.tick();
   monitor.start();
 
@@ -70,7 +98,7 @@ async function main() {
   server.listen(config.port, config.host, () => {
     console.log(`NightShift${demo ? ' (demo)' : ''}: http://${config.host}:${config.port}`);
     if (missing && !demo) console.log(`config 파일이 없습니다: ${configPath}\n  config/nightshift.example.json 을 복사해 프로젝트를 등록하세요.`);
-    else if (!demo) console.log(`프로젝트 ${config.projects.length}개 감시 중 (${config.refreshIntervalSec}초 주기)`);
+    else if (!demo) console.log(`프로젝트 ${config.projects.length}개 감시 중 (${config.refreshIntervalSec}초 주기)${saved ? `, ${saved.monitor.startedAt} 에 시작한 세션을 이어 갑니다 (새로 시작: --fresh)` : ''}`);
     if (!['127.0.0.1', 'localhost', '::1'].includes(config.host)) console.warn('경고: loopback 이 아닌 주소에 바인딩했습니다. 네트워크의 누구나 접근할 수 있습니다.');
   });
 }

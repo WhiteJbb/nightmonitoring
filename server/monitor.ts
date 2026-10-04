@@ -1,7 +1,9 @@
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
+import type { LogScan } from './logs.ts';
 import { findPrompt, scanLog, stripAnsi, stripVolatile } from './logs.ts';
+import type { MonitorState } from './state.ts';
 import { judge } from './status.ts';
 import { capturePane, listPanes, listSessions } from './tmux.ts';
 
@@ -12,7 +14,8 @@ export interface Collector {
   git(p: ProjectConfig): Promise<GitInfo>;
   since(p: ProjectConfig, baseline: GitBaseline, git: GitInfo): Promise<SinceBaseline>;
   tmux(projects: ProjectConfig[]): Promise<Map<string, RawTmux>>;
-  logErrors(p: ProjectConfig): Promise<string[]>;
+  /** offset 이후의 로그만 검사한다. null 이면 현재 크기만 잰다. */
+  logErrors(p: ProjectConfig, offset: number | null): Promise<LogScan>;
 }
 
 /** 복사해서 붙여 넣을 명령이므로 셸에 안전하게 인용한다. */
@@ -27,7 +30,7 @@ export function realCollector(config: Config): Collector {
   return {
     git: (p) => collectGit(p.repoPath),
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
-    logErrors: (p) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns) : Promise.resolve([])),
+    logErrors: (p, offset) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns, offset) : Promise.resolve({ errors: [], size: 0 })),
     async tmux(projects) {
       const [{ sessions, error }, panesBySession] = await Promise.all([listSessions(), listPanes()]);
       const out = new Map<string, RawTmux>();
@@ -62,6 +65,9 @@ interface Tracked {
   baseline: GitBaseline | null;
   fingerprint: string | null;
   gitChangedAt: string | null;
+  /** 이 위치 이후의 로그만 오류 검사 대상. null = 아직 관측 전 */
+  logOffset: number | null;
+  logSize: number;
   output: string | null;
   outputChangedAt: string | null;
 }
@@ -82,6 +88,8 @@ export interface MonitorOptions {
   configPath?: string;
   configMissing?: boolean;
   now?: () => number;
+  /** 이전 실행에서 저장한 상태. 있으면 모니터링 세션을 이어 간다. */
+  restore?: MonitorState | null;
 }
 
 export class Monitor {
@@ -97,8 +105,40 @@ export class Monitor {
   constructor(opts: MonitorOptions) {
     this.opts = opts;
     this.now = opts.now ?? Date.now;
-    this.startedAt = new Date(this.now()).toISOString();
+    this.startedAt = opts.restore?.startedAt ?? new Date(this.now()).toISOString();
+    for (const p of opts.config.projects) {
+      const saved = opts.restore?.tracked[p.id];
+      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logOffset: saved.logOffset });
+    }
     this.snapshot = this.build();
+  }
+
+  /** 디스크에 저장할 상태 (기준점, 변경 시각, 로그 위치). */
+  exportState(): MonitorState {
+    const tracked: MonitorState['tracked'] = {};
+    for (const p of this.opts.config.projects) {
+      const tr = this.tracked.get(p.id);
+      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logOffset: tr.logOffset };
+    }
+    return { startedAt: this.startedAt, tracked };
+  }
+
+  /** 새 모니터링 세션: 기준점을 버리고 지금부터 다시 센다. */
+  async reset(): Promise<void> {
+    this.tracked.clear();
+    this.startedAt = new Date(this.now()).toISOString();
+    await this.tick();
+  }
+
+  /** 지금까지의 로그 오류를 확인 처리한다. 이후에 추가되는 줄만 다시 검사한다. */
+  ackErrors(projectId: string): boolean {
+    const tr = this.tracked.get(projectId);
+    const c = this.collected.get(projectId);
+    if (!tr || !c) return false;
+    tr.logOffset = tr.logSize;
+    c.logErrors = [];
+    this.publish();
+    return true;
   }
 
   /** 모든 프로젝트를 한 번 수집하고 스냅샷을 갱신한다. 절대 throw 하지 않는다. */
@@ -132,10 +172,13 @@ export class Monitor {
   }
 
   private async collectOne(p: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {
-    const tr = this.tracked.get(p.id) ?? { baseline: null, fingerprint: null, gitChangedAt: null, output: null, outputChangedAt: null };
+    const tr = this.tracked.get(p.id) ?? newTracked();
     this.tracked.set(p.id, tr);
 
-    const [git, logErrors] = await Promise.all([this.opts.collector.git(p), this.opts.collector.logErrors(p)]);
+    const [git, log] = await Promise.all([this.opts.collector.git(p), this.opts.collector.logErrors(p, tr.logOffset)]);
+    // 최초 관측 이전의 로그 내용은 검사하지 않는다. 파일이 줄어들면(rotate) 처음부터 다시 본다.
+    if (tr.logOffset === null || log.size < tr.logOffset) tr.logOffset = tr.logOffset === null ? log.size : 0;
+    tr.logSize = log.size;
     let since: SinceBaseline | null = null;
     if (git.ok) {
       tr.baseline ??= { at: nowIso, branch: git.branch, head: git.head };
@@ -167,7 +210,7 @@ export class Monitor {
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
       tmux: { ...raw, lastOutputChangeAt, waitingPrompt },
-      logErrors,
+      logErrors: log.errors,
     };
   }
 
@@ -228,6 +271,8 @@ export class Monitor {
     this.timer = null;
   }
 }
+
+const newTracked = (): Tracked => ({ baseline: null, fingerprint: null, gitChangedAt: null, logOffset: null, logSize: 0, output: null, outputChangedAt: null });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,
