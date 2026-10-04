@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { NewSession, sessionNameFrom, StartSession } from './NewSession.tsx';
+import { commonParentDir, NewSession, sessionNameFrom, StartSession } from './NewSession.tsx';
 
 const fetchMock = vi.fn<typeof fetch>();
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -24,6 +24,25 @@ test('derives a tmux-safe session name', () => {
   expect(sessionNameFrom(' api.v2: worker ')).toBe('api-v2-worker');
   expect(sessionNameFrom('-$lead')).toBe('lead');
   expect(sessionNameFrom('한글 프로젝트')).toBe('한글-프로젝트');
+});
+
+test('picks the folder most projects live in as the default path', () => {
+  expect(commonParentDir(['/Users/me/repos/a', '/Users/me/repos/b/', '/Users/me/work/c'])).toBe('/Users/me/repos/');
+  expect(commonParentDir(['/Users/me/repos/a'])).toBe('/Users/me/repos/');
+  expect(commonParentDir([])).toBe('');
+  expect(commonParentDir(['/top'])).toBe('');
+});
+
+test('prefills the repo path with the default folder', async () => {
+  render(<NewSession defaultDir="/Users/me/repos/" />);
+  fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
+  expect(field('저장소 경로').value).toBe('/Users/me/repos/');
+  type('프로젝트 이름', 'App');
+  type('저장소 경로', '/Users/me/repos/app');
+  fetchMock.mockResolvedValueOnce(json(200, { id: 'app' }));
+  fireEvent.click(screen.getByRole('button', { name: '만들기' }));
+  await waitFor(() => expect(window.location.hash).toBe('#/project/app'));
+  expect(lastBody().repoPath).toBe('/Users/me/repos/app');
 });
 
 test('creates a session, following the project name until the session name is edited', async () => {
