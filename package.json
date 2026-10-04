@@ -8,7 +8,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "dev": "node --watch server/index.ts --dev",
+    "dev": "node --watch-path=server --watch-path=shared server/index.ts --dev",
     "demo": "node server/index.ts --dev --demo",
     "start": "node server/index.ts",
     "build": "tsc --noEmit && vite build",
