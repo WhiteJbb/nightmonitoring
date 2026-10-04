@@ -36,7 +36,6 @@ interface DraftProject {
   buildCommand: string | null;
   repoPathLocked: boolean;
   allowInput: boolean;
-  tmuxSessionLocked: boolean;
 }
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
@@ -66,6 +65,9 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
 const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 const lines = (s: string) => s.split('\n').filter((l) => l.trim() !== '');
 
+const ALLOW_INPUT_CONFIRM =
+  '이 프로젝트의 tmux 세션에 브라우저에서 키 입력을 보낼 수 있게 됩니다.\n대시보드에 접속할 수 있는 사람은 누구나 이 Mac 계정으로 명령을 실행할 수 있습니다.\n\n켤까요?';
+
 function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
   return {
     settings: {
@@ -90,6 +92,7 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       repoPath: p.repoPath.trim(),
       tmuxSession: p.tmuxSession.trim() || null,
       logFile: p.logFile.trim() || null,
+      allowInput: p.allowInput,
     })),
   };
 }
@@ -104,7 +107,6 @@ const BLANK_PROJECT: DraftProject = {
   buildCommand: null,
   repoPathLocked: false,
   allowInput: false,
-  tmuxSessionLocked: false,
 };
 
 function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
@@ -214,6 +216,8 @@ export function Settings() {
         <dd>{view.fileOnly.port}</dd>
         <dt>reportsDir</dt>
         <dd className="wrap">{view.fileOnly.reportsDir}</dd>
+        <dt>allowedHosts</dt>
+        <dd className="wrap">{view.fileOnly.allowedHosts.length ? view.fileOnly.allowedHosts.join(', ') : <span className="dim">없음</span>}</dd>
       </dl>
       <p className="hint">이 값들은 config 파일을 직접 고친 뒤 서버를 다시 시작해야 바뀝니다.</p>
 
@@ -316,18 +320,14 @@ export function Settings() {
             </Field>
             <Field
               label="tmux 세션"
-              hint={
-                p.tmuxSessionLocked
-                  ? '입력이 허용된 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다'
-                  : '비워 두면 세션을 감시하지 않습니다'
-              }
+              hint="비워 두면 세션을 감시하지 않습니다"
             >
               <input
                 type="text"
                 className="mono"
                 spellCheck={false}
                 value={p.tmuxSession}
-                disabled={ro || p.tmuxSessionLocked}
+                disabled={ro}
                 onChange={(e) => setProject(i, { tmuxSession: e.target.value })}
               />
             </Field>
@@ -347,11 +347,25 @@ export function Settings() {
             <dd className="wrap">{p.testCommand ?? <span className="dim">등록 안 됨</span>}</dd>
             <dt>빌드 명령</dt>
             <dd className="wrap">{p.buildCommand ?? <span className="dim">등록 안 됨</span>}</dd>
-            <dt>터미널 입력</dt>
-            <dd className="wrap">
-              {p.allowInput ? '허용됨' : <span className="dim">꺼짐 (config 파일에서 allowInput: true 로 켭니다)</span>}
-            </dd>
           </dl>
+          <div className="field">
+            <label className="check">
+              <input
+                type="checkbox"
+                checked={p.allowInput}
+                disabled={ro}
+                onChange={(e) => {
+                  // 켜는 것은 "브라우저에서 이 계정으로 명령 실행"을 여는 일이라 한 번 확인한다.
+                  if (e.target.checked && !window.confirm(ALLOW_INPUT_CONFIRM)) return;
+                  setProject(i, { allowInput: e.target.checked });
+                }}
+              />
+              터미널 입력 허용
+            </label>
+            <p className="hint">
+              켜면 터미널 탭에서 이 프로젝트의 tmux 세션으로 키 입력을 보낼 수 있습니다. 보낸 내용은 서버에 기록됩니다.
+            </p>
+          </div>
           {!ro && (
             <button type="button" className="danger" onClick={() => removeProject(i)}>
               삭제

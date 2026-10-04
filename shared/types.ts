@@ -134,7 +134,7 @@ export interface ProjectSnapshot {
   testCommand: string | null;
   buildCommand: string | null;
   logFile: string | null;
-  /** config 파일에서 allowInput: true 로 켠 프로젝트만 UI 에서 tmux 로 입력을 보낼 수 있다 */
+  /** allowInput 을 켠 프로젝트만 UI 에서 tmux 로 입력을 보낼 수 있다 */
   allowInput: boolean;
   git: GitInfo;
   since: SinceBaseline | null;
@@ -216,6 +216,8 @@ export interface EditableProject {
   repoPath: string;
   tmuxSession: string | null;
   logFile: string | null;
+  /** 이 프로젝트의 tmux 세션으로 브라우저에서 키 입력을 보낼 수 있게 할지 */
+  allowInput: boolean;
 }
 
 export interface ConfigProjectView extends EditableProject {
@@ -225,10 +227,6 @@ export interface ConfigProjectView extends EditableProject {
   buildCommand: string | null;
   /** 명령이 등록된 프로젝트는 그 명령이 실행될 경로(repoPath)도 UI 에서 바꿀 수 없다 */
   repoPathLocked: boolean;
-  /** 읽기 전용 표시용. 파일에서만 켤 수 있다 */
-  allowInput: boolean;
-  /** 입력이 허용된 프로젝트는 입력이 전달될 tmux 세션도 UI 에서 바꿀 수 없다 */
-  tmuxSessionLocked: boolean;
 }
 
 export interface ConfigView {
@@ -242,7 +240,7 @@ export interface ConfigView {
   settings: EditableSettings;
   projects: ConfigProjectView[];
   /** 파일에서만 바꿀 수 있는 값 (읽기 전용 표시용) */
-  fileOnly: { host: string; port: number; reportsDir: string };
+  fileOnly: { host: string; port: number; reportsDir: string; allowedHosts: string[] };
 }
 
 /** PUT /api/config 본문. projects 는 전체 목록이며, 빠진 기존 프로젝트는 삭제된다. */
@@ -267,7 +265,7 @@ export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Le
  * POST /api/projects/:id/input — pane 에 키 입력을 보낸다. text 와 key 중 정확히 하나.
  * - text: 글자 그대로 입력한다 (최대 4000자). enter 가 true 면 이어서 Enter 를 누른다.
  * - key: 특수 키 하나 (BTab = Shift+Tab, C-c = Ctrl+C).
- * 응답: 200 {ok:true} / 400 {error} / 403 {error} (allowInput 꺼짐, demo, loopback 아님) / 404 {error} (프로젝트·pane 없음)
+ * 응답: 200 {ok:true} / 400 {error} / 403 {error} (allowInput 꺼짐, demo, 서버가 loopback·Tailscale 이 아닌 주소에 열림) / 404 {error} (프로젝트·pane 없음)
  */
 export interface InputRequest {
   /** 이 프로젝트 세션에 속한 pane id (TmuxPane.id) */

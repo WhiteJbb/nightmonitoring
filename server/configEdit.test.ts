@@ -24,7 +24,7 @@ const BASE = {
     { name: 'Lib', repoPath: '/repo/lib' },
   ],
 };
-const toUpdate = (v: ConfigView): ConfigUpdate => ({ version: v.version, settings: structuredClone(v.settings), projects: v.projects.map(({ id, name, repoPath, tmuxSession, logFile }) => ({ id, name, repoPath, tmuxSession, logFile })) });
+const toUpdate = (v: ConfigView): ConfigUpdate => ({ version: v.version, settings: structuredClone(v.settings), projects: v.projects.map(({ id, name, repoPath, tmuxSession, logFile, allowInput }) => ({ id, name, repoPath, tmuxSession, logFile, allowInput })) });
 const issuesOf = (fn: () => void): string[] => {
   try {
     fn();
@@ -44,11 +44,11 @@ async function jsonFile(name = 'c.json') {
 describe('readConfigView', () => {
   it('shows raw path strings, effective settings and command locks', async () => {
     const v = readConfigView(await jsonFile(), '/base');
-    expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, reportsDir: '/base/reports' } });
+    expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, reportsDir: '/base/reports', allowedHosts: [] } });
     expect(v.settings.thresholds).toEqual({ idleMinutes: 10, stalledMinutes: 30, noCommitMinutes: 30 });
     expect(v.projects).toEqual([
-      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true, allowInput: false, tmuxSessionLocked: false },
-      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false, allowInput: false, tmuxSessionLocked: false },
+      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true, allowInput: false },
+      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false, allowInput: false },
     ]);
   });
 
@@ -70,7 +70,7 @@ describe('applyConfigUpdate', () => {
     u.projects[0]!.name = 'App Renamed';
     u.projects[0]!.tmuxSession = null;
     u.projects[1]!.repoPath = '/repo/lib2';
-    u.projects.push({ id: null, name: 'New', repoPath: '~/code/new', tmuxSession: 'new', logFile: null });
+    u.projects.push({ id: null, name: 'New', repoPath: '~/code/new', tmuxSession: 'new', logFile: null, allowInput: false });
     applyConfigUpdate(file, '/base', u);
 
     const raw = JSON.parse(await readFile(file, 'utf8'));
@@ -119,7 +119,7 @@ describe('applyConfigUpdate', () => {
     expect(issuesOf(() => applyConfigUpdate(file, '/base', bad))).toHaveLength(5);
 
     const ghost = fresh();
-    ghost.projects.push({ ...ghost.projects[0]!, name: 'dup' }, { id: 'nope', name: 'x', repoPath: '/x', tmuxSession: null, logFile: null });
+    ghost.projects.push({ ...ghost.projects[0]!, name: 'dup' }, { id: 'nope', name: 'x', repoPath: '/x', tmuxSession: null, logFile: null, allowInput: false });
     expect(issuesOf(() => applyConfigUpdate(file, '/base', ghost))).toHaveLength(2);
 
     expect(issuesOf(() => applyConfigUpdate(file, '/base', { version: versionOf(file), settings: 'x' }))).toHaveLength(1);
@@ -155,23 +155,35 @@ describe('applyConfigUpdate', () => {
     expect(() => applyConfigUpdate(file, '/base', u)).toThrow(ConfigConflict);
   });
 
-  it('keeps allowInput file-only and locks the session of an input-enabled project', async () => {
+  it('turns terminal input on and off from the UI, and keeps it across renames', async () => {
     const file = path.join(dir, 'input.json');
     await writeFile(file, JSON.stringify({ projects: [{ name: 'Agent', repoPath: '/r/a', tmuxSession: 'agent', allowInput: true }, { name: 'Plain', repoPath: '/r/p', tmuxSession: 'plain' }] }));
     const v = readConfigView(file, '/base');
-    expect(v.projects.map((p) => [p.allowInput, p.tmuxSessionLocked])).toEqual([[true, true], [false, false]]);
+    expect(v.projects.map((p) => p.allowInput)).toEqual([true, false]);
 
-    const retarget = toUpdate(v);
-    retarget.projects[0]!.tmuxSession = 'plain';
-    expect(issuesOf(() => applyConfigUpdate(file, '/base', retarget))[0]).toContain('allowInput');
-
-    // 요청으로는 allowInput 을 켤 수 없고, 기존 값은 이름을 바꿔도 유지된다
-    const u = toUpdate(v) as unknown as { version: string; settings: unknown; projects: Record<string, unknown>[] };
+    const u = toUpdate(v);
     u.projects[0]!.name = 'Agent 2';
+    u.projects[0]!.tmuxSession = 'agent-2';
     u.projects[1]!.allowInput = true;
-    u.projects.push({ id: null, name: 'New', repoPath: '/r/n', tmuxSession: 'new', allowInput: true });
+    u.projects.push({ id: null, name: 'New', repoPath: '/r/n', tmuxSession: 'new', logFile: null, allowInput: true });
     applyConfigUpdate(file, '/base', u);
-    expect(loadConfig(file, '/base').config.projects.map((p) => p.allowInput)).toEqual([true, false, false]);
+    expect(loadConfig(file, '/base').config.projects.map((p) => [p.tmuxSession, p.allowInput])).toEqual([['agent-2', true], ['plain', true], ['new', true]]);
+
+    const off = toUpdate(readConfigView(file, '/base'));
+    off.projects[0]!.allowInput = false;
+    applyConfigUpdate(file, '/base', off);
+    const raw = JSON.parse(await readFile(file, 'utf8'));
+    expect(raw.projects[0]).not.toHaveProperty('allowInput');
+    expect(raw.projects[1].allowInput).toBe(true);
+
+    // 본문에 allowInput 이 없으면 파일의 값을 유지하고, boolean 이 아니면 거부한다
+    const partial = toUpdate(readConfigView(file, '/base')) as unknown as { version: string; settings: unknown; projects: Record<string, unknown>[] };
+    delete partial.projects[1]!.allowInput;
+    applyConfigUpdate(file, '/base', partial);
+    expect(loadConfig(file, '/base').config.projects[1]!.allowInput).toBe(true);
+    const bad = toUpdate(readConfigView(file, '/base')) as unknown as { projects: Record<string, unknown>[] };
+    bad.projects[0]!.allowInput = 'yes';
+    expect(issuesOf(() => applyConfigUpdate(file, '/base', bad))[0]).toContain('allowInput');
   });
 
   it('the same path written differently is not a move', async () => {
@@ -207,7 +219,7 @@ describe('applyConfigUpdate', () => {
     for (const name of ['new/created.yml', 'new/created.json']) {
       const file = path.join(dir, name);
       const u = toUpdate(readConfigView(file, '/base'));
-      u.projects.push({ id: null, name: 'First', repoPath: '/repo/first', tmuxSession: null, logFile: null });
+      u.projects.push({ id: null, name: 'First', repoPath: '/repo/first', tmuxSession: null, logFile: null, allowInput: false });
       applyConfigUpdate(file, '/base', u);
       expect(loadConfig(file, '/base').config.projects.map((p) => p.id)).toEqual(['first']);
     }

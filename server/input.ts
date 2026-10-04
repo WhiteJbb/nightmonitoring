@@ -1,4 +1,4 @@
-// UI → tmux 키 입력. config 파일에서 allowInput 을 켠 프로젝트에만, loopback 바인딩일 때만 허용된다 (app.ts).
+// UI → tmux 키 입력. allowInput 을 켠 프로젝트에만, loopback·Tailscale 바인딩일 때만 허용된다 (app.ts).
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import type { InputKey } from '../shared/types.ts';

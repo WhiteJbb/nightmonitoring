@@ -11,23 +11,37 @@ import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-const isLoopback = (host: string) => LOOPBACK.has(host.replace(/:\d+$/, ''));
-
-/**
- * 로컬 전용 방어선.
- * - Host 헤더가 loopback 이 아니면 거부 (DNS rebinding 방어). host 를 loopback 밖으로 바꾼 경우는 사용자가 감수한 것으로 본다.
- * - 변경 요청은 Origin 이 자기 자신일 때만 허용 (다른 웹사이트가 test/build 실행을 유발하지 못하게).
- */
+const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
+const isLoopback = (host: string) => LOOPBACK.has(hostname(host));
 const isLoopbackBind = (host: string) => isLoopback(host) || host === '::1';
 
-export function guard(config: Pick<Config, 'host'>) {
+/** Tailscale 이 기기에 주는 주소 (100.64.0.0/10, fd7a:115c:a1e0::/48). tailnet 안에서만 닿는다. */
+export function isTailscaleAddress(host: string): boolean {
+  const m = /^100\.(\d+)\.\d+\.\d+$/.exec(host);
+  if (m) return Number(m[1]) >= 64 && Number(m[1]) <= 127;
+  return host.toLowerCase().startsWith('fd7a:115c:a1e0:');
+}
+
+/** 터미널 입력을 받아도 되는 바인딩인지: loopback 이거나 Tailscale 주소. 0.0.0.0 이나 LAN 주소는 안 된다. */
+export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailscaleAddress(host);
+
+/**
+ * 방어선.
+ * - loopback 바인딩이면 Host 헤더가 loopback 이거나 allowedHosts 에 있어야 한다 (DNS rebinding 방어).
+ *   allowedHosts 는 `tailscale serve` 같은 프록시를 거쳐 들어오는 이름을 허용하기 위한 것.
+ *   host 를 loopback 밖으로 바꾼 경우는 사용자가 감수한 것으로 본다.
+ * - 변경 요청은 Origin 이 자기 자신(또는 allowedHosts)일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
+ */
+export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
   const checkHost = isLoopbackBind(config.host);
+  const allowed = new Set(config.allowedHosts ?? []);
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
-    if (checkHost && !isLoopback(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
+    if (checkHost && !isLoopback(host) && !allowed.has(hostname(host))) return void res.status(403).json({ error: '허용되지 않은 Host' });
     const origin = req.headers.origin;
     if (req.method !== 'GET' && req.method !== 'HEAD' && origin !== undefined) {
-      if (URL.parse(origin)?.host !== host) return void res.status(403).json({ error: '허용되지 않은 Origin' });
+      const o = URL.parse(origin);
+      if (!o || (o.host !== host && !allowed.has(o.hostname.toLowerCase()))) return void res.status(403).json({ error: '허용되지 않은 Origin' });
     }
     next();
   };
@@ -106,15 +120,15 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
   });
 
   // 웹에서 터미널로 키 입력을 보내는 유일한 경로. 임의 명령 실행과 같으므로 여러 겹으로 막는다:
-  // config 파일에서 allowInput 을 켠 프로젝트만, loopback 바인딩일 때만, 그 프로젝트 세션의 pane 으로만.
+  // allowInput 을 켠 프로젝트만, loopback·Tailscale 바인딩일 때만, 그 프로젝트 세션의 pane 으로만.
   api.post('/projects/:id/input', express.json({ limit: '32kb' }), async (req, res) => {
     const input = parseInput(req.body);
     if (typeof input === 'string') return void res.status(400).json({ error: input });
     const { project, pane } = findPane(req.params.id, input.pane);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
     if (!terminal) return void res.status(403).json({ error: 'demo mode 에서는 입력을 보낼 수 없습니다' });
-    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 입력이 꺼져 있습니다. config 파일에서 allowInput: true 로 켜세요.' });
-    if (!isLoopbackBind(config.host)) return void res.status(403).json({ error: '서버가 loopback 이 아닌 주소에 열려 있어 입력을 보낼 수 없습니다' });
+    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 터미널 입력이 꺼져 있습니다. 설정 화면에서 켜세요.' });
+    if (!isPrivateBind(config.host)) return void res.status(403).json({ error: '서버가 loopback·Tailscale 이 아닌 주소에 열려 있어 입력을 보낼 수 없습니다' });
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     terminal.log(project.id, input);
     const error = await terminal.send(input);

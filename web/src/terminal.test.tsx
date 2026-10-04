@@ -211,8 +211,8 @@ test('input bar is hidden and the config hint is shown when allowInput is false'
   await renderTab(project(ONE, false));
   expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.queryByRole('button', { name: '보내기' })).toBeNull();
-  expect(screen.getByText(/입력을 보내려면 config 파일에서/).textContent).toBe(
-    '입력을 보내려면 config 파일에서 이 프로젝트에 allowInput: true 를 적으세요. (설정 화면에서는 켤 수 없습니다)',
+  expect(screen.getByText(/입력을 보내려면/).textContent).toBe(
+    '입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.',
   );
 });
 

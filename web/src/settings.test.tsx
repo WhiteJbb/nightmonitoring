@@ -34,7 +34,6 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
         buildCommand: null,
         repoPathLocked: true,
         allowInput: false,
-        tmuxSessionLocked: false,
       },
       {
         id: 'web',
@@ -46,10 +45,9 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
         buildCommand: null,
         repoPathLocked: false,
         allowInput: false,
-        tmuxSessionLocked: false,
       },
     ],
-    fileOnly: { host: '127.0.0.1', port: 4517, reportsDir: '/home/me/reports' },
+    fileOnly: { host: '127.0.0.1', port: 4517, reportsDir: '/home/me/reports', allowedHosts: [] },
     ...over,
   };
 }
@@ -134,24 +132,33 @@ test('locked repoPath is disabled, unlocked one is not', async () => {
   expect(input('저장소 경로', project('web-app')).disabled).toBe(false);
 });
 
-test('terminal input row is read-only text, and a locked tmux session is disabled', async () => {
+test('terminal input can be turned on after a confirm, and is sent in the PUT body', async () => {
   const v = view();
-  v.projects[0] = { ...v.projects[0]!, allowInput: true, tmuxSessionLocked: true };
+  v.projects[0] = { ...v.projects[0]!, allowInput: true };
   await renderLoaded(v);
-  const api = project('api-server');
-  expect(within(api).getByText('터미널 입력').nextElementSibling?.textContent).toBe('허용됨');
-  expect(input('tmux 세션', api).disabled).toBe(true);
-  expect(within(api).getByText('입력이 허용된 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다')).toBeTruthy();
+  const box = (name: string) => within(project(name)).getByLabelText<HTMLInputElement>('터미널 입력 허용');
+  expect(box('api-server').checked).toBe(true);
+  expect(box('web-app').checked).toBe(false);
+  // 입력이 허용된 프로젝트도 세션 이름을 바꿀 수 있다
+  expect(input('tmux 세션', project('api-server')).disabled).toBe(false);
 
-  const web = project('web-app');
-  expect(within(web).getByText('터미널 입력').nextElementSibling?.textContent).toBe('꺼짐 (config 파일에서 allowInput: true 로 켭니다)');
-  expect(input('tmux 세션', web).disabled).toBe(false);
-  expect(within(web).getByText('비워 두면 세션을 감시하지 않습니다')).toBeTruthy();
+  // 켜기를 거절하면 그대로
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  fireEvent.click(box('web-app'));
+  expect(box('web-app').checked).toBe(false);
+  expect(confirm.mock.calls[0]![0]).toContain('명령을 실행할 수 있습니다');
 
-  // allowInput 은 PUT 본문에 들어가지 않는다
-  change(input('갱신 주기(초)'), '10');
+  confirm.mockReturnValue(true);
+  fireEvent.click(box('web-app'));
+  expect(box('web-app').checked).toBe(true);
+  // 끄는 것은 확인 없이
+  fireEvent.click(box('api-server'));
+  expect(box('api-server').checked).toBe(false);
+  expect(confirm).toHaveBeenCalledTimes(2);
+
   const body = await save(json(200, v));
-  expect(body.projects[0]).toEqual({ id: 'api', name: 'api-server', repoPath: '~/code/api', tmuxSession: 'api', logFile: 'app.log' });
+  expect(body.projects.map((p) => p.allowInput)).toEqual([false, true]);
+  confirm.mockRestore();
 });
 
 test('saving sends the edited ConfigUpdate and shows the confirmation', async () => {
@@ -175,8 +182,8 @@ test('saving sends the edited ConfigUpdate and shows the confirmation', async ()
       autoReportTime: null,
     },
     projects: [
-      { id: 'api', name: 'api-server', repoPath: '~/code/api', tmuxSession: null, logFile: 'app.log' },
-      { id: 'web', name: 'web-app', repoPath: '~/code/web', tmuxSession: null, logFile: null },
+      { id: 'api', name: 'api-server', repoPath: '~/code/api', tmuxSession: null, logFile: 'app.log', allowInput: false },
+      { id: 'web', name: 'web-app', repoPath: '~/code/web', tmuxSession: null, logFile: null, allowInput: false },
     ],
   } satisfies ConfigUpdate);
 
@@ -205,8 +212,8 @@ test('adding and deleting projects changes the PUT body', async () => {
 
   const body = await save(json(200, view()));
   expect(body.projects).toEqual([
-    { id: 'web', name: 'web-app', repoPath: '~/code/web', tmuxSession: null, logFile: null },
-    { id: null, name: 'worker', repoPath: '~/code/worker', tmuxSession: null, logFile: 'logs/out.log' },
+    { id: 'web', name: 'web-app', repoPath: '~/code/web', tmuxSession: null, logFile: null, allowInput: false },
+    { id: null, name: 'worker', repoPath: '~/code/worker', tmuxSession: null, logFile: 'logs/out.log', allowInput: false },
   ]);
 });
 
