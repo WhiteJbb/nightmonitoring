@@ -4,6 +4,7 @@ import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
 import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
 import { Reports } from './Reports.tsx';
+import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
 
@@ -72,11 +73,14 @@ export function App() {
 
   const path = hash.replace(/^#/, '') || '/';
   const isReports = path === '/reports';
+  const isSettings = path === '/settings';
   const projectId = path.startsWith('/project/') ? safeDecode(path.slice('/project/'.length)) : null;
 
   let page;
   if (isReports) {
     page = <Reports />;
+  } else if (isSettings) {
+    page = <Settings />;
   } else if (!snapshot) {
     page = loadError ? (
       <div className="notice error" role="alert">
@@ -112,11 +116,14 @@ export function App() {
         </a>
         {snapshot?.demo && <span className="demo-badge">DEMO</span>}
         <nav aria-label="주 메뉴">
-          <a href="#/" aria-current={!isReports ? 'page' : undefined}>
+          <a href="#/" aria-current={!isReports && !isSettings ? 'page' : undefined}>
             대시보드
           </a>
           <a href="#/reports" aria-current={isReports ? 'page' : undefined}>
             보고서
+          </a>
+          <a href="#/settings" aria-current={isSettings ? 'page' : undefined}>
+            설정
           </a>
         </nav>
         <div className="topbar-status">
