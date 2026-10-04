@@ -12,7 +12,7 @@ export interface ProjectConfig {
   testCommand: string | null;
   buildCommand: string | null;
   logFile: string | null;
-  /** UI 에서 이 프로젝트의 tmux 세션으로 키 입력을 보낼 수 있는지 (파일에서만 설정) */
+  /** UI 에서 이 프로젝트의 tmux 세션으로 키 입력을 보낼 수 있는지 */
   allowInput: boolean;
 }
 
@@ -24,6 +24,11 @@ export interface Thresholds {
 
 export interface Config {
   host: string;
+  /**
+   * loopback 바인딩일 때 추가로 허용할 Host 헤더의 호스트 이름 (예: `tailscale serve` 로 노출한 "mac.tailnet.ts.net").
+   * 파일에서만 설정한다.
+   */
+  allowedHosts: string[];
   port: number;
   refreshIntervalSec: number;
   thresholds: Thresholds;
@@ -47,6 +52,7 @@ export interface Config {
 
 export const DEFAULTS = {
   host: '127.0.0.1',
+  allowedHosts: [] as string[],
   port: 4477,
   refreshIntervalSec: 5,
   thresholds: { idleMinutes: 15, stalledMinutes: 30, noCommitMinutes: 30 },
@@ -144,6 +150,13 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     return typeof v === 'boolean' ? v : fallback;
   };
 
+  let allowedHosts = DEFAULTS.allowedHosts;
+  if (raw.allowedHosts !== undefined) {
+    if (Array.isArray(raw.allowedHosts) && raw.allowedHosts.every((h) => typeof h === 'string' && /^[A-Za-z0-9.:[\]-]+$/.test(h))) {
+      allowedHosts = raw.allowedHosts.map((h: string) => h.toLowerCase());
+    } else issues.push('allowedHosts: 호스트 이름 문자열의 배열이어야 합니다 (포트·경로 없이)');
+  }
+
   const autoReportTime = optStr(raw, 'autoReportTime', '');
   if (autoReportTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(autoReportTime)) issues.push('autoReportTime: "HH:MM" 형식이어야 합니다 (예: "07:00")');
 
@@ -185,6 +198,7 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
 
   const config: Config = {
     host: optStr(raw, 'host', '') ?? DEFAULTS.host,
+    allowedHosts,
     port: num(raw, 'port', DEFAULTS.port, '', 1),
     refreshIntervalSec: num(raw, 'refreshIntervalSec', DEFAULTS.refreshIntervalSec, '', 1),
     thresholds,

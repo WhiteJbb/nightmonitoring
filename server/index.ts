@@ -2,7 +2,7 @@ import { existsSync, watchFile } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
-import { createApp } from './app.ts';
+import { createApp, isTailscaleAddress } from './app.ts';
 import { ConfigError, defaultConfigPath, loadConfig } from './config.ts';
 import { applyConfigUpdate, readConfigView, readOnlyView } from './configEdit.ts';
 import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
@@ -154,7 +154,9 @@ async function main() {
     if (missing && !demo) console.log(`config 파일이 없습니다: ${configPath}\n  config/nightshift.example.json 을 복사해 프로젝트를 등록하세요.`);
     else if (!demo) console.log(`프로젝트 ${config.projects.length}개 감시 중 (${config.refreshIntervalSec}초 주기)${saved ? `, ${saved.monitor.startedAt} 에 시작한 세션을 이어 갑니다 (새로 시작: --fresh)` : ''}`);
     if (config.projects.some((p) => p.allowInput)) console.log(`터미널 입력 허용: ${config.projects.filter((p) => p.allowInput).map((p) => p.name).join(', ')} (기록: .nightshift/input.log)`);
-    if (!['127.0.0.1', 'localhost', '::1'].includes(config.host)) console.warn('경고: loopback 이 아닌 주소에 바인딩했습니다. 네트워크의 누구나 접근할 수 있습니다.');
+    if (config.allowedHosts.length) console.log(`추가로 허용한 Host: ${config.allowedHosts.join(', ')}`);
+    if (isTailscaleAddress(config.host)) console.log('Tailscale 주소에 바인딩했습니다. tailnet 의 기기에서 접근할 수 있습니다.');
+    else if (!['127.0.0.1', 'localhost', '::1'].includes(config.host)) console.warn('경고: loopback 이 아닌 주소에 바인딩했습니다. 네트워크의 누구나 접근할 수 있고, 터미널 입력은 거부됩니다.');
   });
 }
 

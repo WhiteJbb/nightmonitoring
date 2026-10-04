@@ -10,6 +10,8 @@ describe('parseConfig', () => {
     expect(c.thresholds).toEqual(DEFAULTS.thresholds);
     expect(c.reportsDir).toBe('/base/reports');
     expect(c.projects).toEqual([]);
+    expect(c.allowedHosts).toEqual([]);
+    expect(parseConfig({ allowedHosts: ['Mac.Tailnet.ts.net'] }, '/base').allowedHosts).toEqual(['mac.tailnet.ts.net']);
     expect(c).toMatchObject({ ignoreSpinnerChanges: true, notifications: true, autoReportTime: null });
     expect(parseConfig({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] }, '/base')).toMatchObject({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] });
   });
@@ -46,6 +48,7 @@ describe('parseConfig', () => {
       promptPatterns: ['/(/'],
       notifications: 'yes',
       autoReportTime: '7am',
+      allowedHosts: ['https://mac.ts.net/'],
       projects: [{ name: 'a' }, { name: 'b', repoPath: '/b', tmuxSession: 'bad:name' }, { name: 'c', repoPath: '/c', tmuxSession: '-t' }, { name: 'd', repoPath: '/d', tmuxSession: '$1' }],
     };
     try {
@@ -53,7 +56,7 @@ describe('parseConfig', () => {
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).issues).toHaveLength(10);
+      expect((e as ConfigError).issues).toHaveLength(11);
     }
   });
 });

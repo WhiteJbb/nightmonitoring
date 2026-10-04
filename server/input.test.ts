@@ -3,7 +3,7 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApp } from './app.ts';
+import { createApp, guard, isPrivateBind, isTailscaleAddress } from './app.ts';
 import { parseConfig } from './config.ts';
 import { run } from './exec.ts';
 import type { ParsedInput } from './input.ts';
@@ -134,13 +134,47 @@ describe('terminal API', () => {
     expect(await res.json()).toEqual({ error: "can't find pane" });
   });
 
-  it('refuses input when not bound to loopback, and in demo mode', async () => {
-    const exposed = await start({ host: '0.0.0.0' });
-    expect((await exposed.post('open', { pane: '%1', text: 'x' })).status).toBe(403);
-    expect(exposed.terminal.send).not.toHaveBeenCalled();
+  it('refuses input when exposed beyond loopback/Tailscale, and in demo mode', async () => {
+    for (const host of ['0.0.0.0', '192.168.0.10']) {
+      const exposed = await start({ host });
+      expect((await exposed.post('open', { pane: '%1', text: 'x' })).status).toBe(403);
+      expect(exposed.terminal.send).not.toHaveBeenCalled();
+    }
+    // Tailscale 주소 바인딩은 tailnet 안에서만 닿으므로 허용
+    const tailnet = await start({ host: '100.101.102.103' });
+    expect((await tailnet.post('open', { pane: '%1', text: 'x' })).status).toBe(200);
 
     const demo = await start({ demo: true });
     expect((await demo.post('open', { pane: '%1', text: 'x' })).status).toBe(403);
     expect(await (await fetch(`${demo.base}/open/panes/%251`)).json()).toEqual({ lines: ['snapshot %1'] });
+  });
+});
+
+describe('network guards', () => {
+  it('recognizes Tailscale addresses', () => {
+    expect(['100.64.0.1', '100.101.102.103', '100.127.255.254', 'fd7a:115c:a1e0::1'].map(isTailscaleAddress)).toEqual([true, true, true, true]);
+    expect(['100.63.0.1', '100.128.0.1', '10.0.0.1', '192.168.0.10', '0.0.0.0', '1100.64.0.1'].map(isTailscaleAddress)).toEqual([false, false, false, false, false, false]);
+    expect(['127.0.0.1', 'localhost', '::1', '100.64.0.1'].map(isPrivateBind)).toEqual([true, true, true, true]);
+    expect(['0.0.0.0', '192.168.0.10', '::'].map(isPrivateBind)).toEqual([false, false, false]);
+  });
+
+  it('accepts allowedHosts as Host and Origin on a loopback bind, nothing else', () => {
+    const g = guard({ host: '127.0.0.1', allowedHosts: ['mac.tailnet.ts.net'] }) as unknown as (req: object, res: object, next: () => void) => void;
+    const check = (method: string, headers: Record<string, string>) => {
+      let code = 200;
+      const status = (c: number) => {
+        code = c;
+        return { json: () => {} };
+      };
+      g({ method, headers }, { status }, () => {});
+      return code;
+    };
+    expect(check('GET', { host: 'MAC.tailnet.ts.net' })).toBe(200);
+    expect(check('GET', { host: 'evil.example' })).toBe(403);
+    expect(check('POST', { host: 'mac.tailnet.ts.net', origin: 'https://mac.tailnet.ts.net' })).toBe(200);
+    // 프록시가 Host 를 localhost 로 바꿔 보내도 Origin 이 허용 목록에 있으면 통과
+    expect(check('POST', { host: '127.0.0.1:4477', origin: 'https://mac.tailnet.ts.net' })).toBe(200);
+    expect(check('POST', { host: 'mac.tailnet.ts.net', origin: 'https://evil.example' })).toBe(403);
+    expect(check('POST', { host: '127.0.0.1:4477', origin: 'null' })).toBe(403);
   });
 });

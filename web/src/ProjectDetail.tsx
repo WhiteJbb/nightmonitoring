@@ -375,7 +375,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
         pane && <InputBar projectId={p.id} pane={pane.id} onSent={() => pollNow.current()} />
       ) : (
         <p className="hint">
-          입력을 보내려면 config 파일에서 이 프로젝트에 <code>allowInput: true</code> 를 적으세요. (설정 화면에서는 켤 수 없습니다)
+          입력을 보내려면 <a href="#/settings">설정</a>에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.
         </p>
       )}
     </>

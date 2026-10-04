@@ -1,5 +1,6 @@
 // UI 에서의 설정 편집. 편집 가능한 필드만 골라 파일에 반영하고,
 // 테스트·빌드 명령과 그 명령이 실행되는 경로는 절대 요청 본문에서 받지 않는다.
+// 터미널 입력 허용(allowInput)은 사용자의 결정으로 UI 에서 켜고 끌 수 있다.
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
@@ -62,8 +63,8 @@ export function readOnlyView(config: Config, file: string, reason: string): Conf
     editable: false,
     readOnlyReason: reason,
     settings: settingsOf(config),
-    projects: config.projects.map((p) => ({ ...p, repoPathLocked: true, tmuxSessionLocked: true })),
-    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir },
+    projects: config.projects.map((p) => ({ ...p, repoPathLocked: true })),
+    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir, allowedHosts: config.allowedHosts },
   };
 }
 
@@ -84,7 +85,6 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
       buildCommand: p.buildCommand,
       repoPathLocked: !!(p.testCommand || p.buildCommand),
       allowInput: p.allowInput,
-      tmuxSessionLocked: p.allowInput,
     };
   });
   return {
@@ -95,7 +95,7 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
     readOnlyReason: null,
     settings: settingsOf(config),
     projects,
-    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir },
+    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir, allowedHosts: config.allowedHosts },
   };
 }
 
@@ -103,6 +103,7 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
  * 신뢰할 수 없는 요청 본문에서 편집 가능한 필드만 골라 새 raw config 를 만든다.
  * 기존 프로젝트의 testCommand/buildCommand 는 파일의 값을 그대로 유지하고,
  * 새 프로젝트에는 명령이 없다. 본문에 명령이 들어 있어도 읽지 않는다.
+ * allowInput 은 본문의 값을 따르고, 본문에 없으면 파일의 값을 유지한다.
  */
 export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir: string): Obj {
   if (!isObj(update) || !isObj(update.settings) || !Array.isArray(update.projects)) throw new ConfigError(['요청 형식이 잘못되었습니다 (settings, projects 필요)']);
@@ -141,16 +142,15 @@ export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir:
       if (locked && (typeof u.repoPath !== 'string' || expandPath(u.repoPath, baseDir) !== existing.parsed.repoPath)) {
         issues.push(`${where}.repoPath: 테스트·빌드 명령이 등록된 프로젝트의 경로는 config 파일에서만 바꿀 수 있습니다`);
       }
-      // 입력이 허용된 프로젝트의 세션을 바꾸면 입력이 다른 세션으로 가게 되므로 파일에서만 바꾼다.
-      if (existing.parsed.allowInput && (u.tmuxSession || null) !== existing.parsed.tmuxSession) {
-        issues.push(`${where}.tmuxSession: 입력이 허용된(allowInput) 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다`);
-      }
     }
     const project: Obj = { ...base, name: u.name, repoPath: u.repoPath };
     for (const key of ['tmuxSession', 'logFile'] as const) {
       if (u[key] === null || u[key] === undefined || u[key] === '') delete project[key];
       else project[key] = u[key];
     }
+    if (u.allowInput !== undefined && typeof u.allowInput !== 'boolean') issues.push(`${where}.allowInput: true 또는 false 여야 합니다`);
+    if (u.allowInput === true) project.allowInput = true;
+    else if (u.allowInput === false) delete project.allowInput;
     return project;
   });
   if (issues.length) throw new ConfigError(issues);
