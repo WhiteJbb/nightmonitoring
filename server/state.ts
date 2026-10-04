@@ -1,6 +1,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { GitBaseline } from '../shared/types.ts';
+import type { LogPos } from './logs.ts';
 import type { RunnerState } from './runner.ts';
 
 export interface TrackedState {
@@ -8,7 +9,9 @@ export interface TrackedState {
   repoPath: string;
   baseline: GitBaseline | null;
   gitChangedAt: string | null;
-  logOffset: number | null;
+  /** 어느 로그 파일의 어디까지 확인했는지. 로그 파일이 바뀌면 버린다. */
+  logFile: string | null;
+  logPos: LogPos | null;
 }
 
 export interface MonitorState {
@@ -18,7 +21,7 @@ export interface MonitorState {
 
 /** 서버를 재시작해도 밤샘 기록이 이어지도록 디스크에 남기는 상태 */
 export interface PersistedState {
-  version: 1;
+  version: 2;
   monitor: MonitorState;
   runner: RunnerState;
   /** 자동 보고서를 마지막으로 만든 로컬 날짜 "YYYY-MM-DD" */
@@ -35,8 +38,8 @@ export function loadState(file: string): PersistedState | null {
   }
   try {
     const s = JSON.parse(text) as Partial<PersistedState>;
-    if (s.version !== 1 || typeof s.monitor?.startedAt !== 'string' || typeof s.monitor.tracked !== 'object' || !s.runner) throw new Error('알 수 없는 형식');
-    return { version: 1, monitor: s.monitor, runner: s.runner, lastAutoReportDate: s.lastAutoReportDate ?? null };
+    if (s.version !== 2 || typeof s.monitor?.startedAt !== 'string' || typeof s.monitor.tracked !== 'object' || !s.runner) throw new Error('알 수 없는 형식');
+    return { version: 2, monitor: s.monitor, runner: s.runner, lastAutoReportDate: s.lastAutoReportDate ?? null };
   } catch (e) {
     console.warn(`저장된 상태를 읽지 못해 새 세션으로 시작합니다 (${file}): ${(e as Error).message}`);
     return null;

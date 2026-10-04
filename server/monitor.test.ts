@@ -3,7 +3,7 @@ import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { parseConfig } from './config.ts';
 import { demoCollector, demoConfig, seedDemoRuns } from './demo.ts';
 import type { Collector, RawTmux } from './monitor.ts';
-import { attachCommand, Monitor } from './monitor.ts';
+import { attachCommand, Monitor, NO_LOG } from './monitor.ts';
 import { Runner } from './runner.ts';
 
 const T0 = Date.parse('2026-10-04T03:00:00Z');
@@ -27,7 +27,7 @@ function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: bool
       const raw: RawTmux = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 40 * 60_000).toISOString(), output: state.output, panes: [], waitingPrompt: null, attachCommand: 'tmux attach -t app' };
       return new Map([['app', raw]]);
     },
-    logErrors: async () => ({ errors: [], size: 0 }),
+    logErrors: async () => NO_LOG,
   };
 }
 
@@ -62,14 +62,16 @@ describe('Monitor', () => {
     let now = T0;
     const pane = (id: string, lines: string[]) => ({ id, window: 0, windowName: 'w', index: 0, command: 'zsh', active: id === '%1', lines });
     const state = { panes: [pane('%1', ['\x1b[35m✽\x1b[0m Thinking… (10s · 1.2k tokens)']), pane('%2', ['idle'])] };
+    let activity = new Date(T0 - 60_000).toISOString();
     const collector = fakeCollector({ output: [], git: git() });
-    collector.tmux = async () => new Map([['app', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 60_000).toISOString(), output: [], panes: state.panes, waitingPrompt: null, attachCommand: 'tmux attach -t app' }]]);
+    collector.tmux = async () => new Map([['app', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: activity, output: [], panes: state.panes, waitingPrompt: null, attachCommand: 'tmux attach -t app' }]]);
     const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
     await m.tick();
     const first = m.snapshot.projects[0]!.tmux.lastOutputChangeAt;
 
     now += 5000;
     state.panes = [pane('%1', ['\x1b[35m✻\x1b[0m Thinking… (15s · 1.9k tokens)']), pane('%2', ['idle'])];
+    activity = new Date(now).toISOString(); // tmux 는 스피너 출력에도 활동 시각을 올린다
     await m.tick();
     expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(first);
 
@@ -157,6 +159,19 @@ describe('Runner', () => {
     await vi.waitFor(() => expect(runner.get(p.id).build?.running).toBe(false));
     expect(runner.get(p.id).build).toMatchObject({ canceled: true, exitCode: null, stdout: 'partial' });
     expect(runner.cancel(p.id, 'build')).toBe(false);
+  });
+
+  it('forget drops results and ignores the completion of an abandoned run', async () => {
+    let finish = () => {};
+    const exec = vi.fn(() => new Promise<{ code: number; stdout: string; stderr: string; timedOut: boolean }>((resolve) => (finish = () => resolve({ code: 1, stdout: '', stderr: '', timedOut: false }))));
+    const runner = new Runner({ timeoutSec: 7, logDir: null, exec });
+    const p = { ...project, testCommand: 'npm test' };
+    runner.start(p, 'test');
+    runner.forget(p.id);
+    finish();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(runner.get(p.id)).toEqual({ test: null, build: null });
+    expect(runner.history(p.id).test).toEqual([]);
   });
 
   it('keeps bounded history and restores state, marking interrupted runs', () => {

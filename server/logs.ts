@@ -1,4 +1,4 @@
-import { open } from 'node:fs/promises';
+import { open, stat } from 'node:fs/promises';
 
 // CSI, OSC, 기타 ESC 시퀀스와 탭·개행을 제외한 제어 문자.
 // eslint-disable-next-line no-control-regex
@@ -45,19 +45,31 @@ export function findPrompt(lines: string[], patterns: string[]): string | null {
 const TAIL_BYTES = 64 * 1024;
 const MAX_MATCHES = 20;
 
-/** 파일의 [from, 끝) 구간을 줄 단위로 읽는다 (최대 끝 64KB). 파일이 없으면 size 0. */
-export async function readFrom(file: string, from: number): Promise<{ lines: string[]; size: number }> {
+/** 로그 파일에서 어디까지 확인했는지. ino 가 바뀌면 파일이 교체(rotate)된 것. */
+export interface LogPos {
+  offset: number;
+  ino: number;
+}
+
+/**
+ * 파일의 [pos.offset, 끝) 구간을 줄 단위로 읽는다 (최대 끝 64KB).
+ * 파일이 교체됐거나 줄어들었으면 처음부터 읽는다. 일반 파일이 아니거나 없으면 빈 결과.
+ */
+export async function readFrom(file: string, pos: LogPos | null): Promise<{ lines: string[]; size: number; ino: number }> {
   let fh;
   try {
+    // FIFO 같은 특수 파일은 open 에서 멈출 수 있으므로 열기 전에 거른다.
+    if (!(await stat(file)).isFile()) return { lines: [], size: 0, ino: 0 };
     fh = await open(file, 'r');
-    const { size } = await fh.stat();
-    // 파일이 줄어들었으면 교체(rotate)된 것으로 보고 처음부터 읽는다.
-    const start = Math.max(from > size ? 0 : from, size - TAIL_BYTES);
+    const { size, ino } = await fh.stat();
+    if (pos === null) return { lines: [], size, ino };
+    const from = pos.ino !== ino || pos.offset > size ? 0 : pos.offset;
+    const start = Math.max(from, size - TAIL_BYTES);
     const buf = Buffer.alloc(size - start);
     await fh.read(buf, 0, buf.length, start);
-    return { lines: stripAnsi(buf.toString('utf8')).split('\n'), size };
+    return { lines: stripAnsi(buf.toString('utf8')).split('\n'), size, ino };
   } catch {
-    return { lines: [], size: 0 };
+    return { lines: [], size: 0, ino: 0 };
   } finally {
     await fh?.close();
   }
@@ -72,15 +84,15 @@ export function findErrors(lines: string[], patterns: string[], ignore: string[]
 
 export interface LogScan {
   errors: string[];
-  /** 스캔 시점의 파일 크기. 다음 기준 offset 이나 "확인 처리"에 쓴다. */
-  size: number;
+  /** 스캔 시점의 파일 끝. 다음 스캔의 시작점이나 "확인 처리"에 쓴다. */
+  end: LogPos;
 }
 
 /**
- * offset 이후에 추가된 로그에서만 오류를 찾는다.
- * offset 이 null 이면(최초 관측) 기존 내용은 건너뛰고 현재 크기만 돌려준다.
+ * pos 이후에 추가된 로그에서만 오류를 찾는다.
+ * pos 가 null 이면(최초 관측) 기존 내용은 건너뛰고 현재 끝 위치만 돌려준다.
  */
-export async function scanLog(file: string, patterns: string[], ignore: string[], offset: number | null): Promise<LogScan> {
-  const { lines, size } = await readFrom(file, offset ?? Number.MAX_SAFE_INTEGER);
-  return { errors: offset === null ? [] : findErrors(lines, patterns, ignore), size };
+export async function scanLog(file: string, patterns: string[], ignore: string[], pos: LogPos | null): Promise<LogScan> {
+  const { lines, size, ino } = await readFrom(file, pos);
+  return { errors: findErrors(lines, patterns, ignore), end: { offset: size, ino } };
 }

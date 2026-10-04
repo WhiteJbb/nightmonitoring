@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -97,11 +98,12 @@ describe('untracked files and fingerprint', () => {
     try {
       await writeFile(path.join(dir, 'new.ts'), 'a\nb\nc\n');
       await writeFile(path.join(dir, 'bin.dat'), Buffer.from([1, 0, 2, 10]));
+      execFileSync('mkfifo', [path.join(dir, 'pipe')]);
       respond({
         'rev-parse --is-inside-work-tree': ok('true\n'),
         'branch --show-current': ok('main\n'),
         'rev-parse --verify': ok('abc1234\n'),
-        'status --porcelain': ok('?? new.ts\0?? bin.dat\0?? gone.ts\0'),
+        'status --porcelain': ok('?? new.ts\0?? bin.dat\0?? gone.ts\0?? pipe\0'),
         'diff --numstat': ok(''),
       });
       const first = await collectGit(dir);
@@ -109,6 +111,7 @@ describe('untracked files and fingerprint', () => {
         { path: 'new.ts', additions: 3, deletions: 0, untracked: true },
         { path: 'bin.dat', additions: 0, deletions: 0, untracked: true },
         { path: 'gone.ts', additions: 0, deletions: 0, untracked: true },
+        { path: 'pipe', additions: 0, deletions: 0, untracked: true }, // FIFO 를 열다 멈추지 않는다
       ]);
       expect(first.additions).toBe(3);
       expect((await collectGit(dir)).fingerprint).toBe(first.fingerprint);
