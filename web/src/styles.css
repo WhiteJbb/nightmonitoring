@@ -629,3 +629,110 @@ button[aria-pressed='true'] {
   border-left: 3px solid var(--border);
   color: var(--dim);
 }
+
+/* ── 설정 ── */
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 10px 16px;
+}
+.field {
+  min-width: 0;
+}
+.field label {
+  display: block;
+  font-size: 12.5px;
+}
+.field label > span {
+  display: block;
+  color: var(--dim);
+  margin-bottom: 2px;
+}
+.field label.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+}
+.field .hint {
+  margin: 2px 0 0;
+}
+.settings input:not([type='checkbox']),
+.settings textarea {
+  display: block;
+  width: 100%;
+  font: inherit;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 5px 8px;
+}
+.settings input[type='number'],
+.settings input[type='time'] {
+  max-width: 160px;
+  font-family: var(--mono);
+}
+.settings input[type='time'] {
+  margin-top: 4px;
+}
+.settings textarea {
+  font: 12.5px/1.45 var(--mono);
+  resize: vertical;
+}
+.settings input:disabled,
+.settings textarea:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.settings input[type='checkbox'] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+.project-edit {
+  min-width: 0;
+  margin: 0 0 12px;
+  padding: 8px 12px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.project-edit legend {
+  padding: 0 6px;
+  font-weight: 600;
+}
+.project-edit input:not([type='checkbox']) {
+  background: var(--bg);
+}
+.project-edit .kv {
+  margin: 10px 0;
+}
+button.danger:hover:not(:disabled) {
+  color: var(--red);
+  border-color: var(--red);
+}
+.settings-actions {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 20px;
+  padding: 10px 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+}
+.settings-actions .notice {
+  flex-basis: 100%;
+}
+.settings-actions .notice ul {
+  margin-top: 8px;
+}
+.notice > button {
+  margin-top: 8px;
+}
+.settings-actions .notice {
+  max-height: 40vh;
+  overflow: auto;
+}

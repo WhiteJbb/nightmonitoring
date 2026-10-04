@@ -25,6 +25,7 @@ server/
   runner.ts            등록된 test/build 실행, 취소, 이력
   state.ts             세션 상태의 디스크 저장·복원 (.nightshift/state.json)
   reload.ts            config hot reload
+  configEdit.ts        UI 설정 편집: 편집 가능 필드만 병합·검증·원자적 저장 (YAML 주석 보존)
   notify.ts            상태 전환 알림 판정, 자동 보고서 시각 판정 (순수 함수)
   report.ts            Morning Report Markdown 생성·저장·조회
   demo.ts              demo mode용 가짜 수집기
@@ -83,11 +84,22 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 - **복원**: 프로젝트 id와 저장소 경로가 모두 같을 때만 기준점을 이어 쓴다. 저장 당시 실행 중이던 test/build는 "재시작으로 중단됨(취소)"으로 기록한다.
 - **hot reload (`reload.ts`)**: `fs.watchFile`(polling, 에디터의 rename 저장에도 안전)로 config의 mtime 변화를 감지한다. 검증에 통과하면 교체하고, 실패하면 이전 설정을 유지한 채 `snapshot.configError`로 알린다. id와 저장소 경로가 같은 프로젝트의 추적 상태는 유지하고, 사라지거나 경로가 바뀐 프로젝트는 추적 상태와 실행 결과를 버린다. `host`·`port`는 이미 listen 중이라 무시한다.
 
+## 설정 편집 (`configEdit.ts`)
+
+"UI에서 명령을 입력할 수 없다"는 원칙을 유지하면서 설정을 UI에서 고칠 수 있게 한다.
+
+- `PUT /api/config`는 본문을 읽는 유일한 경로다. 본문에서 **허용 목록에 있는 키만** 골라 파일의 원본 객체에 병합한다. `testCommand`/`buildCommand`/`host`/`port`/`reportsDir`는 본문에 있어도 읽지 않는다.
+- 기존 프로젝트는 id로 파일의 원본 항목을 찾아 그 위에 이름·경로·세션·로그 파일만 덮어쓰므로 명령은 파일의 값이 그대로 남는다. 새 프로젝트는 명령 없이 만들어진다.
+- 명령이 등록된 프로젝트의 `repoPath`가 달라지면(정규화한 경로 기준) 거부한다. 등록된 명령이 다른 디렉터리에서 실행되는 것을 막기 위함이다.
+- 병합 결과를 `parseConfig`로 전체 검증한 뒤에만 쓴다(임시 파일 + rename). 실패하면 파일은 그대로다.
+- 파일에 없던 키는 값이 실제로 바뀐 경우에만 쓴다(기본값으로 파일을 채우지 않는다). YAML은 `Document`의 바뀐 최상위 키만 교체해 주석을 보존한다.
+- 저장 직후 `reloadConfig`를 호출해 즉시 적용한다. demo mode는 읽기 전용 뷰만 제공한다.
+
 ## 명령 실행과 보안 (`exec.ts`)
 
 - `run(bin, args)`: `git`, `tmux`, `osascript`만 허용하는 allowlist + `execFile`(셸 미경유) → 인자 escaping 문제가 구조적으로 없다. 타임아웃·출력 상한 있음. 절대 throw하지 않고 `{code, stdout, stderr}`를 돌려준다.
 - `notify(title, message)`: 문구를 AppleScript 소스에 끼워 넣지 않고 `on run argv`의 인자로 넘긴다.
-- `runConfigured(command, cwd, timeout, signal)`: config의 test/build 명령 전용. 셸로 실행하되 명령 문자열은 **config 파일에서만** 온다. API는 프로젝트 id와 `test|build`만 받고 본문은 읽지 않는다. cwd는 등록된 저장소 경로로 고정, 타임아웃·취소 시 프로세스 그룹째 종료, stdout/stderr 분리 저장.
+- `runConfigured(command, cwd, timeout, signal)`: config의 test/build 명령 전용. 셸로 실행하되 명령 문자열은 **config 파일에서만** 온다. 실행 API는 프로젝트 id와 `test|build`만 받고 본문은 읽지 않으며, 설정 편집 API도 명령은 받지 않는다. cwd는 등록된 저장소 경로로 고정, 타임아웃·취소 시 프로세스 그룹째 종료, stdout/stderr 분리 저장.
 - 서버는 `127.0.0.1` 바인딩. Host 헤더가 loopback이 아니면 거부(DNS rebinding 방어), 변경 요청은 Origin이 다르면 거부(CSRF 방어).
 - tmux 세션 이름은 config 로드 시 검증(`:`·`.`·공백, 선행 `-` `$` `=` `@` `%` 금지). pane은 tmux가 준 pane id(`%숫자`)로만 지정한다.
 - untracked 파일 줄 수 세기와 로그 읽기는 일반 파일만 연다(FIFO 등에서 멈추지 않게).
@@ -104,6 +116,8 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
+| GET | `/api/config` | 설정 편집 화면용 뷰 (파일의 원문 경로, 잠금 여부) |
+| PUT | `/api/config` | 설정 저장 후 즉시 적용. 200 / 400(`issues`) / 403(demo) |
 | GET | `/api/reports` | 보고서 목록 |
 | GET | `/api/reports/:name` | 보고서 내용 |
 | POST | `/api/reports` | Morning Report 생성 후 저장 |

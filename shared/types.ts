@@ -183,3 +183,62 @@ export interface Report {
   name: string;
   content: string;
 }
+
+// ---- 설정 편집 (GET/PUT /api/config) ----
+
+/** UI 에서 바꿀 수 있는 전역 설정. host·port·reportsDir 는 파일에서만 바꾼다. */
+export interface EditableSettings {
+  refreshIntervalSec: number;
+  thresholds: { idleMinutes: number; stalledMinutes: number; noCommitMinutes: number };
+  /** 일반 문자열(대소문자 무시 부분 일치) 또는 "/정규식/플래그" */
+  errorPatterns: string[];
+  errorIgnorePatterns: string[];
+  promptPatterns: string[];
+  ignoreSpinnerChanges: boolean;
+  sessionExitIsError: boolean;
+  notifications: boolean;
+  /** "HH:MM" 또는 null(끔) */
+  autoReportTime: string | null;
+  commandTimeoutSec: number;
+}
+
+/**
+ * UI 에서 바꿀 수 있는 프로젝트 필드. 경로는 파일에 적힌 그대로의 문자열이다
+ * (예: "~/code/app", logFile 은 repoPath 기준 상대 경로 가능).
+ * 테스트·빌드 명령은 여기에 없다: 명령은 config 파일에서만 등록·수정한다.
+ */
+export interface EditableProject {
+  /** 기존 프로젝트의 id. 새로 추가하는 프로젝트는 null */
+  id: string | null;
+  name: string;
+  repoPath: string;
+  tmuxSession: string | null;
+  logFile: string | null;
+}
+
+export interface ConfigProjectView extends EditableProject {
+  id: string;
+  /** 읽기 전용 표시용 */
+  testCommand: string | null;
+  buildCommand: string | null;
+  /** 명령이 등록된 프로젝트는 그 명령이 실행될 경로(repoPath)도 UI 에서 바꿀 수 없다 */
+  repoPathLocked: boolean;
+}
+
+export interface ConfigView {
+  path: string;
+  format: 'json' | 'yaml';
+  /** false 면 저장할 수 없다 (demo mode 등). 이유는 readOnlyReason */
+  editable: boolean;
+  readOnlyReason: string | null;
+  settings: EditableSettings;
+  projects: ConfigProjectView[];
+  /** 파일에서만 바꿀 수 있는 값 (읽기 전용 표시용) */
+  fileOnly: { host: string; port: number; reportsDir: string };
+}
+
+/** PUT /api/config 본문. projects 는 전체 목록이며, 빠진 기존 프로젝트는 삭제된다. */
+export interface ConfigUpdate {
+  settings: EditableSettings;
+  projects: EditableProject[];
+}
