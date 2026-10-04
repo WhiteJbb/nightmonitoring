@@ -1,9 +1,9 @@
-import { existsSync, watchFile } from 'node:fs';
+import { existsSync, statSync, watchFile } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
 import { createApp, isTailscaleAddress } from './app.ts';
-import { ConfigError, defaultConfigPath, loadConfig } from './config.ts';
+import { ConfigError, defaultConfigPath, expandPath, loadConfig, SESSION_RE } from './config.ts';
 import { applyConfigUpdate, readConfigView, readOnlyView } from './configEdit.ts';
 import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { notify } from './exec.ts';
@@ -14,7 +14,7 @@ import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
-import { capturePaneNow } from './tmux.ts';
+import { capturePaneNow, newSession } from './tmux.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
 process.chdir(ROOT);
@@ -128,7 +128,13 @@ async function main() {
         },
       };
   const inputLog = path.join(ROOT, '.nightshift/input.log');
-  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input) };
+  const createSession = async (name: string, repoPath: string): Promise<string | null> => {
+    if (!SESSION_RE.test(name)) return '세션 이름이 올바르지 않습니다';
+    const cwd = expandPath(repoPath, ROOT);
+    if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return `디렉터리가 없습니다: ${cwd}`;
+    return newSession(name, cwd);
+  };
+  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession };
   const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}) });
   const server = http.createServer(app);
 

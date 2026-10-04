@@ -3,6 +3,7 @@ import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
 import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
+import { NewSession } from './NewSession.tsx';
 import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
@@ -191,7 +192,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
         <span>갱신 주기 {snapshot.refreshIntervalSec}초</span>
         {snapshot.autoReportTime !== null && <span>자동 보고서 {snapshot.autoReportTime}</span>}
         <button type="button" onClick={reset} disabled={resetting}>
-          새 세션 시작
+          모니터링 새로 시작
         </button>
         {resetError && (
           <span className="err" role="alert">
@@ -199,6 +200,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
           </span>
         )}
       </div>
+      {!snapshot.demo && <NewSession />}
       {snapshot.projects.length === 0 ? (
         <div className="notice">
           <strong>등록된 프로젝트가 없습니다.</strong>

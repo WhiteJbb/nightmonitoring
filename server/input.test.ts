@@ -1,17 +1,18 @@
 import type { AddressInfo } from 'node:net';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp, guard, isPrivateBind, isTailscaleAddress } from './app.ts';
-import { parseConfig } from './config.ts';
+import { loadConfig, parseConfig } from './config.ts';
+import { applyConfigUpdate, readConfigView } from './configEdit.ts';
 import { run } from './exec.ts';
 import type { ParsedInput } from './input.ts';
 import { logInput, parseInput, sendInput } from './input.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
 import { Runner } from './runner.ts';
-import { capturePaneNow } from './tmux.ts';
+import { capturePaneNow, newSession } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -93,7 +94,7 @@ describe('terminal API', () => {
     const runner = new Runner({ timeoutSec: 1, logDir: null });
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn() };
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null) };
     const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -147,6 +148,104 @@ describe('terminal API', () => {
     const demo = await start({ demo: true });
     expect((await demo.post('open', { pane: '%1', text: 'x' })).status).toBe(403);
     expect(await (await fetch(`${demo.base}/open/panes/%251`)).json()).toEqual({ lines: ['snapshot %1'] });
+  });
+});
+
+describe('newSession', () => {
+  it('creates a detached shell session in the directory, without any command', async () => {
+    mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: "can't find session", timedOut: false }).mockResolvedValueOnce(ok());
+    expect(await newSession('agent', '/repo/app')).toBeNull();
+    expect(mockRun.mock.calls.map((c) => c[1])).toEqual([
+      ['has-session', '-t', '=agent'],
+      ['new-session', '-d', '-s', 'agent', '-c', '/repo/app', '-x', '200', '-y', '50'],
+    ]);
+  });
+
+  it('leaves an existing session alone and reports failures', async () => {
+    expect(await newSession('agent', '/repo/app')).toBeNull(); // has-session 성공
+    expect(mockRun).toHaveBeenCalledTimes(1);
+    mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: '', timedOut: false }).mockResolvedValueOnce({ code: 1, stdout: '', stderr: 'duplicate session: agent\n', timedOut: false });
+    expect(await newSession('agent', '/repo/app')).toBe('duplicate session: agent');
+  });
+});
+
+describe('session API', () => {
+  const servers: { close: () => void }[] = [];
+  afterAll(() => servers.forEach((s) => s.close()));
+  let dir = '';
+  beforeAll(async () => void (dir = await mkdtemp(path.join(tmpdir(), 'nightshift-session-'))));
+  afterAll(() => rm(dir, { recursive: true }));
+
+  async function start(opts: { host?: string; demo?: boolean } = {}) {
+    const file = path.join(dir, `c-${servers.length}.json`);
+    await writeFile(file, JSON.stringify({ host: opts.host, projects: [{ name: 'Old', repoPath: '/r/old', tmuxSession: 'old', testCommand: 'npm test' }, { name: 'NoSession', repoPath: '/r/none' }] }));
+    const { config } = loadConfig(file, '/base');
+    const runner = new Runner({ timeoutSec: 1, logDir: null });
+    const collector: Collector = {
+      git: async () => ({ ok: true, branch: 'main', head: 'h', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0, recentCommits: [], todayCommits: [], fingerprint: 'h' }),
+      since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
+      tmux: async () => new Map(),
+      logErrors: async () => NO_LOG,
+    };
+    const monitor = new Monitor({ config, collector, runs: runner.get });
+    await monitor.tick();
+    const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession };
+    const configEditor = {
+      view: () => readConfigView(file, '/base'),
+      update: async (body: unknown) => {
+        applyConfigUpdate(file, '/base', body);
+        await monitor.setConfig(loadConfig(file, '/base').config, collector);
+        return readConfigView(file, '/base');
+      },
+    };
+    const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', configEditor, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
+    servers.push(server);
+    await new Promise((resolve) => server.once('listening', resolve));
+    const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
+    const post = async (p: string, body?: unknown) => {
+      const res = await fetch(`${base}${p}`, { method: 'POST', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+      return [res.status, await res.json()] as const;
+    };
+    return { post, createSession, monitor, file };
+  }
+
+  it('creates a session and registers it as a project in one step', async () => {
+    const { post, createSession, monitor, file } = await start();
+    expect(await post('/sessions', { name: 'New Agent', repoPath: '~/code/new', tmuxSession: 'new-agent', allowInput: true, testCommand: 'id' })).toEqual([200, { id: 'new-agent' }]);
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('new-agent', '~/code/new');
+    expect(monitor.snapshot.projects.map((p) => p.id)).toEqual(['old', 'nosession', 'new-agent']);
+    const added = loadConfig(file, '/base').config.projects[2]!;
+    expect(added).toMatchObject({ name: 'New Agent', tmuxSession: 'new-agent', allowInput: true, testCommand: null });
+    // 기존 프로젝트의 명령은 그대로
+    expect(loadConfig(file, '/base').config.projects[0]!.testCommand).toBe('npm test');
+  });
+
+  it('rejects incomplete, duplicate and invalid requests without registering anything', async () => {
+    const { post, createSession, file } = await start();
+    expect((await post('/sessions', { name: 'x', repoPath: '', tmuxSession: 's' }))[0]).toBe(400);
+    expect((await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 'old' }))[0]).toBe(409);
+    expect(createSession).not.toHaveBeenCalled();
+    expect(await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 'bad name' })).toEqual([400, { error: '세션 이름이 올바르지 않습니다' }]);
+    expect(loadConfig(file, '/base').config.projects).toHaveLength(2);
+  });
+
+  it('restarts the session of a registered project', async () => {
+    const { post, createSession } = await start();
+    expect(await post('/projects/old/session')).toEqual([200, { ok: true }]);
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('old', '/r/old');
+    expect((await post('/projects/nosession/session'))[0]).toBe(400);
+    expect((await post('/projects/nope/session'))[0]).toBe(404);
+  });
+
+  it('refuses in demo mode and when exposed beyond loopback/Tailscale', async () => {
+    const demo = await start({ demo: true });
+    expect((await demo.post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 's' }))[0]).toBe(403);
+    expect((await demo.post('/projects/old/session'))[0]).toBe(403);
+    const exposed = await start({ host: '0.0.0.0' });
+    expect((await exposed.post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 's' }))[0]).toBe(403);
+    expect((await exposed.post('/projects/old/session'))[0]).toBe(403);
+    expect(exposed.createSession).not.toHaveBeenCalled();
   });
 });
 

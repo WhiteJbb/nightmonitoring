@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
+import { StartSession } from './NewSession.tsx';
 import { parseAnsi } from './ansi.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
@@ -281,6 +282,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
           등록된 세션 <code>{p.tmuxSession}</code> 이(가) 실행 중이 아닙니다.
         </p>
         {t.error && <p className="mono wrap">{t.error}</p>}
+        <StartSession projectId={p.id} />
       </div>
     );
   }

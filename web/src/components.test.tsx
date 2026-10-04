@@ -249,11 +249,11 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
 
   const confirm = vi.fn(() => false);
   vi.stubGlobal('confirm', confirm);
-  fireEvent.click(screen.getByRole('button', { name: '새 세션 시작' }));
+  fireEvent.click(screen.getByRole('button', { name: '모니터링 새로 시작' }));
   expect(confirm).toHaveBeenCalledOnce();
   expect(fetchMock).not.toHaveBeenCalled();
 
   confirm.mockReturnValue(true);
-  fireEvent.click(screen.getByRole('button', { name: '새 세션 시작' }));
+  fireEvent.click(screen.getByRole('button', { name: '모니터링 새로 시작' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/session/reset', { method: 'POST' }));
 });
