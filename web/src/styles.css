@@ -531,6 +531,33 @@ pre {
 .terminal {
   height: min(60vh, 640px);
 }
+/* 긴 줄을 화면 폭에 맞춰 접는다. 표·상자 그림은 흐트러지지만 글은 가로 스크롤 없이 읽힌다 */
+.terminal.wrap-lines {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow-x: hidden;
+}
+/* 세션 정보: 넓은 화면에서는 늘 보이고 토글은 숨긴다 */
+.info-toggle {
+  display: none;
+}
+@media (max-width: 720px) {
+  .term-info:not(.open) {
+    display: none;
+  }
+  .info-toggle {
+    display: inline-block;
+  }
+  /* 터미널이 화면 대부분을 쓰게 하고, 글자를 조금 줄여 한 줄에 더 들어가게 한다 */
+  .terminal {
+    height: 64svh;
+    font-size: 12px;
+    padding: 8px 10px;
+  }
+  main {
+    padding-inline: 10px;
+  }
+}
 .output {
   max-height: 320px;
 }

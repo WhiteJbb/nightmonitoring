@@ -374,3 +374,22 @@ test('scrolling up pauses the refresh; load-more asks for a longer scrollback', 
   expect(screen.getByText('실시간')).toBeTruthy();
   expect(gets().length).toBeGreaterThan(before + 1);
 });
+
+test('wrap view shortens rule lines and long padding, and toggles a class on the terminal', async () => {
+  const { compactForWrap } = await import('./ProjectDetail.tsx');
+  expect(compactForWrap(`${'─'.repeat(157)}\n${' '.repeat(60)}✔ done\n    indented code\n\x1b[2m${'─'.repeat(40)}\x1b[0m`)).toBe(
+    `${'─'.repeat(24)}\n  ✔ done\n    indented code\n\x1b[2m${'─'.repeat(24)}\x1b[0m`,
+  );
+
+  serve(() => json(200, { lines: ['x'] }));
+  await renderTab(project(TWO));
+  await tick();
+  expect(term().className).toBe('terminal'); // 넓은 화면(테스트 환경)에서는 꺼진 채로 시작
+  fireEvent.click(screen.getByRole('button', { name: '줄바꿈' }));
+  expect(term().className).toBe('terminal wrap-lines');
+  // 세션 정보 토글
+  const info = screen.getByRole('button', { name: '세션 정보' });
+  expect(info.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(info);
+  expect(info.getAttribute('aria-expanded')).toBe('true');
+});
