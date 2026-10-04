@@ -47,8 +47,8 @@ describe('readConfigView', () => {
     expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, reportsDir: '/base/reports' } });
     expect(v.settings.thresholds).toEqual({ idleMinutes: 10, stalledMinutes: 30, noCommitMinutes: 30 });
     expect(v.projects).toEqual([
-      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true },
-      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false },
+      { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true, allowInput: false, tmuxSessionLocked: false },
+      { id: 'lib', name: 'Lib', repoPath: '/repo/lib', tmuxSession: null, logFile: null, testCommand: null, buildCommand: null, repoPathLocked: false, allowInput: false, tmuxSessionLocked: false },
     ]);
   });
 

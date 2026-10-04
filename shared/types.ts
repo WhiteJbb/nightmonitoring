@@ -134,6 +134,8 @@ export interface ProjectSnapshot {
   testCommand: string | null;
   buildCommand: string | null;
   logFile: string | null;
+  /** config 파일에서 allowInput: true 로 켠 프로젝트만 UI 에서 tmux 로 입력을 보낼 수 있다 */
+  allowInput: boolean;
   git: GitInfo;
   since: SinceBaseline | null;
   /** 마지막 커밋 또는 working tree 변경이 관측된 시각 */
@@ -223,6 +225,10 @@ export interface ConfigProjectView extends EditableProject {
   buildCommand: string | null;
   /** 명령이 등록된 프로젝트는 그 명령이 실행될 경로(repoPath)도 UI 에서 바꿀 수 없다 */
   repoPathLocked: boolean;
+  /** 읽기 전용 표시용. 파일에서만 켤 수 있다 */
+  allowInput: boolean;
+  /** 입력이 허용된 프로젝트는 입력이 전달될 tmux 세션도 UI 에서 바꿀 수 없다 */
+  tmuxSessionLocked: boolean;
 }
 
 export interface ConfigView {
@@ -245,4 +251,28 @@ export interface ConfigUpdate {
   version: string;
   settings: EditableSettings;
   projects: EditableProject[];
+}
+
+// ---- 실시간 터미널 보기와 입력 ----
+
+/** GET /api/projects/:id/panes/:paneId — 지금 이 순간의 pane 출력 (TmuxPane.lines 와 같은 형식) */
+export interface PaneLive {
+  lines: string[];
+}
+
+/** 글자가 아닌 키. 이 목록에 있는 것만 보낼 수 있다. */
+export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Left' | 'Right' | 'BSpace' | 'C-c' | 'C-d' | 'C-u' | 'C-l';
+
+/**
+ * POST /api/projects/:id/input — pane 에 키 입력을 보낸다. text 와 key 중 정확히 하나.
+ * - text: 글자 그대로 입력한다 (최대 4000자). enter 가 true 면 이어서 Enter 를 누른다.
+ * - key: 특수 키 하나 (BTab = Shift+Tab, C-c = Ctrl+C).
+ * 응답: 200 {ok:true} / 400 {error} / 403 {error} (allowInput 꺼짐, demo, loopback 아님) / 404 {error} (프로젝트·pane 없음)
+ */
+export interface InputRequest {
+  /** 이 프로젝트 세션에 속한 pane id (TmuxPane.id) */
+  pane: string;
+  text?: string;
+  enter?: boolean;
+  key?: InputKey;
 }

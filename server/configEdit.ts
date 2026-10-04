@@ -62,7 +62,7 @@ export function readOnlyView(config: Config, file: string, reason: string): Conf
     editable: false,
     readOnlyReason: reason,
     settings: settingsOf(config),
-    projects: config.projects.map((p) => ({ ...p, repoPathLocked: true })),
+    projects: config.projects.map((p) => ({ ...p, repoPathLocked: true, tmuxSessionLocked: true })),
     fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir },
   };
 }
@@ -83,6 +83,8 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
       testCommand: p.testCommand,
       buildCommand: p.buildCommand,
       repoPathLocked: !!(p.testCommand || p.buildCommand),
+      allowInput: p.allowInput,
+      tmuxSessionLocked: p.allowInput,
     };
   });
   return {
@@ -138,6 +140,10 @@ export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir:
       const locked = existing.parsed.testCommand || existing.parsed.buildCommand;
       if (locked && (typeof u.repoPath !== 'string' || expandPath(u.repoPath, baseDir) !== existing.parsed.repoPath)) {
         issues.push(`${where}.repoPath: 테스트·빌드 명령이 등록된 프로젝트의 경로는 config 파일에서만 바꿀 수 있습니다`);
+      }
+      // 입력이 허용된 프로젝트의 세션을 바꾸면 입력이 다른 세션으로 가게 되므로 파일에서만 바꾼다.
+      if (existing.parsed.allowInput && (u.tmuxSession || null) !== existing.parsed.tmuxSession) {
+        issues.push(`${where}.tmuxSession: 입력이 허용된(allowInput) 프로젝트의 세션은 config 파일에서만 바꿀 수 있습니다`);
       }
     }
     const project: Obj = { ...base, name: u.name, repoPath: u.repoPath };
