@@ -3,7 +3,7 @@ import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
 import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
-import { NewSession } from './NewSession.tsx';
+import { commonParentDir, NewSession } from './NewSession.tsx';
 import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
@@ -200,7 +200,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
           </span>
         )}
       </div>
-      {!snapshot.demo && <NewSession />}
+      {!snapshot.demo && <NewSession defaultDir={commonParentDir(snapshot.projects.map((p) => p.repoPath))} />}
       {snapshot.projects.length === 0 ? (
         <div className="notice">
           <strong>등록된 프로젝트가 없습니다.</strong>

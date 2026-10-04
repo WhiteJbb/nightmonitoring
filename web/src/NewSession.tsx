@@ -13,11 +13,27 @@ export const sessionNameFrom = (name: string) =>
     .replace(/[\s:.]+/g, '-')
     .replace(/^[-$=@%]+|-+$/g, '');
 
+/**
+ * 등록된 프로젝트들이 가장 많이 모여 있는 상위 디렉터리 (끝에 "/" 포함). 새 세션의 경로 기본값으로 쓴다.
+ * 프로젝트가 없으면 빈 문자열.
+ */
+export function commonParentDir(repoPaths: string[]): string {
+  const counts = new Map<string, number>();
+  for (const p of repoPaths) {
+    const parent = p.replace(/\/+$/, '').replace(/[^/]+$/, '');
+    if (parent && parent !== '/') counts.set(parent, (counts.get(parent) ?? 0) + 1);
+  }
+  let best = '';
+  for (const [dir, n] of counts) if (n > (counts.get(best) ?? 0)) best = dir;
+  return best;
+}
+
 /** 대시보드에서 새 tmux 세션을 만들고 바로 프로젝트로 등록하는 접이식 폼. */
-export function NewSession() {
+export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState('');
-  const [repoPath, setRepoPath] = useState('');
+  // 대부분 같은 폴더 아래에서 작업하므로 거기까지 미리 채워 둔다
+  const [repoPath, setRepoPath] = useState(defaultDir);
   // 사용자가 세션 이름을 직접 고치기 전까지는 프로젝트 이름을 따라간다
   const [session, setSession] = useState<string | null>(null);
   const [allowInput, setAllowInput] = useState(false);
@@ -73,6 +89,8 @@ export function NewSession() {
               spellCheck={false}
               placeholder="~/code/my-app"
               value={repoPath}
+              // 미리 채운 폴더 뒤에 바로 이어 쓸 수 있게 커서를 끝에 둔다
+              onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
               onChange={(e) => setRepoPath(e.target.value)}
             />
           </label>
