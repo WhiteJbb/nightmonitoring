@@ -1,4 +1,4 @@
-import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
+import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
 import { findPrompt, scanLog, stripAnsi, stripVolatile } from './logs.ts';
@@ -77,6 +77,7 @@ export interface MonitorOptions {
   config: Config;
   collector: Collector;
   runs: (projectId: string) => Record<RunKind, RunResult | null>;
+  history?: (projectId: string) => Record<RunKind, RunSummary[]>;
   demo?: boolean;
   configPath?: string;
   configMissing?: boolean;
@@ -184,7 +185,7 @@ export class Monitor {
       if (!c) return [];
       const runs = this.opts.runs(p.id);
       const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, now });
-      return [{ ...p, ...c, runs, history: { test: [], build: [] }, status }];
+      return [{ ...p, ...c, runs, history: this.opts.history?.(p.id) ?? { test: [], build: [] }, status }];
     });
     const count = (state: string) => projects.filter((p) => p.status.state === state).length;
     return {

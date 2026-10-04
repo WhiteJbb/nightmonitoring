@@ -26,9 +26,9 @@ function runSection(title: string, command: string | null, r: RunResult | null):
   if (!command) return [...out, '- 등록된 명령 없음', ''];
   if (!r) return [...out, `- 실행하지 않음 (\`${command}\`)`, ''];
   if (r.running) return [...out, `- 실행 중 (\`${command}\`, 시작 ${localTime(r.startedAt)})`, ''];
-  const verdict = r.timedOut ? '시간 초과' : r.exitCode === 0 ? '성공' : '실패';
+  const verdict = r.canceled ? '취소됨' : r.timedOut ? '시간 초과' : r.exitCode === 0 ? '성공' : '실패';
   out.push(`- **${verdict}** — \`${command}\` · exit ${r.exitCode ?? '없음'} · ${((r.durationMs ?? 0) / 1000).toFixed(1)}초 · ${localTime(r.finishedAt)}`, '');
-  if (verdict !== '성공') {
+  if (verdict === '실패' || verdict === '시간 초과') {
     const text = tail(r.stderr.trim() ? r.stderr : r.stdout, RUN_TAIL_LINES);
     if (text.trim()) out.push(fence(text), '');
   }
@@ -37,7 +37,7 @@ function runSection(title: string, command: string | null, r: RunResult | null):
 
 function nextSteps(p: ProjectSnapshot): string[] {
   const steps: string[] = [];
-  const failed = (r: RunResult | null) => r && !r.running && (r.timedOut || r.exitCode !== 0);
+  const failed = (r: RunResult | null) => r && !r.running && !r.canceled && (r.timedOut || r.exitCode !== 0);
   if (!p.git.ok) steps.push(`저장소 경로와 config 를 확인: ${p.git.error ?? ''}`);
   if (p.tmux.configured && !p.tmux.exists) steps.push(`tmux 세션 \`${p.tmuxSession}\` 이 종료됨 — 에이전트가 끝난 것인지 죽은 것인지 확인`);
   if (p.status.state === 'waiting') steps.push(`입력 대기 중 — \`${p.tmux.attachCommand ?? ''}\` 로 접속해 응답: ${p.tmux.waitingPrompt ?? ''}`);

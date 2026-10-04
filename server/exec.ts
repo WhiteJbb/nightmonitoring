@@ -47,15 +47,15 @@ export function run(bin: Bin, args: string[], timeoutMs = 10_000): Promise<ExecR
   });
 }
 
-export type ConfiguredExec = (command: string, cwd: string, timeoutMs: number) => Promise<ExecResult>;
+export type ConfiguredExec = (command: string, cwd: string, timeoutMs: number, signal?: AbortSignal) => Promise<ExecResult>;
 
 const MAX_RUN_OUTPUT = 1024 * 1024;
 
 /**
  * config 에 등록된 test/build 명령 전용. command 는 config 파일에서만 와야 한다
- * (호출부는 runner.ts 하나). 셸로 실행하고, 시간 초과 시 프로세스 그룹째 종료한다.
+ * (호출부는 runner.ts 하나). 셸로 실행하고, 시간 초과나 취소(signal) 시 프로세스 그룹째 종료한다.
  */
-export const runConfigured: ConfiguredExec = (command, cwd, timeoutMs) =>
+export const runConfigured: ConfiguredExec = (command, cwd, timeoutMs, signal) =>
   new Promise((resolve) => {
     let stdout = '';
     let stderr = '';
@@ -74,14 +74,19 @@ export const runConfigured: ConfiguredExec = (command, cwd, timeoutMs) =>
     child.stdout.on('data', (d: Buffer) => (stdout = keepTail(stdout + d.toString('utf8'))));
     child.stderr.on('data', (d: Buffer) => (stderr = keepTail(stderr + d.toString('utf8'))));
     const pid = child.pid;
-    const timer = setTimeout(() => {
-      timedOut = true;
+    const killGroup = () => {
       try {
         if (pid) process.kill(-pid, 'SIGKILL');
       } catch {
         // 이미 종료됨
       }
+    };
+    const timer = setTimeout(() => {
+      timedOut = true;
+      killGroup();
     }, timeoutMs);
+    if (signal?.aborted) killGroup();
+    signal?.addEventListener('abort', killGroup, { once: true });
     child.on('error', (e) => {
       clearTimeout(timer);
       resolve({ code: null, stdout, stderr: stderr + e.message, timedOut });

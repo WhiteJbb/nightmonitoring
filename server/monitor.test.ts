@@ -141,8 +141,39 @@ describe('Runner', () => {
     expect(runner.start(p, 'test')).toBe('already-running');
     expect(runner.get(p.id).test).toMatchObject({ running: true, command: 'npm test' });
     await vi.waitFor(() => expect(runner.get(p.id).test?.running).toBe(false));
-    expect(exec).toHaveBeenCalledExactlyOnceWith('npm test', '/repo/app', 7000);
+    expect(exec).toHaveBeenCalledExactlyOnceWith('npm test', '/repo/app', 7000, expect.any(AbortSignal));
     expect(runner.get(p.id).test).toMatchObject({ exitCode: 2, stdout: 'out', stderr: 'err', timedOut: false });
     expect(changed).toHaveBeenCalledTimes(2);
+    expect(runner.history(p.id).test).toEqual([expect.objectContaining({ exitCode: 2, canceled: false })]);
+  });
+
+  it('cancels a running command and records it as canceled', async () => {
+    const exec = vi.fn((_c: string, _d: string, _t: number, signal?: AbortSignal) => new Promise<{ code: null; stdout: string; stderr: string; timedOut: boolean }>((resolve) => signal!.addEventListener('abort', () => resolve({ code: null, stdout: 'partial', stderr: '', timedOut: false }))));
+    const runner = new Runner({ timeoutSec: 7, logDir: null, exec });
+    const p = { ...project, buildCommand: 'npm run build' };
+    expect(runner.cancel(p.id, 'build')).toBe(false);
+    runner.start(p, 'build');
+    expect(runner.cancel(p.id, 'build')).toBe(true);
+    await vi.waitFor(() => expect(runner.get(p.id).build?.running).toBe(false));
+    expect(runner.get(p.id).build).toMatchObject({ canceled: true, exitCode: null, stdout: 'partial' });
+    expect(runner.cancel(p.id, 'build')).toBe(false);
+  });
+
+  it('keeps bounded history and restores state, marking interrupted runs', () => {
+    const runner = new Runner({ timeoutSec: 7, logDir: null });
+    const result = (i: number, running = false) => ({ kind: 'test' as const, command: 'npm test', running, startedAt: new Date(T0 + i * 1000).toISOString(), finishedAt: null, exitCode: running ? null : 0, timedOut: false, canceled: false, durationMs: 1, stdout: 'x'.repeat(100_000), stderr: '' });
+    for (let i = 0; i < 25; i++) runner.seed('app', result(i));
+    expect(runner.history('app').test).toHaveLength(20);
+    expect(runner.history('app').test[0]!.startedAt).toBe(result(24).startedAt);
+    runner.seed('app', result(99, true));
+
+    const state = JSON.parse(JSON.stringify(runner.exportState()));
+    expect(state.results.app.test.stdout).toHaveLength(64 * 1024);
+    const restored = new Runner({ timeoutSec: 7, logDir: null });
+    restored.restore(state);
+    expect(restored.get('app').test).toMatchObject({ running: false, canceled: true });
+    expect(restored.get('app').test!.stderr).toContain('서버 재시작으로 중단됨');
+    expect(restored.history('app').test).toHaveLength(20);
+    expect(restored.history('app').test[0]).toMatchObject({ canceled: true });
   });
 });

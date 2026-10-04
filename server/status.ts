@@ -18,7 +18,7 @@ const minutesSince = (iso: string | null, now: number): number =>
 const fmt = (min: number) => (Number.isFinite(min) ? `${Math.floor(min)}분 동안` : '모니터링 시작 이후');
 
 function runFailure(label: string, r: RunResult | null): string | null {
-  if (!r || r.running) return null;
+  if (!r || r.running || r.canceled) return null;
   if (r.timedOut) return `${label} 시간 초과`;
   if (r.exitCode !== 0) return `${label} 실패 (exit ${r.exitCode ?? '없음'})`;
   return null;
