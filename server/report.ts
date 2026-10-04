@@ -2,7 +2,7 @@ import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectSnapshot, Report, ReportMeta, RunResult, Snapshot } from '../shared/types.ts';
 
-const STATE_LABEL = { running: '정상 실행', idle: '유휴', stalled: '정지 의심', error: '오류' } as const;
+const STATE_LABEL = { running: '정상 실행', waiting: '입력 대기', idle: '유휴', stalled: '정지 의심', error: '오류' } as const;
 const NAME_RE = /^\d{4}-\d{2}-\d{2}-morning-report\.md$/;
 const OUTPUT_SUMMARY_LINES = 15;
 const RUN_TAIL_LINES = 20;

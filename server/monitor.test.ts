@@ -12,7 +12,7 @@ const config = parseConfig({ projects: [{ name: 'app', repoPath: '/repo/app', tm
 
 const git = (over: Partial<GitInfo> = {}): GitInfo => ({
   ok: true, branch: 'main', head: 'h1', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0,
-  recentCommits: [{ hash: 'h1', author: 'a', date: new Date(T0 - 60 * 60_000).toISOString(), subject: 's' }], todayCommits: [], ...over,
+  recentCommits: [{ hash: 'h1', author: 'a', date: new Date(T0 - 60 * 60_000).toISOString(), subject: 's' }], todayCommits: [], fingerprint: JSON.stringify(over.changedFiles ?? []), ...over,
 });
 
 function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: boolean; tmuxThrows?: boolean }): Collector {
@@ -24,7 +24,7 @@ function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: bool
     since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
     async tmux() {
       if (state.tmuxThrows) throw new Error('tmux down');
-      const raw: RawTmux = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 40 * 60_000).toISOString(), output: state.output, attachCommand: 'tmux attach -t app' };
+      const raw: RawTmux = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 40 * 60_000).toISOString(), output: state.output, panes: [], waitingPrompt: null, attachCommand: 'tmux attach -t app' };
       return new Map([['app', raw]]);
     },
     logErrors: async () => [],

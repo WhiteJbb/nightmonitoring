@@ -21,7 +21,7 @@ export function attachCommand(session: string): string {
   return `tmux attach -t ${quoted}`;
 }
 
-const NO_TMUX: RawTmux = { configured: false, exists: false, createdAt: null, attached: false, lastActivityAt: null, output: [], attachCommand: null };
+const NO_TMUX: RawTmux = { configured: false, exists: false, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: null };
 
 export function realCollector(config: Config): Collector {
   return {
@@ -43,6 +43,8 @@ export function realCollector(config: Config): Collector {
             attached: s?.attached ?? false,
             lastActivityAt: s?.lastActivityAt ?? null,
             output: s ? await capturePane(name) : [],
+            panes: [],
+            waitingPrompt: null,
             attachCommand: attachCommand(name),
             ...(error ? { error } : {}),
           });
@@ -135,9 +137,8 @@ export class Monitor {
       tr.baseline ??= { at: nowIso, branch: git.branch, head: git.head };
       since = await this.opts.collector.since(p, tr.baseline);
       // working tree 지문이 이전 폴링과 달라졌으면 Git 활동으로 본다.
-      const fingerprint = JSON.stringify([git.head, git.branch, git.changedFiles, git.diffStat]);
-      if (tr.fingerprint !== null && fingerprint !== tr.fingerprint) tr.gitChangedAt = nowIso;
-      tr.fingerprint = fingerprint;
+      if (tr.fingerprint !== null && git.fingerprint !== tr.fingerprint) tr.gitChangedAt = nowIso;
+      tr.fingerprint = git.fingerprint;
     }
 
     let lastOutputChangeAt: string | null = null;
@@ -175,7 +176,7 @@ export class Monitor {
       if (!c) return [];
       const runs = this.opts.runs(p.id);
       const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, now });
-      return [{ ...p, ...c, runs, status }];
+      return [{ ...p, ...c, runs, history: { test: [], build: [] }, status }];
     });
     const count = (state: string) => projects.filter((p) => p.status.state === state).length;
     return {
@@ -185,10 +186,13 @@ export class Monitor {
       refreshIntervalSec: config.refreshIntervalSec,
       configPath: this.opts.configPath ?? '',
       configMissing: this.opts.configMissing ?? false,
+      configError: null,
+      autoReportTime: null,
       summary: {
         total: projects.length,
         sessionsRunning: projects.filter((p) => p.tmux.exists).length,
         running: count('running'),
+        waiting: count('waiting'),
         idle: count('idle'),
         stalled: count('stalled'),
         error: count('error'),
@@ -227,4 +231,5 @@ const EMPTY_GIT: GitInfo = {
   deletions: 0,
   recentCommits: [],
   todayCommits: [],
+  fingerprint: '',
 };

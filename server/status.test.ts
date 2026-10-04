@@ -6,9 +6,9 @@ import type { StatusInput } from './status.ts';
 const NOW = Date.parse('2026-10-04T03:00:00Z');
 const ago = (min: number) => new Date(NOW - min * 60_000).toISOString();
 
-const git: GitInfo = { ok: true, branch: 'main', head: 'abc', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0, recentCommits: [], todayCommits: [] };
-const tmux: TmuxInfo = { configured: true, exists: true, createdAt: ago(300), attached: false, lastActivityAt: ago(1), lastOutputChangeAt: ago(1), output: [], attachCommand: 'tmux attach -t s' };
-const run = (over: Partial<RunResult>): RunResult => ({ kind: 'test', command: 'npm test', running: false, startedAt: ago(5), finishedAt: ago(4), exitCode: 0, timedOut: false, durationMs: 1000, stdout: '', stderr: '', ...over });
+const git: GitInfo = { ok: true, branch: 'main', head: 'abc', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0, recentCommits: [], todayCommits: [], fingerprint: '' };
+const tmux: TmuxInfo = { configured: true, exists: true, createdAt: ago(300), attached: false, lastActivityAt: ago(1), lastOutputChangeAt: ago(1), output: [], panes: [], waitingPrompt: null, attachCommand: 'tmux attach -t s' };
+const run = (over: Partial<RunResult>): RunResult => ({ kind: 'test', command: 'npm test', running: false, startedAt: ago(5), finishedAt: ago(4), exitCode: 0, timedOut: false, canceled: false, durationMs: 1000, stdout: '', stderr: '', ...over });
 
 const input = (over: Partial<StatusInput> = {}): StatusInput => ({
   git,

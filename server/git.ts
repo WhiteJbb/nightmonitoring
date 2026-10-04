@@ -51,6 +51,7 @@ function failed(error: string): GitInfo {
     deletions: 0,
     recentCommits: [],
     todayCommits: [],
+    fingerprint: '',
   };
 }
 
@@ -89,6 +90,7 @@ export async function collectGit(repoPath: string): Promise<GitInfo> {
     deletions: sum(diffStat, 'deletions'),
     recentCommits: recent.code === 0 ? parseLog(recent.stdout) : [],
     todayCommits: today.code === 0 ? parseLog(today.stdout) : [],
+    fingerprint: JSON.stringify([headSha, changedFiles, diffStat]),
   };
 }
 
