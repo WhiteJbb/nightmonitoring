@@ -5,7 +5,7 @@ import type { Config, ProjectConfig } from './config.ts';
 import type { ConfiguredExec } from './exec.ts';
 import type { Collector, RawTmux } from './monitor.ts';
 import { stripAnsi } from './logs.ts';
-import { attachCommand } from './monitor.ts';
+import { attachCommand, NO_LOG } from './monitor.ts';
 import type { Runner } from './runner.ts';
 
 type DemoFile = [path: string, status: string, additions: number, deletions: number];
@@ -209,7 +209,7 @@ export function demoCollector(now: () => number = Date.now): Collector {
       for (const p of projects) {
         const d = find(p);
         // 계속 출력 중인 프로젝트는 매 폴링마다 줄이 달라진다.
-        const live = d.quietMinutes === null ? [`${E}35m✽${E}0m ${E}2mDeploying… (${elapsedSec}s · ↓ ${1200 + elapsedSec * 37} tokens)${E}0m`, `${E}2m  ⎿ Tool call #${Math.floor(elapsedSec / 5) + 1}${E}0m`] : [];
+        const live = d.quietMinutes === null ? [`${E}35m✽${E}0m ${E}2mDeploying… (${elapsedSec}s · ↓ ${1200 + elapsedSec * 37} tokens)${E}0m`, `${E}2m  ⎿ Edit src/${['routes/index.ts', 'middleware/rateLimiter.ts', 'lib/redis.ts', 'config.ts'][Math.floor(elapsedSec / 5) % 4]}${E}0m`] : [];
         const panes = d.sessionAlive
           ? d.panes.map((x, i) => ({ id: `%${p.id.length}${i}`, window: i, windowName: x.windowName, index: 0, command: x.command, active: i === 0, lines: i === 0 ? [...x.lines, ...live] : x.lines }))
           : [];
@@ -227,7 +227,7 @@ export function demoCollector(now: () => number = Date.now): Collector {
       }
       return out;
     },
-    logErrors: async () => ({ errors: [], size: 0 }),
+    logErrors: async () => NO_LOG,
   };
 }
 

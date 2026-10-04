@@ -5,7 +5,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { DEFAULTS, defaultConfigPath, loadConfig } from './config.ts';
 import type { Collector } from './monitor.ts';
-import { Monitor } from './monitor.ts';
+import { Monitor, NO_LOG } from './monitor.ts';
 import { alertsFor, autoReportDue } from './notify.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
@@ -20,7 +20,7 @@ const collectorFor = (): Collector => ({
   git: async () => git,
   since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
   tmux: async () => new Map(),
-  logErrors: async () => ({ errors: [], size: 0 }),
+  logErrors: async () => NO_LOG,
 });
 
 describe('config files', () => {

@@ -59,6 +59,7 @@ async function main() {
 
   const reportsDir = () => (demo ? path.join(monitor.config.reportsDir, 'demo') : monitor.config.reportsDir);
   let lastAutoReportDate = saved?.lastAutoReportDate ?? null;
+  let autoReportBusy = false;
 
   if (!demo) {
     // 상태 변화 알림과 예약된 Morning Report. 둘 다 실패해도 감시는 계속된다.
@@ -68,12 +69,18 @@ async function main() {
       if (monitor.config.notifications) for (const a of alerts) void notify(a.title, a.message);
 
       const now = new Date();
-      if (autoReportDue(now, monitor.config.autoReportTime, lastAutoReportDate, processStartedAt)) {
-        lastAutoReportDate = localDate(now);
-        saveReport(reportsDir(), snapshot, now).then(
-          (r) => console.log(`Morning Report 자동 생성: ${r.name}`),
-          (e: Error) => console.error(`Morning Report 자동 생성 실패: ${e.message}`),
-        );
+      if (!autoReportBusy && autoReportDue(now, monitor.config.autoReportTime, lastAutoReportDate, processStartedAt)) {
+        autoReportBusy = true;
+        // 성공했을 때만 날짜를 기록해, 실패하면 다음 tick 에 다시 시도한다.
+        saveReport(reportsDir(), snapshot, now)
+          .then(
+            (r) => {
+              lastAutoReportDate = localDate(now);
+              console.log(`Morning Report 자동 생성: ${r.name}`);
+            },
+            (e: Error) => console.error(`Morning Report 자동 생성 실패: ${e.message}`),
+          )
+          .finally(() => (autoReportBusy = false));
       }
     });
 
@@ -86,12 +93,12 @@ async function main() {
   if (stateFile) {
     let last = '';
     monitor.subscribe(() => {
-      const state = { version: 1 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate };
+      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate };
       const json = JSON.stringify(state);
       if (json === last) return;
-      last = json;
       try {
         saveState(stateFile, state);
+        last = json; // 실패하면 다음 스냅샷에서 다시 시도한다
       } catch (e) {
         console.error(`상태 저장 실패: ${(e as Error).message}`);
       }

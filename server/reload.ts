@@ -22,6 +22,9 @@ export async function reloadConfig({ configPath, baseDir, monitor, runner, colle
     const old = monitor.config;
     if (config.host !== old.host || config.port !== old.port) console.warn('host/port 변경은 서버를 재시작해야 적용됩니다.');
     runner.timeoutSec = config.commandTimeoutSec;
+    // 같은 id 가 다른 저장소를 가리키게 됐거나 사라졌으면 이전 저장소의 실행 결과를 버린다.
+    const next = new Map(config.projects.map((p) => [p.id, p.repoPath]));
+    for (const p of old.projects) if (next.get(p.id) !== p.repoPath) runner.forget(p.id);
     await monitor.setConfig({ ...config, host: old.host, port: old.port }, collectorFor(config), missing);
     console.log(`config 를 다시 읽었습니다: 프로젝트 ${config.projects.length}개`);
     return 'applied';

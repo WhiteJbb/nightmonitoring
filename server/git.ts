@@ -62,6 +62,9 @@ const MAX_FINGERPRINT_FILES = 500;
 async function countLines(file: string): Promise<number> {
   let fh;
   try {
+    // FIFO 같은 특수 파일은 open 에서 멈출 수 있으므로 열기 전에 거른다.
+    const st = await lstat(file);
+    if (!st.isFile() || st.size === 0 || st.size > MAX_UNTRACKED_BYTES) return 0;
     fh = await open(file, 'r');
     const { size } = await fh.stat();
     if (size === 0 || size > MAX_UNTRACKED_BYTES) return 0;

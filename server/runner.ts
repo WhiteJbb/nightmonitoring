@@ -78,6 +78,8 @@ export class Runner {
     void exec(command, project.repoPath, this.timeoutSec * 1000, controller.signal)
       .catch((e: Error) => ({ code: null, stdout: '', stderr: e.message, timedOut: false }))
       .then(async (r) => {
+        // forget() 으로 버려진 실행의 결과는 기록하지 않는다.
+        if (this.controllers.get(key) !== controller) return;
         const finished = Date.now();
         this.controllers.delete(key);
         this.seed(project.id, {
@@ -103,6 +105,17 @@ export class Runner {
     if (!controller) return false;
     controller.abort();
     return true;
+  }
+
+  /** 프로젝트가 사라지거나 다른 저장소를 가리키게 됐을 때: 실행을 중단하고 결과·이력을 버린다. */
+  forget(projectId: string): void {
+    for (const kind of ['test', 'build'] as const) {
+      const key = `${projectId}\0${kind}`;
+      this.controllers.get(key)?.abort();
+      this.controllers.delete(key);
+    }
+    this.results.delete(projectId);
+    this.histories.delete(projectId);
   }
 
   /** 서버 종료 시 남은 자식 프로세스를 정리한다. */
