@@ -10,3 +10,5 @@ context.md
 NIGHT_REPORT.md
 .claude
 *.log
+.agents
+skills-lock.json
