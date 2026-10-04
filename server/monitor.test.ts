@@ -27,7 +27,7 @@ function fakeCollector(state: { output: string[]; git: GitInfo; gitThrows?: bool
       const raw: RawTmux = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 40 * 60_000).toISOString(), output: state.output, panes: [], waitingPrompt: null, attachCommand: 'tmux attach -t app' };
       return new Map([['app', raw]]);
     },
-    logErrors: async () => [],
+    logErrors: async () => ({ errors: [], size: 0 }),
   };
 }
 

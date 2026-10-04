@@ -227,7 +227,7 @@ export function demoCollector(now: () => number = Date.now): Collector {
       }
       return out;
     },
-    logErrors: async () => [],
+    logErrors: async () => ({ errors: [], size: 0 }),
   };
 }
 

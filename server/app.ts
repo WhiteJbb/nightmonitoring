@@ -71,6 +71,16 @@ export function createApp({ config, monitor, runner, reportsDir }: AppDeps) {
     res.status(202).json({ ok: true });
   });
 
+  api.post('/projects/:id/ack-errors', (req, res) => {
+    if (!monitor.ackErrors(req.params.id)) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    res.json({ ok: true });
+  });
+
+  api.post('/session/reset', async (_req, res) => {
+    await monitor.reset();
+    res.json({ ok: true });
+  });
+
   api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir)));
 
   api.get('/reports/:name', async (req, res) => {

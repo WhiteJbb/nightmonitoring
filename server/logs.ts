@@ -43,21 +43,21 @@ export function findPrompt(lines: string[], patterns: string[]): string | null {
 }
 
 const TAIL_BYTES = 64 * 1024;
-const TAIL_LINES = 200;
 const MAX_MATCHES = 20;
 
-/** 파일 끝부분을 줄 단위로 읽는다. 파일이 없거나 읽을 수 없으면 빈 배열. */
-export async function tailFile(file: string): Promise<string[]> {
+/** 파일의 [from, 끝) 구간을 줄 단위로 읽는다 (최대 끝 64KB). 파일이 없으면 size 0. */
+export async function readFrom(file: string, from: number): Promise<{ lines: string[]; size: number }> {
   let fh;
   try {
     fh = await open(file, 'r');
     const { size } = await fh.stat();
-    const length = Math.min(size, TAIL_BYTES);
-    const buf = Buffer.alloc(length);
-    await fh.read(buf, 0, length, size - length);
-    return stripAnsi(buf.toString('utf8')).split('\n').slice(-TAIL_LINES);
+    // 파일이 줄어들었으면 교체(rotate)된 것으로 보고 처음부터 읽는다.
+    const start = Math.max(from > size ? 0 : from, size - TAIL_BYTES);
+    const buf = Buffer.alloc(size - start);
+    await fh.read(buf, 0, buf.length, start);
+    return { lines: stripAnsi(buf.toString('utf8')).split('\n'), size };
   } catch {
-    return [];
+    return { lines: [], size: 0 };
   } finally {
     await fh?.close();
   }
@@ -70,6 +70,17 @@ export function findErrors(lines: string[], patterns: string[], ignore: string[]
   return lines.filter((line) => isError(line) && !isIgnored(line)).slice(-MAX_MATCHES);
 }
 
-export async function scanLog(file: string, patterns: string[], ignore: string[] = []): Promise<string[]> {
-  return findErrors(await tailFile(file), patterns, ignore);
+export interface LogScan {
+  errors: string[];
+  /** 스캔 시점의 파일 크기. 다음 기준 offset 이나 "확인 처리"에 쓴다. */
+  size: number;
+}
+
+/**
+ * offset 이후에 추가된 로그에서만 오류를 찾는다.
+ * offset 이 null 이면(최초 관측) 기존 내용은 건너뛰고 현재 크기만 돌려준다.
+ */
+export async function scanLog(file: string, patterns: string[], ignore: string[], offset: number | null): Promise<LogScan> {
+  const { lines, size } = await readFrom(file, offset ?? Number.MAX_SAFE_INTEGER);
+  return { errors: offset === null ? [] : findErrors(lines, patterns, ignore), size };
 }
