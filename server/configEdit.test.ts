@@ -6,7 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConfigUpdate, ConfigView } from '../shared/types.ts';
 import { createApp } from './app.ts';
 import { ConfigError, loadConfig, parseConfig } from './config.ts';
-import { applyConfigUpdate, readConfigView, readOnlyView } from './configEdit.ts';
+import { applyConfigUpdate, ConfigConflict, readConfigView, readOnlyView, versionOf } from './configEdit.ts';
 import { demoCollector } from './demo.ts';
 import { Monitor } from './monitor.ts';
 import { Runner } from './runner.ts';
@@ -24,7 +24,7 @@ const BASE = {
     { name: 'Lib', repoPath: '/repo/lib' },
   ],
 };
-const toUpdate = (v: ConfigView): ConfigUpdate => ({ settings: structuredClone(v.settings), projects: v.projects.map(({ id, name, repoPath, tmuxSession, logFile }) => ({ id, name, repoPath, tmuxSession, logFile })) });
+const toUpdate = (v: ConfigView): ConfigUpdate => ({ version: v.version, settings: structuredClone(v.settings), projects: v.projects.map(({ id, name, repoPath, tmuxSession, logFile }) => ({ id, name, repoPath, tmuxSession, logFile })) });
 const issuesOf = (fn: () => void): string[] => {
   try {
     fn();
@@ -122,9 +122,37 @@ describe('applyConfigUpdate', () => {
     ghost.projects.push({ ...ghost.projects[0]!, name: 'dup' }, { id: 'nope', name: 'x', repoPath: '/x', tmuxSession: null, logFile: null });
     expect(issuesOf(() => applyConfigUpdate(file, '/base', ghost))).toHaveLength(2);
 
-    expect(issuesOf(() => applyConfigUpdate(file, '/base', { settings: 'x' }))).toHaveLength(1);
-    expect(issuesOf(() => applyConfigUpdate(file, '/base', null))).toHaveLength(1);
+    expect(issuesOf(() => applyConfigUpdate(file, '/base', { version: versionOf(file), settings: 'x' }))).toHaveLength(1);
+    expect(() => applyConfigUpdate(file, '/base', null)).toThrow(ConfigConflict);
     expect(await readFile(file, 'utf8')).toBe(before);
+  });
+
+  it('rejects a save based on a stale view of the file', async () => {
+    const file = await jsonFile('conflict.json');
+    const stale = toUpdate(readConfigView(file, '/base'));
+    stale.settings.refreshIntervalSec = 9;
+
+    // 그사이 다른 곳에서 파일을 고침
+    await writeFile(file, JSON.stringify({ ...BASE, refreshIntervalSec: 2 }));
+    const edited = await readFile(file, 'utf8');
+    expect(() => applyConfigUpdate(file, '/base', stale)).toThrow(ConfigConflict);
+    expect(() => applyConfigUpdate(file, '/base', { ...stale, version: undefined })).toThrow(ConfigConflict);
+    expect(await readFile(file, 'utf8')).toBe(edited);
+
+    // 다시 불러오면 저장되고, 저장할 때마다 version 이 바뀐다
+    const fresh = toUpdate(readConfigView(file, '/base'));
+    fresh.settings.refreshIntervalSec = 9;
+    applyConfigUpdate(file, '/base', fresh);
+    expect(readConfigView(file, '/base').version).not.toBe(fresh.version);
+    expect(() => applyConfigUpdate(file, '/base', fresh)).toThrow(ConfigConflict);
+  });
+
+  it('detects a file created or deleted behind the editor', async () => {
+    const file = path.join(dir, 'appears.json');
+    const u = toUpdate(readConfigView(file, '/base'));
+    expect(u.version).toBe('none');
+    await writeFile(file, '{}');
+    expect(() => applyConfigUpdate(file, '/base', u)).toThrow(ConfigConflict);
   });
 
   it('the same path written differently is not a move', async () => {
@@ -174,6 +202,7 @@ describe('/api/config', () => {
   const state = { view: readOnlyView(config, '/x/c.json', 'demo') as ConfigView };
   const update = vi.fn(async (body: unknown) => {
     if ((body as { settings?: unknown }).settings === 'bad') throw new ConfigError(['문제 1', '문제 2']);
+    if ((body as { version?: unknown }).version === 'stale') throw new ConfigConflict('파일이 바뀌었습니다');
     return state.view;
   });
   const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', configEditor: { view: () => state.view, update } }).listen(0, '127.0.0.1');
@@ -193,9 +222,12 @@ describe('/api/config', () => {
     expect(bad.status).toBe(400);
     expect(await bad.json()).toEqual({ error: 'config 가 올바르지 않습니다', issues: ['문제 1', '문제 2'] });
     expect((await put('{not json')).status).toBe(400);
+    const conflict = await put('{"version":"stale"}');
+    expect(conflict.status).toBe(409);
+    expect(await conflict.json()).toEqual({ error: '파일이 바뀌었습니다' });
     const cross = await fetch(url(), { method: 'PUT', headers: { 'Content-Type': 'application/json', Origin: 'https://evil.example' }, body: '{}' });
     expect(cross.status).toBe(403);
     expect((await put('{"settings":{},"projects":[]}')).status).toBe(200);
-    expect(update).toHaveBeenCalledTimes(2);
+    expect(update).toHaveBeenCalledTimes(3);
   });
 });

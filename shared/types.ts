@@ -227,6 +227,8 @@ export interface ConfigProjectView extends EditableProject {
 
 export interface ConfigView {
   path: string;
+  /** 불러온 시점의 파일 내용 지문. 저장할 때 그대로 돌려보내 동시 수정을 감지한다 */
+  version: string;
   format: 'json' | 'yaml';
   /** false 면 저장할 수 없다 (demo mode 등). 이유는 readOnlyReason */
   editable: boolean;
@@ -239,6 +241,8 @@ export interface ConfigView {
 
 /** PUT /api/config 본문. projects 는 전체 목록이며, 빠진 기존 프로젝트는 삭제된다. */
 export interface ConfigUpdate {
+  /** 편집을 시작할 때 받은 ConfigView.version. 파일이 그사이 바뀌었으면 409 */
+  version: string;
   settings: EditableSettings;
   projects: EditableProject[];
 }

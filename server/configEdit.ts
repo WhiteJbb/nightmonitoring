@@ -1,5 +1,6 @@
 // UI 에서의 설정 편집. 편집 가능한 필드만 골라 파일에 반영하고,
 // 테스트·빌드 명령과 그 명령이 실행되는 경로는 절대 요청 본문에서 받지 않는다.
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { Document, parseDocument } from 'yaml';
@@ -14,6 +15,14 @@ const SETTING_KEYS = ['refreshIntervalSec', 'errorPatterns', 'errorIgnorePattern
 const THRESHOLD_KEYS = ['idleMinutes', 'stalledMinutes', 'noCommitMinutes'] as const;
 
 const isYaml = (file: string) => /\.ya?ml$/i.test(file);
+
+/** 설정 화면을 연 뒤 파일이 다른 곳에서 바뀌었을 때 (HTTP 409) */
+export class ConfigConflict extends Error {}
+
+/** 파일 내용의 지문. 파일이 없으면 'none'. */
+export function versionOf(file: string): string {
+  return existsSync(file) ? createHash('sha1').update(readFileSync(file)).digest('hex') : 'none';
+}
 
 function readRaw(file: string): Obj {
   if (!existsSync(file)) return {};
@@ -48,6 +57,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? 
 export function readOnlyView(config: Config, file: string, reason: string): ConfigView {
   return {
     path: file,
+    version: '',
     format: isYaml(file) ? 'yaml' : 'json',
     editable: false,
     readOnlyReason: reason,
@@ -77,6 +87,7 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
   });
   return {
     path: file,
+    version: versionOf(file),
     format: isYaml(file) ? 'yaml' : 'json',
     editable: true,
     readOnlyReason: null,
@@ -161,6 +172,10 @@ function writeRaw(file: string, before: Obj, next: Obj): void {
 
 /** 요청을 검증해 파일에 쓴다. 잘못된 값이면 파일을 건드리지 않고 ConfigError. */
 export function applyConfigUpdate(file: string, baseDir: string, update: unknown): void {
+  // 화면을 연 뒤 파일이 바뀌었으면 덮어쓰지 않는다. 읽기~쓰기가 모두 동기라 이 요청 안에서는 끼어들 틈이 없다.
+  if (!isObj(update) || update.version !== versionOf(file)) {
+    throw new ConfigConflict('설정 화면을 연 뒤 config 파일이 다른 곳에서 수정되었습니다. 다시 불러온 뒤 수정해 주세요.');
+  }
   const raw = readRaw(file);
   const next = mergeUpdate(raw, parseConfig(raw, baseDir), update, baseDir);
   parseConfig(next, baseDir); // 전체 검증. 문제가 있으면 여기서 throw

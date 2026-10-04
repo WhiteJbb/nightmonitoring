@@ -3,9 +3,12 @@ import type { ConfigUpdate, ConfigView, Report, ReportMeta, RunKind, Snapshot } 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
   issues: string[];
-  constructor(message: string, issues: string[] = []) {
+  /** HTTP 상태 코드 */
+  status: number;
+  constructor(message: string, issues: string[] = [], status = 0) {
     super(message);
     this.issues = issues;
+    this.status = status;
   }
 }
 
@@ -20,6 +23,7 @@ async function req<T>(url: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = '
     throw new ApiError(
       typeof error === 'string' ? error : `HTTP ${res.status}`,
       Array.isArray(issues) ? issues.filter((i) => typeof i === 'string') : [],
+      res.status,
     );
   }
   if (body === null) throw new Error('서버 응답을 해석할 수 없습니다');

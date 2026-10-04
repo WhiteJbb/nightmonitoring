@@ -64,7 +64,7 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
 const num = (s: string) => (s.trim() === '' ? NaN : Number(s));
 const lines = (s: string) => s.split('\n').filter((l) => l.trim() !== '');
 
-function toUpdate(d: Draft): ConfigUpdate {
+function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
   return {
     settings: {
       refreshIntervalSec: num(d.refreshIntervalSec),
@@ -167,13 +167,19 @@ export function Settings() {
     setSaved(false);
     setSaveError(null);
     api
-      .saveConfig(toUpdate(draft))
+      .saveConfig({ ...toUpdate(draft), version: view.version })
       .then((v) => {
         loaded(v);
         setSaved(true);
       })
       .catch((err: unknown) => setSaveError(err instanceof Error ? err : new Error(String(err))))
       .finally(() => setSaving(false));
+  };
+  // 파일이 다른 곳에서 바뀐 경우(409): 최신 내용을 다시 불러온다. 지금 화면의 수정은 버려진다.
+  const reloadLatest = () => {
+    setSaveError(null);
+    setSaved(false);
+    load();
   };
   const revert = () => {
     setDraft(toDraft(view));
@@ -367,6 +373,14 @@ export function Settings() {
                     <li key={issue}>{issue}</li>
                   ))}
                 </ul>
+              )}
+              {saveError instanceof ApiError && saveError.status === 409 && (
+                <>
+                  <p className="dim">다시 불러오면 이 화면에서 수정한 내용은 사라집니다.</p>
+                  <button type="button" onClick={reloadLatest}>
+                    다시 불러오기
+                  </button>
+                </>
               )}
             </div>
           )}

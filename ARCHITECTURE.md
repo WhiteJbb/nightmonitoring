@@ -93,6 +93,7 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 - 명령이 등록된 프로젝트의 `repoPath`가 달라지면(정규화한 경로 기준) 거부한다. 등록된 명령이 다른 디렉터리에서 실행되는 것을 막기 위함이다.
 - 병합 결과를 `parseConfig`로 전체 검증한 뒤에만 쓴다(임시 파일 + rename). 실패하면 파일은 그대로다.
 - 파일에 없던 키는 값이 실제로 바뀐 경우에만 쓴다(기본값으로 파일을 채우지 않는다). YAML은 `Document`의 바뀐 최상위 키만 교체해 주석을 보존한다.
+- 동시 수정 감지: 뷰에 파일 내용의 해시(`version`)를 실어 보내고 저장 요청이 그 값을 돌려준다. 현재 파일의 해시와 다르면 409로 거부한다. 확인부터 쓰기까지 동기 코드라 한 요청 안에서 끼어들 틈이 없다.
 - 저장 직후 `reloadConfig`를 호출해 즉시 적용한다. demo mode는 읽기 전용 뷰만 제공한다.
 
 ## 명령 실행과 보안 (`exec.ts`)
@@ -117,7 +118,7 @@ reload.ts      │                                    └─ logs.ts  ─┘ (fs
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
 | GET | `/api/config` | 설정 편집 화면용 뷰 (파일의 원문 경로, 잠금 여부) |
-| PUT | `/api/config` | 설정 저장 후 즉시 적용. 200 / 400(`issues`) / 403(demo) |
+| PUT | `/api/config` | 설정 저장 후 즉시 적용. 200 / 400(`issues`) / 403(demo) / 409(동시 수정) |
 | GET | `/api/reports` | 보고서 목록 |
 | GET | `/api/reports/:name` | 보고서 내용 |
 | POST | `/api/reports` | Morning Report 생성 후 저장 |
