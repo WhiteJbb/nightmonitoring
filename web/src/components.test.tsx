@@ -251,3 +251,23 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
   fireEvent.click(screen.getByRole('button', { name: '모니터링 새로 시작' }));
   await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/session/reset', { method: 'POST' }));
 });
+
+test('git tab: long commit lists show ten rows until expanded', () => {
+  const base = project();
+  const commits = Array.from({ length: 25 }, (_, i) => ({ hash: `${String(i).padStart(2, '0')}abcdef0`, author: 'me', date: NOW, subject: `commit ${i}` }));
+  const { container } = render(<GitTab project={project({ git: { ...base.git, recentCommits: commits.slice(0, 10), todayCommits: commits } })} now={NOW} />);
+  const rows = () => container.querySelectorAll('.rows.commits li').length;
+  const before = rows();
+  // 최근 커밋 10개는 그대로(버튼 없음), 오늘 커밋 25개는 10개만
+  const more = screen.getAllByRole('button', { name: '15개 더 보기' });
+  expect(more).toHaveLength(1);
+  fireEvent.click(more[0]!);
+  expect(rows()).toBe(before + 15);
+  fireEvent.click(screen.getByRole('button', { name: '접기' }));
+  expect(rows()).toBe(before);
+});
+
+test('run tab: the run button is not styled as the primary action', () => {
+  render(<RunPanel project={project({ testCommand: 'npm test' })} kind="test" title="테스트" />);
+  expect(screen.getByRole('button', { name: '실행' }).className).not.toContain('primary');
+});

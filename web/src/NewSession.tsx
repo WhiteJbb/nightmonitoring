@@ -38,6 +38,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [session, setSession] = useState<string | null>(null);
   const [allowInput, setAllowInput] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
   const tmuxSession = session ?? sessionNameFrom(name);
 
@@ -48,6 +49,15 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
       </button>
     );
   }
+
+  // 뚝 사라지지 않게 짧게 흐려진 뒤 닫는다. 퇴장은 등장(180ms)보다 빠르게.
+  const close = () => {
+    setClosing(true);
+    setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, 120);
+  };
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -66,7 +76,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   };
 
   return (
-    <form className="settings new-session" onSubmit={submit}>
+    <form className={closing ? 'settings new-session closing' : 'settings new-session'} onSubmit={submit}>
       <h3>tmux 세션 만들기</h3>
       <p className="hint">
         저장소 경로에서 셸만 띄운 새 세션을 만들고 프로젝트로 등록합니다. 같은 이름의 세션이 이미 있으면 그 세션을
@@ -128,7 +138,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
         <button type="submit" className="primary" disabled={busy}>
           {busy ? '만드는 중…' : '만들기'}
         </button>
-        <button type="button" onClick={() => setOpen(false)} disabled={busy}>
+        <button type="button" onClick={close} disabled={busy || closing}>
           닫기
         </button>
       </div>
