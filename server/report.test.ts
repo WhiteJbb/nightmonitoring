@@ -25,7 +25,7 @@ describe('morning report', () => {
 
   it('includes every required section', async () => {
     const md = buildReport(await demoSnapshot(), NOW);
-    for (const text of ['모니터링 시작', '모니터링 종료', '작업한 프로젝트: api-server, web-frontend, payments-service, docs-site', '`main` (최초', '### 생성된 커밋 (3)', '### 변경된 파일', '### 최근 터미널 출력', '### 발견된 오류', '- 테스트 실패 (exit 1)', '### 테스트 결과', '**실패** — `npm test` · exit 1', '### 빌드 결과', '### 다음에 확인할 항목', '- [ ] 실패한 테스트 수정', 'tmux 세션 `pipeline-agent` 이 종료됨']) {
+    for (const text of ['모니터링 시작', '모니터링 종료', '작업한 프로젝트: api-server, web-frontend, mobile-app, payments-service, docs-site', '## mobile-app — 입력 대기', '`main` (최초', '### 생성된 커밋 (3)', '### 변경된 파일', '### 최근 터미널 출력', '### 발견된 오류', '- 테스트 실패 (exit 1)', '### 테스트 결과', '**실패** — `npm test` · exit 1', '### 빌드 결과', '### 다음에 확인할 항목', '- [ ] 실패한 테스트 수정', 'tmux 세션 `pipeline-agent` 이 종료됨']) {
       expect(md).toContain(text);
     }
   });

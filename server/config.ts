@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { compileMatcher } from './logs.ts';
 
 export interface ProjectConfig {
   id: string;
@@ -23,8 +24,19 @@ export interface Config {
   port: number;
   refreshIntervalSec: number;
   thresholds: Thresholds;
+  /** 로그에서 찾을 패턴. 일반 문자열(대소문자 무시 부분 일치) 또는 "/정규식/플래그" */
   errorPatterns: string[];
+  /** 이 패턴에 걸리는 줄은 오류로 보지 않는다 */
+  errorIgnorePatterns: string[];
+  /** 터미널 마지막 줄들에서 찾을 입력 대기 프롬프트 패턴 */
+  promptPatterns: string[];
+  /** 숫자·스피너 문자만 바뀌는 출력 변화는 활동으로 보지 않는다 */
+  ignoreSpinnerChanges: boolean;
   sessionExitIsError: boolean;
+  /** 상태가 입력 대기·정지 의심·오류로 바뀔 때 macOS 알림 */
+  notifications: boolean;
+  /** Morning Report 자동 생성 시각 "HH:MM" (로컬 시간). null 이면 끔 */
+  autoReportTime: string | null;
   commandTimeoutSec: number;
   reportsDir: string;
   projects: ProjectConfig[];
@@ -36,7 +48,12 @@ export const DEFAULTS = {
   refreshIntervalSec: 5,
   thresholds: { idleMinutes: 15, stalledMinutes: 30, noCommitMinutes: 30 },
   errorPatterns: ['error', 'failed', 'exception'],
+  errorIgnorePatterns: ['0 errors', 'no errors', '0 failed'],
+  promptPatterns: ['Do you want to', 'Would you like to', '(y/n)', '[y/n]', '(yes/no)', 'Press Enter to continue', '/❯\\s*1\\.\\s*Yes/'],
+  ignoreSpinnerChanges: true,
   sessionExitIsError: true,
+  notifications: true,
+  autoReportTime: null as string | null,
   commandTimeoutSec: 600,
   reportsDir: 'reports',
 };
@@ -102,18 +119,30 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     noCommitMinutes: num(tObj, 'noCommitMinutes', DEFAULTS.thresholds.noCommitMinutes, 'thresholds.', 0),
   };
 
-  let errorPatterns = DEFAULTS.errorPatterns;
-  if (raw.errorPatterns !== undefined) {
-    if (Array.isArray(raw.errorPatterns) && raw.errorPatterns.every((p) => typeof p === 'string')) {
-      errorPatterns = raw.errorPatterns.filter((p) => p.trim() !== '');
-    } else issues.push('errorPatterns: 문자열 배열이어야 합니다');
-  }
+  const patterns = (key: string, fallback: string[]): string[] => {
+    const v = raw[key];
+    if (v === undefined) return fallback;
+    if (!Array.isArray(v) || !v.every((p) => typeof p === 'string')) {
+      issues.push(`${key}: 문자열 배열이어야 합니다`);
+      return fallback;
+    }
+    const list = v.filter((p) => p.trim() !== '');
+    try {
+      compileMatcher(list);
+    } catch (e) {
+      issues.push(`${key}: 잘못된 정규식 (${(e as Error).message})`);
+    }
+    return list;
+  };
+  const bool = (key: string, fallback: boolean): boolean => {
+    const v = raw[key];
+    if (v === undefined) return fallback;
+    if (typeof v !== 'boolean') issues.push(`${key}: true 또는 false 여야 합니다`);
+    return typeof v === 'boolean' ? v : fallback;
+  };
 
-  let sessionExitIsError = DEFAULTS.sessionExitIsError;
-  if (raw.sessionExitIsError !== undefined) {
-    if (typeof raw.sessionExitIsError === 'boolean') sessionExitIsError = raw.sessionExitIsError;
-    else issues.push('sessionExitIsError: true 또는 false 여야 합니다');
-  }
+  const autoReportTime = optStr(raw, 'autoReportTime', '');
+  if (autoReportTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(autoReportTime)) issues.push('autoReportTime: "HH:MM" 형식이어야 합니다 (예: "07:00")');
 
   const projects: ProjectConfig[] = [];
   const rawProjects = raw.projects ?? [];
@@ -154,8 +183,13 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     port: num(raw, 'port', DEFAULTS.port, '', 1),
     refreshIntervalSec: num(raw, 'refreshIntervalSec', DEFAULTS.refreshIntervalSec, '', 1),
     thresholds,
-    errorPatterns,
-    sessionExitIsError,
+    errorPatterns: patterns('errorPatterns', DEFAULTS.errorPatterns),
+    errorIgnorePatterns: patterns('errorIgnorePatterns', DEFAULTS.errorIgnorePatterns),
+    promptPatterns: patterns('promptPatterns', DEFAULTS.promptPatterns),
+    ignoreSpinnerChanges: bool('ignoreSpinnerChanges', DEFAULTS.ignoreSpinnerChanges),
+    sessionExitIsError: bool('sessionExitIsError', DEFAULTS.sessionExitIsError),
+    notifications: bool('notifications', DEFAULTS.notifications),
+    autoReportTime,
     commandTimeoutSec: num(raw, 'commandTimeoutSec', DEFAULTS.commandTimeoutSec, '', 1),
     reportsDir: expandPath(optStr(raw, 'reportsDir', '') ?? DEFAULTS.reportsDir, baseDir),
     projects,

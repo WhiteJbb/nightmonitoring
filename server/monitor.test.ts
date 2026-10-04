@@ -58,6 +58,31 @@ describe('Monitor', () => {
     expect(app().since?.baseline.at).toBe(new Date(T0).toISOString());
   });
 
+  it('ignores spinner-only churn but notices real output in any pane', async () => {
+    let now = T0;
+    const pane = (id: string, lines: string[]) => ({ id, window: 0, windowName: 'w', index: 0, command: 'zsh', active: id === '%1', lines });
+    const state = { panes: [pane('%1', ['\x1b[35m✽\x1b[0m Thinking… (10s · 1.2k tokens)']), pane('%2', ['idle'])] };
+    const collector = fakeCollector({ output: [], git: git() });
+    collector.tmux = async () => new Map([['app', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 60_000).toISOString(), output: [], panes: state.panes, waitingPrompt: null, attachCommand: 'tmux attach -t app' }]]);
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
+    await m.tick();
+    const first = m.snapshot.projects[0]!.tmux.lastOutputChangeAt;
+
+    now += 5000;
+    state.panes = [pane('%1', ['\x1b[35m✻\x1b[0m Thinking… (15s · 1.9k tokens)']), pane('%2', ['idle'])];
+    await m.tick();
+    expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(first);
+
+    now += 5000;
+    state.panes = [state.panes[0]!, pane('%2', ['compiled successfully'])];
+    await m.tick();
+    expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(new Date(now).toISOString());
+
+    state.panes = [pane('%1', ['Overwrite file? (y/n)']), state.panes[1]!];
+    await m.tick();
+    expect(m.snapshot.projects[0]!.status).toEqual({ state: 'waiting', reasons: ['입력 대기: Overwrite file? (y/n)'] });
+  });
+
   it('isolates a failing project and notifies subscribers', async () => {
     const m = new Monitor({ config, collector: fakeCollector({ output: [], git: git(), gitThrows: true }), runs: noRuns, now: () => T0 });
     const seen: Snapshot[] = [];
@@ -86,9 +111,13 @@ describe('Monitor', () => {
     const m = new Monitor({ config: demoConfig(config), collector: demoCollector(() => T0), runs: runner.get, demo: true, now: () => T0 });
     await m.tick();
     const states = Object.fromEntries(m.snapshot.projects.map((p) => [p.id, p.status.state]));
-    expect(states).toEqual({ 'api-server': 'running', 'web-frontend': 'idle', 'payments-service': 'error', 'data-pipeline': 'error', 'docs-site': 'stalled' });
+    expect(states).toEqual({ 'api-server': 'running', 'web-frontend': 'idle', 'mobile-app': 'waiting', 'payments-service': 'error', 'data-pipeline': 'error', 'docs-site': 'stalled' });
     expect(m.snapshot.projects.find((p) => p.id === 'payments-service')!.status.reasons).toEqual(['테스트 실패 (exit 1)']);
-    expect(m.snapshot.summary).toMatchObject({ total: 5, sessionsRunning: 4 });
+    expect(m.snapshot.summary).toMatchObject({ total: 6, sessionsRunning: 5, waiting: 1 });
+    const api = m.snapshot.projects[0]!;
+    expect(api.tmux.panes).toHaveLength(2);
+    expect(api.tmux.output.join('\n')).not.toContain('\x1b');
+    expect(m.snapshot.projects.find((p) => p.id === 'mobile-app')!.status.reasons).toEqual(['입력 대기: Do you want to proceed?']);
   });
 });
 

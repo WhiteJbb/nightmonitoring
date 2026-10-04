@@ -24,7 +24,7 @@ function runFailure(label: string, r: RunResult | null): string | null {
   return null;
 }
 
-/** 우선순위: 오류 > 정지 의심 > 유휴 > 정상. */
+/** 우선순위: 오류 > 입력 대기 > 정지 의심 > 유휴 > 정상. */
 export function judge(i: StatusInput): ProjectStatus {
   const errors: string[] = [];
   if (!i.git.ok) errors.push(i.git.error ?? 'Git 정보를 가져올 수 없습니다');
@@ -33,6 +33,8 @@ export function judge(i: StatusInput): ProjectStatus {
   if (i.logErrors.length) errors.push(`로그에서 오류 패턴 ${i.logErrors.length}건 발견`);
   for (const f of [runFailure('테스트', i.runs.test), runFailure('빌드', i.runs.build)]) if (f) errors.push(f);
   if (errors.length) return { state: 'error', reasons: errors };
+
+  if (i.tmux.exists && i.tmux.waitingPrompt) return { state: 'waiting', reasons: [`입력 대기: ${i.tmux.waitingPrompt}`] };
 
   const gitIdle = minutesSince(i.lastGitChangeAt, i.now);
   // 세션이 없으면 볼 출력이 없으므로 Git 활동만으로 판정한다.
