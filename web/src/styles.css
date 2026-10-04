@@ -786,6 +786,10 @@ button.danger:hover:not(:disabled) {
 }
 
 /* tmux 세션 만들기 */
+.new-session-toggle {
+  display: block;
+  margin: 0 0 16px;
+}
 .new-session {
   margin: 0 0 16px;
   padding: 12px;
