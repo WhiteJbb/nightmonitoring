@@ -53,5 +53,8 @@ export function judge(i: StatusInput): ProjectStatus {
   if (outputIdle >= i.thresholds.idleMinutes) {
     return { state: 'idle', reasons: [`${fmt(outputIdle)} ${what} 변화 없음`] };
   }
-  return { state: 'running', reasons: [] };
+  // 정상일 때도 한 줄을 채워, 카드마다 줄 수가 달라 보이지 않게 한다.
+  const m = Math.floor(outputIdle);
+  const label = i.tmux.exists ? '출력' : 'Git 변화';
+  return { state: 'running', reasons: [m < 1 ? (i.tmux.exists ? '지금 출력 중' : '방금 Git 변화') : `${m}분 전 마지막 ${label}`] };
 }

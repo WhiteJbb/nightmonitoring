@@ -25,7 +25,9 @@ const outputIdle = (min: number) => ({ ...tmux, lastOutputChangeAt: ago(min) });
 
 describe('judge', () => {
   it('running when output is fresh', () => {
-    expect(judge(input())).toEqual({ state: 'running', reasons: [] });
+    expect(judge(input())).toEqual({ state: 'running', reasons: ['1분 전 마지막 출력'] });
+    expect(judge(input({ tmux: outputIdle(0.2) })).reasons).toEqual(['지금 출력 중']);
+    expect(judge(input({ tmux: outputIdle(9) })).reasons).toEqual(['9분 전 마지막 출력']);
   });
 
   it('idle after 15 minutes without output', () => {
@@ -73,7 +75,8 @@ describe('judge', () => {
 
   it('uses git activity alone when no session is configured', () => {
     const none = { ...tmux, configured: false, exists: false, lastOutputChangeAt: null };
-    expect(judge(input({ tmux: none, lastGitChangeAt: ago(5) })).state).toBe('running');
+    expect(judge(input({ tmux: none, lastGitChangeAt: ago(5) }))).toEqual({ state: 'running', reasons: ['5분 전 마지막 Git 변화'] });
+    expect(judge(input({ tmux: none, lastGitChangeAt: ago(0) })).reasons).toEqual(['방금 Git 변화']);
     expect(judge(input({ tmux: none, lastGitChangeAt: ago(20) })).state).toBe('idle');
     expect(judge(input({ tmux: none, lastGitChangeAt: null })).state).toBe('stalled');
   });
