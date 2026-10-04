@@ -276,10 +276,18 @@ test('special-key buttons send { pane, key } to the selected pane', async () => 
   await renderTab(project(TWO));
   fireEvent.click(screen.getByRole('button', { name: '0:zsh · 1 zsh' }));
   await tick();
-  const keys = screen.getByRole('group', { name: '특수 키' }).querySelectorAll('button');
+  const group = screen.getByRole('group', { name: '특수 키' });
+  const keys = group.querySelectorAll('button:not(.more)');
   expect([...keys].map((b) => b.textContent)).toEqual(
     ['Enter', 'Esc', 'Tab', '⇧Tab', '↑', '↓', '←', '→', '⌫', 'Ctrl+C', 'Ctrl+D', 'Ctrl+U', 'Ctrl+L'],
   );
+  // 터치 화면에서 접히는 키에는 extra 표시가 붙고, "더보기"가 펼침 상태를 바꾼다
+  expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Enter', 'Esc', '↑', '↓', 'Ctrl+C']);
+  const more = screen.getByRole('button', { name: '더보기' });
+  expect(more.getAttribute('aria-expanded')).toBe('false');
+  fireEvent.click(more);
+  expect(group.className).toBe('keys open');
+  expect(screen.getByRole('button', { name: '접기' }).getAttribute('aria-expanded')).toBe('true');
   for (const name of ['Ctrl+C 보내기 (중단)', 'Shift+Tab 보내기', 'Esc 보내기']) {
     const button = screen.getByRole('button', { name });
     expect(button.title).toBe(name);

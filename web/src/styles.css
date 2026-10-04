@@ -609,6 +609,19 @@ pre {
     transform: translateY(-4px);
   }
 }
+/* 글자가 바뀌는 순간 두 상태가 겹쳐 보이지 않게 살짝 흐리게 이어 준다 ("복사" → "복사됨") */
+.swap {
+  display: inline-block;
+  transition:
+    opacity 200ms ease,
+    filter 200ms ease;
+}
+@starting-style {
+  .swap {
+    opacity: 0;
+    filter: blur(2px);
+  }
+}
 [role='status'] {
   transition:
     opacity 180ms var(--ease-out),
@@ -936,6 +949,12 @@ pre {
   font: var(--fs-xs) var(--mono);
   padding: 3px 9px;
 }
+/* 마우스가 있으면 모든 키가 보이고 "더보기"는 필요 없다 */
+.keys .more {
+  display: none;
+  font-family: var(--sans);
+  color: var(--dim);
+}
 .keys button.caution {
   color: color-mix(in srgb, var(--red) 75%, var(--text));
 }
@@ -984,6 +1003,13 @@ pre {
   .keys,
   .panes {
     gap: 8px;
+  }
+  /* 작은 화면에서는 자주 쓰는 키만 보이고 나머지는 접는다 */
+  .keys:not(.open) .extra {
+    display: none;
+  }
+  .keys .more {
+    display: inline-block;
   }
   .tabs button {
     min-height: 44px;

@@ -74,6 +74,8 @@ const POLL_MS = 700;
 const POLL_BACKOFF_MS = 3000;
 
 // [tmux 키, 버튼 글자, 설명]
+// 터치 화면에서는 이 키들만 늘 보이고 나머지는 "더보기" 뒤로 접힌다.
+const PRIMARY_KEYS: InputKey[] = ['Enter', 'Escape', 'Up', 'Down', 'C-c'];
 const KEYS: [InputKey, string, string][] = [
   ['Enter', 'Enter', 'Enter 보내기'],
   ['Escape', 'Esc', 'Esc 보내기'],
@@ -103,6 +105,7 @@ const FORWARD: Record<string, InputKey> = {
 
 function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string; onSent: () => void }) {
   const [text, setText] = useState('');
+  const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -175,12 +178,12 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           Enter 없이 입력
         </button>
       </div>
-      <div className="keys" role="group" aria-label="특수 키">
+      <div className={moreKeys ? 'keys open' : 'keys'} role="group" aria-label="특수 키">
         {KEYS.map(([key, label, title]) => (
           <button
             key={key}
             type="button"
-            className={CAUTION.includes(key) ? 'caution' : undefined}
+            className={[CAUTION.includes(key) ? 'caution' : '', PRIMARY_KEYS.includes(key) ? '' : 'extra'].join(' ').trim() || undefined}
             title={title}
             aria-label={title}
             disabled={busy}
@@ -189,6 +192,9 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
             {label}
           </button>
         ))}
+        <button type="button" className="more" aria-expanded={moreKeys} onClick={() => setMoreKeys(!moreKeys)}>
+          {moreKeys ? '접기' : '더보기'}
+        </button>
       </div>
       {error && (
         <p className="err" role="alert">
@@ -307,7 +313,10 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
         <div className="cmdline">
           <code>{t.attachCommand}</code>
           <button type="button" onClick={() => copy(t.attachCommand!)}>
-            <span aria-live="polite">{copyMsg ?? '복사'}</span>
+            {/* key 가 바뀌면 새로 그려져 등장 전환이 걸린다 */}
+            <span key={copyMsg ?? '복사'} className="swap" aria-live="polite">
+              {copyMsg ?? '복사'}
+            </span>
           </button>
         </div>
       )}
