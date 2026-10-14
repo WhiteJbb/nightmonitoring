@@ -267,6 +267,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
     <a className={`card state-${status.state}`} href={`#/project/${encodeURIComponent(p.id)}`}>
       <div className="card-head">
         <h2>{p.name}</h2>
+        {p.id.startsWith('tmux:') && <span className="dim" title="설정에 없는 tmux 세션. 세션이 닫히면 카드도 사라집니다">미등록</span>}
         <Badge state={status.state} />
       </div>
       <Reasons reasons={status.reasons} />
@@ -302,6 +303,8 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
               )}
             </div>
           </>
+        ) : p.id.startsWith('tmux:') ? (
+          <div className="dim">{git.error ?? 'Git 저장소가 아닙니다'}</div>
         ) : (
           <div className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</div>
         )}

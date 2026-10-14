@@ -14,6 +14,8 @@ export interface Collector {
   git(p: ProjectConfig): Promise<GitInfo>;
   since(p: ProjectConfig, baseline: GitBaseline, git: GitInfo): Promise<SinceBaseline>;
   tmux(projects: ProjectConfig[]): Promise<Map<string, RawTmux>>;
+  /** 떠 있는 tmux 세션 전부 (이름, 활성 pane 의 디렉터리). 설정에 없는 세션도 카드로 띄우기 위한 것 */
+  discover?(): Promise<{ name: string; cwd: string }[]>;
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
 }
@@ -24,6 +26,9 @@ export function attachCommand(session: string): string {
   return `tmux attach -t ${quoted}`;
 }
 
+/** 설정이 아니라 떠 있는 tmux 세션에서 만든 임시 프로젝트인지 (id 가 "tmux:" 로 시작) */
+export const isDiscovered = (p: Pick<ProjectConfig, 'id'>): boolean => p.id.startsWith('tmux:');
+
 export const NO_LOG: LogScan = { errors: [], end: { offset: 0, ino: 0 } };
 const NO_TMUX: RawTmux = { configured: false, exists: false, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: null };
 
@@ -32,6 +37,11 @@ export function realCollector(config: Config): Collector {
     git: (p) => collectGit(p.repoPath),
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
     logErrors: (p, pos) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns, pos) : Promise.resolve(NO_LOG)),
+    // ponytail: tmux() 가 같은 목록을 다시 읽는다 (tick 당 ls 두 번). 느려지면 한 tick 안에서 캐시.
+    async discover() {
+      const [{ sessions }, panes] = await Promise.all([listSessions(), listPanes()]);
+      return [...sessions.keys()].map((name) => ({ name, cwd: panes.get(name)?.[0]?.cwd ?? '' }));
+    },
     async tmux(projects) {
       const [{ sessions, error }, panesBySession] = await Promise.all([listSessions(), listPanes()]);
       const out = new Map<string, RawTmux>();
@@ -102,6 +112,8 @@ export class Monitor {
   private now: () => number;
   private startedAt: string;
   private tracked = new Map<string, Tracked>();
+  /** 설정에 없지만 떠 있는 tmux 세션에서 만든 임시 프로젝트. 세션이 사라지면 같이 사라진다. */
+  private discovered: ProjectConfig[] = [];
   private collected = new Map<string, Collected>();
   private listeners = new Set<(s: Snapshot) => void>();
   private timer: NodeJS.Timeout | null = null;
@@ -122,6 +134,11 @@ export class Monitor {
 
   get config(): Config {
     return this.opts.config;
+  }
+
+  /** 설정된 프로젝트 + 설정에 없는 tmux 세션 */
+  get projects(): ProjectConfig[] {
+    return [...this.opts.config.projects, ...this.discovered];
   }
 
   /** 실행 중 config 교체 (hot reload). 사라진 프로젝트의 추적 상태는 버리고, 남은 프로젝트의 기준점은 유지한다. */
@@ -192,15 +209,28 @@ export class Monitor {
   private async collectAll(): Promise<void> {
     const { collector, config } = this.opts;
     const nowIso = new Date(this.now()).toISOString();
+    const known = new Set(config.projects.map((p) => p.tmuxSession));
+    const found = await collector.discover?.().catch(() => []);
+    // ponytail: 세션의 cwd 가 바뀌면 repoPath 도 바뀌지만 기준점(baseline)은 그대로다. 문제되면 repoPath 변경 시 tracked 를 버린다.
+    this.discovered = (found ?? [])
+      .filter((s) => !known.has(s.name))
+      .map((s) => ({ id: `tmux:${s.name}`, name: s.name, repoPath: s.cwd, tmuxSession: s.name, testCommand: null, buildCommand: null, logFile: null, allowInput: false }));
+    const projects = this.projects;
+    for (const id of new Set([...this.tracked.keys(), ...this.collected.keys()])) {
+      if (!projects.some((p) => p.id === id)) {
+        this.tracked.delete(id);
+        this.collected.delete(id);
+      }
+    }
     let tmuxError: string | undefined;
-    const tmuxAll = await collector.tmux(config.projects).catch((e: Error) => {
+    const tmuxAll = await collector.tmux(projects).catch((e: Error) => {
       tmuxError = `tmux 수집 실패: ${e.message}`;
       return new Map<string, RawTmux>();
     });
     const rawTmux = (p: ProjectConfig): RawTmux =>
       tmuxAll.get(p.id) ?? (p.tmuxSession ? { ...NO_TMUX, configured: true, attachCommand: attachCommand(p.tmuxSession), ...(tmuxError ? { error: tmuxError } : {}) } : NO_TMUX);
     await Promise.all(
-      config.projects.map(async (p) => {
+      projects.map(async (p) => {
         try {
           this.collected.set(p.id, await this.collectOne(p, rawTmux(p), nowIso));
         } catch (e) {
@@ -280,11 +310,11 @@ export class Monitor {
   private build(): Snapshot {
     const { config } = this.opts;
     const now = this.now();
-    const projects: ProjectSnapshot[] = config.projects.flatMap((p) => {
+    const projects: ProjectSnapshot[] = this.projects.flatMap((p) => {
       const c = this.collected.get(p.id);
       if (!c) return [];
       const runs = this.opts.runs(p.id);
-      const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, now });
+      const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, gitOptional: isDiscovered(p), now });
       return [{ ...p, ...c, runs, history: this.opts.history?.(p.id) ?? { test: [], build: [] }, status }];
     });
     const count = (state: string) => projects.filter((p) => p.status.state === state).length;

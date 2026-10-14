@@ -34,10 +34,10 @@ describe('listSessions', () => {
 
 describe('panes', () => {
   it('lists panes per session with the active pane first', () => {
-    const out = ['agent\t%3\t1\t0\tnode\t1\t0\t40\t157\tserver', 'agent\t%1\t0\t0\tclaude\t0\t1\t50\t157\tmy\twin', 'agent\t%2\t0\t1\tzsh\t1\t1\t50\t157\tmy\twin', 'other\t%9\t0\t0\tzsh\t1\t1\t24\t80\tzsh', 'bad\tx\t0'].join('\n');
+    const out = ['agent\t%3\t1\t0\tnode\t1\t0\t40\t157\t/repo\tserver', 'agent\t%1\t0\t0\tclaude\t0\t1\t50\t157\t/repo\tmy\twin', 'agent\t%2\t0\t1\tzsh\t1\t1\t50\t157\t/repo\tmy\twin', 'other\t%9\t0\t0\tzsh\t1\t1\t24\t80\t/x\tzsh', 'bad\tx\t0'].join('\n');
     const panes = parsePanes(out);
     expect(panes.get('agent')!.map((p) => p.id)).toEqual(['%2', '%1', '%3']);
-    expect(panes.get('agent')![0]).toEqual({ id: '%2', window: 0, windowName: 'my\twin', index: 1, command: 'zsh', active: true, height: 50, cols: 157 });
+    expect(panes.get('agent')![0]).toEqual({ id: '%2', window: 0, windowName: 'my\twin', index: 1, command: 'zsh', active: true, height: 50, cols: 157, cwd: '/repo' });
     expect(panes.get('other')).toHaveLength(1);
     expect(panes.has('bad')).toBe(false);
   });
