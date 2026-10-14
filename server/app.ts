@@ -1,8 +1,8 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import type { ConfigView } from '../shared/types.ts';
+import type { ConfigView, EditableProject } from '../shared/types.ts';
 import type { Config } from './config.ts';
-import { ConfigError } from './config.ts';
+import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
@@ -183,6 +183,9 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     res.json({ ok: true });
   });
 
+  const editableProjects = (view: ConfigView): EditableProject[] =>
+    view.projects.map(({ id, name, repoPath, tmuxSession, logFile, allowInput }) => ({ id, name, repoPath, tmuxSession, logFile, allowInput }));
+
   api.post('/sessions', express.json({ limit: '32kb' }), async (req, res) => {
     const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
@@ -201,13 +204,27 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     const next = await configEditor.update({
       version: view.version,
       settings: view.settings,
-      projects: [
-        ...view.projects.map(({ id, name: n, repoPath: r, tmuxSession: t, logFile, allowInput: a }) => ({ id, name: n, repoPath: r, tmuxSession: t, logFile, allowInput: a })),
-        { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true },
-      ],
+      projects: [...editableProjects(view), { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true }],
     });
     await monitor.tick();
     res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });
+  });
+
+  // 설정에 없는 tmux 세션을 대시보드에서 숨긴다 (config 의 hiddenSessions). 설정 화면에서 지우면 다시 보인다.
+  api.post('/sessions/:name/hide', async (req, res) => {
+    if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
+    const view = configEditor.view();
+    if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
+    const name = req.params.name;
+    if (!SESSION_RE.test(name)) return void res.status(400).json({ error: '세션 이름이 올바르지 않습니다' });
+    if (view.projects.some((p) => p.tmuxSession === name)) return void res.status(409).json({ error: '등록된 프로젝트의 세션은 숨길 수 없습니다. 설정에서 프로젝트를 삭제하세요' });
+    await configEditor.update({
+      version: view.version,
+      settings: { ...view.settings, hiddenSessions: [...new Set([...view.settings.hiddenSessions, name])] },
+      projects: editableProjects(view),
+    });
+    await monitor.tick();
+    res.json({ ok: true });
   });
 
   api.post('/projects/:id/ack-errors', (req, res) => {

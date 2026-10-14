@@ -213,7 +213,7 @@ export class Monitor {
     const found = await collector.discover?.().catch(() => []);
     // ponytail: 세션의 cwd 가 바뀌면 repoPath 도 바뀌지만 기준점(baseline)은 그대로다. 문제되면 repoPath 변경 시 tracked 를 버린다.
     this.discovered = (found ?? [])
-      .filter((s) => !known.has(s.name))
+      .filter((s) => !known.has(s.name) && !config.hiddenSessions.includes(s.name))
       .map((s) => ({ id: `tmux:${s.name}`, name: s.name, repoPath: s.cwd, tmuxSession: s.name, testCommand: null, buildCommand: null, logFile: null, allowInput: false }));
     const projects = this.projects;
     for (const id of new Set([...this.tracked.keys(), ...this.collected.keys()])) {

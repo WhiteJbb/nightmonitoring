@@ -273,6 +273,16 @@ describe('session API', () => {
     expect(loadConfig(file, '/base').config.projects).toHaveLength(2);
   });
 
+  it('hides an unregistered session via config and refuses registered ones', async () => {
+    const { post, file } = await start();
+    expect(await post('/sessions/scratch/hide')).toEqual([200, { ok: true }]);
+    expect(loadConfig(file, '/base').config.hiddenSessions).toEqual(['scratch']);
+    await post('/sessions/scratch/hide'); // 중복 추가 없음
+    expect(loadConfig(file, '/base').config.hiddenSessions).toEqual(['scratch']);
+    expect((await post('/sessions/old/hide'))[0]).toBe(409);
+    expect((await post('/sessions/bad%20name/hide'))[0]).toBe(400);
+  });
+
   it('restarts the session of a registered project', async () => {
     const { post, createSession } = await start();
     expect(await post('/projects/old/session')).toEqual([200, { ok: true }]);

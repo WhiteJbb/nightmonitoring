@@ -137,6 +137,10 @@ describe('discover', () => {
     found = [{ name: 'app', cwd: '/repo/app' }];
     await m.tick();
     expect(m.snapshot.projects.map((p) => p.id)).toEqual(['app', 'lib']);
+
+    found = [{ name: 'scratch', cwd: '/tmp/scratch' }, { name: 'noise', cwd: '/tmp' }];
+    await m.setConfig(parseConfig({ projects: [], hiddenSessions: ['noise'] }, '/base'), collector);
+    expect(m.snapshot.projects.map((p) => p.id)).toEqual(['tmux:scratch']);
   });
 });
 
