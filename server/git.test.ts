@@ -5,7 +5,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecResult } from './exec.ts';
 import { run } from './exec.ts';
-import { collectGit, collectSince, parseNumstat, parseStatus } from './git.ts';
+import { cloneRepo, collectGit, collectSince, GIT_URL_RE, parseNumstat, parseStatus, repoNameFrom } from './git.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -145,5 +145,23 @@ describe('collectSince', () => {
     const since = await collectSince(REPO, { at: '2026-10-04T00:00:00Z', branch: 'main', head: null });
     expect(since).toMatchObject({ additions: 7, deletions: 0 });
     expect(since.commits).toHaveLength(2);
+  });
+});
+
+describe('clone url', () => {
+  it('accepts https, ssh and scp-style urls and nothing else', () => {
+    for (const ok of ['https://github.com/me/app.git', 'https://gitlab.example.com:8443/g/sub/app', 'ssh://git@github.com/me/app.git', 'git@github.com:me/app.git']) expect(GIT_URL_RE.test(ok), ok).toBe(true);
+    for (const bad of ['/Users/me/app', 'file:///tmp/x', 'ext::sh -c id', 'http://github.com/me/app', 'https://github.com/me/app;id', 'git@github.com:me/app git']) expect(GIT_URL_RE.test(bad), bad).toBe(false);
+    expect(['https://github.com/me/app.git', 'git@github.com:me/app', 'https://x.y/a/b/'].map(repoNameFrom)).toEqual(['app', 'app', 'b']);
+  });
+
+  it('clones without a shell and reports git stderr or a timeout', async () => {
+    mockRun.mockResolvedValueOnce({ code: 0, stdout: '', stderr: '', timedOut: false });
+    expect(await cloneRepo('git@github.com:me/app.git', '/r/app', 5000)).toBeNull();
+    expect(mockRun).toHaveBeenLastCalledWith('git', ['clone', '--', 'git@github.com:me/app.git', '/r/app'], 5000);
+    mockRun.mockResolvedValueOnce({ code: 128, stdout: '', stderr: "Cloning into '/r/x'...\nfatal: repository 'x' not found\n", timedOut: false });
+    expect(await cloneRepo('https://h/x', '/r/x', 5000)).toBe("fatal: repository 'x' not found");
+    mockRun.mockResolvedValueOnce({ code: null, stdout: '', stderr: '', timedOut: true });
+    expect(await cloneRepo('https://h/x', '/r/x', 5000)).toBe('git clone 시간 초과');
   });
 });

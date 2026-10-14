@@ -3,6 +3,9 @@ import type { FormEvent } from 'react';
 import { api, ApiError } from './api.ts';
 import { fitSize } from './termsize.ts';
 
+/** 주소의 마지막 경로 조각 (".git" 제거). 서버의 repoNameFrom 과 같다 */
+const repoNameFrom = (url: string) => url.trim().replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? '';
+
 const ALLOW_INPUT_CONFIRM =
   '새 세션에 브라우저에서 키 입력을 보낼 수 있게 됩니다.\n대시보드에 접속할 수 있는 사람은 누구나 이 Mac 계정으로 명령을 실행할 수 있습니다.\n\n켤까요?';
 
@@ -38,6 +41,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   // 사용자가 세션 이름을 직접 고치기 전까지는 프로젝트 이름을 따라간다
   const [session, setSession] = useState<string | null>(null);
   const [allowInput, setAllowInput] = useState(false);
+  const [gitUrl, setGitUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
@@ -66,7 +70,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
     setError(null);
     api
       // 지금 보는 화면에 맞는 크기로 만든다: 터미널 탭에서 가로 스크롤이 생기지 않게
-      .createSession({ name: name.trim(), repoPath: repoPath.trim(), tmuxSession, allowInput, ...fitSize(null) })
+      .createSession({ name: name.trim(), repoPath: repoPath.trim(), tmuxSession, allowInput, ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}), ...fitSize(null) })
       .then(({ id }) => {
         // 새 프로젝트의 터미널 화면으로 바로 이동한다
         window.location.hash = `#/project/${encodeURIComponent(id)}`;
@@ -85,6 +89,28 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
         등록합니다.
       </p>
       <div className="settings-grid">
+        <div className="field">
+          <label>
+            <span>Git 저장소 주소 (선택)</span>
+            <input
+              type="text"
+              className="mono"
+              spellCheck={false}
+              placeholder="https://github.com/me/my-app.git"
+              value={gitUrl}
+              onChange={(e) => {
+                const url = e.target.value;
+                setGitUrl(url);
+                // 주소를 붙여 넣으면 이름과 경로를 저장소 이름으로 채운다 (아직 안 적었을 때만)
+                const repo = repoNameFrom(url);
+                if (!repo) return;
+                if (!name.trim()) setName(repo);
+                if (repoPath === defaultDir) setRepoPath(defaultDir + repo);
+              }}
+            />
+          </label>
+          <p className="hint">적으면 저장소 경로에 먼저 clone 합니다. 비공개 저장소는 이 Mac 의 SSH 키·자격 증명을 씁니다</p>
+        </div>
         <div className="field">
           <label>
             <span>프로젝트 이름</span>
@@ -138,7 +164,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
       </div>
       <div className="row">
         <button type="submit" className="primary" disabled={busy}>
-          {busy ? '만드는 중…' : '만들기'}
+          {busy ? (gitUrl.trim() ? '복제하는 중…' : '만드는 중…') : '만들기'}
         </button>
         <button type="button" onClick={close} disabled={busy || closing}>
           닫기

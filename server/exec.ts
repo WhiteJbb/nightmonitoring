@@ -32,7 +32,7 @@ export function run(bin: Bin, args: string[], timeoutMs = 10_000): Promise<ExecR
         maxBuffer: MAX_OUTPUT,
         encoding: 'utf8',
         // 감시가 에이전트의 git 작업과 index.lock 을 다투지 않게 한다.
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
       },
       (err, stdout, stderr) => {
         if (!err) return resolve({ code: 0, stdout, stderr, timedOut: false });
