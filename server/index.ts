@@ -1,6 +1,7 @@
 import { existsSync, statSync, watchFile } from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
+import { cloneRepo } from './git.ts';
 import express from 'express';
 import { createApp, isTailscaleAddress } from './app.ts';
 import { ConfigError, defaultConfigPath, expandPath, loadConfig, SESSION_RE } from './config.ts';
@@ -152,7 +153,13 @@ async function main() {
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return `디렉터리가 없습니다: ${cwd}`;
     return newSession(name, cwd, size);
   };
-  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, resize: resizeWindow };
+  const cloneRepoTo = async (url: string, repoPath: string): Promise<string | null> => {
+    const dir = expandPath(repoPath, ROOT);
+    if (statSync(path.join(dir, '.git'), { throwIfNoEntry: false })) return null; // 이미 저장소
+    // clone 도 등록된 명령과 같은 시간 제한을 쓴다 (hot reload 를 따라가게 매번 읽는다)
+    return cloneRepo(url, dir, monitor.config.commandTimeoutSec * 1000);
+  };
+  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow };
   const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 

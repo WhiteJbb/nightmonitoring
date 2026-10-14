@@ -307,6 +307,8 @@ export interface NewSessionRequest {
   tmuxSession: string;
   /** 만들자마자 터미널 입력을 허용할지 */
   allowInput: boolean;
+  /** 있으면 repoPath 에 먼저 git clone 한다 (https://, ssh://, git@host:path 만). 이미 저장소가 있으면 건너뛴다 */
+  gitUrl?: string;
   /** 세션의 화면 크기. 보는 화면에 맞춰 보내면 가로 스크롤이 생기지 않는다 (생략 시 120×40) */
   cols?: number;
   rows?: number;

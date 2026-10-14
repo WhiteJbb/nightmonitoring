@@ -66,6 +66,20 @@ test('creates a session, following the project name until the session name is ed
   expect(lastBody().cols).toBeGreaterThanOrEqual(80);
 });
 
+test('a git url fills in name and path and is sent along', async () => {
+  render(<NewSession defaultDir="/Users/me/repos/" />);
+  fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
+  type('Git 저장소 주소 (선택)', 'git@github.com:me/my-app.git');
+  expect(field('프로젝트 이름').value).toBe('my-app');
+  expect(field('저장소 경로').value).toBe('/Users/me/repos/my-app');
+  expect(field('tmux 세션 이름').value).toBe('my-app');
+  fetchMock.mockResolvedValueOnce(json(200, { id: 'my-app' }));
+  fireEvent.click(screen.getByRole('button', { name: '만들기' }));
+  expect(screen.getByRole('button', { name: '복제하는 중…' })).toBeTruthy();
+  await waitFor(() => expect(window.location.hash).toBe('#/project/my-app'));
+  expect(lastBody()).toMatchObject({ name: 'my-app', repoPath: '/Users/me/repos/my-app', gitUrl: 'git@github.com:me/my-app.git' });
+});
+
 test('terminal input needs a confirm, and errors keep the form', async () => {
   render(<NewSession />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));

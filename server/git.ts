@@ -178,3 +178,17 @@ export async function collectSince(repoPath: string, baseline: GitBaseline, curr
     deletions: sum(files, 'deletions'),
   };
 }
+
+/** clone 을 허용하는 주소 형식: https://, ssh://, git@host:path. 로컬 경로나 ext:: 같은 전송은 받지 않는다. */
+export const GIT_URL_RE = /^(https:\/\/[\w.-]+(:\d+)?\/[\w.~/-]+|ssh:\/\/[\w.-]+@?[\w.-]+(:\d+)?\/[\w.~/-]+|[\w.-]+@[\w.-]+:[\w.~/-]+)$/;
+
+/** 주소의 마지막 경로 조각 (".git" 제거). 프로젝트 이름·폴더 이름 기본값으로 쓴다. */
+export const repoNameFrom = (url: string): string => url.replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? '';
+
+/** dir 에 clone 한다. 셸 없이 argv 로 넘기고, 자격 증명 프롬프트는 뜨지 않게 해 두었다(exec.ts). 실패하면 git 의 오류 메시지. */
+export async function cloneRepo(url: string, dir: string, timeoutMs: number): Promise<string | null> {
+  const r = await run('git', ['clone', '--', url, dir], timeoutMs);
+  // "Cloning into …" 진행 줄은 빼고 마지막 줄(원인)만 돌려준다.
+  const last = r.stderr.trim().split('\n').filter((l) => l.trim() && !l.startsWith('Cloning into')).pop();
+  return r.code === 0 ? null : r.timedOut ? 'git clone 시간 초과' : last?.trim() || 'git clone 실패';
+}

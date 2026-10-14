@@ -105,7 +105,7 @@ describe('terminal API', () => {
     const runner = new Runner({ timeoutSec: 1, logDir: null });
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null) };
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null) };
     const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -233,7 +233,8 @@ describe('session API', () => {
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, resize: vi.fn(async () => null) };
+    const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null) };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {
@@ -250,7 +251,7 @@ describe('session API', () => {
       const res = await fetch(`${base}${p}`, { method: 'POST', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
       return [res.status, await res.json()] as const;
     };
-    return { post, createSession, monitor, file };
+    return { post, createSession, cloneRepo, monitor, file };
   }
 
   it('creates a session and registers it as a project in one step', async () => {
@@ -271,6 +272,20 @@ describe('session API', () => {
     expect(createSession).not.toHaveBeenCalled();
     expect(await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 'bad name' })).toEqual([400, { error: '세션 이름이 올바르지 않습니다' }]);
     expect(loadConfig(file, '/base').config.projects).toHaveLength(2);
+  });
+
+  it('clones first when a git url is given, and registers nothing if the clone fails', async () => {
+    const { post, createSession, cloneRepo, file } = await start();
+    expect(await post('/sessions', { name: 'Cl', repoPath: '~/code/cl', tmuxSession: 'cl', gitUrl: 'git@github.com:me/cl.git' })).toEqual([200, { id: 'cl' }]);
+    expect(cloneRepo).toHaveBeenCalledExactlyOnceWith('git@github.com:me/cl.git', '~/code/cl');
+    expect(createSession).toHaveBeenCalledOnce();
+    expect(cloneRepo.mock.invocationCallOrder[0]!).toBeLessThan(createSession.mock.invocationCallOrder[0]!);
+
+    expect((await post('/sessions', { name: 'X', repoPath: '/r/x', tmuxSession: 'x', gitUrl: '/local/path' }))[0]).toBe(400);
+    expect((await post('/sessions', { name: 'X', repoPath: '/r/x', tmuxSession: 'x', gitUrl: 'ext::sh -c id' }))[0]).toBe(400);
+    expect(await post('/sessions', { name: 'X', repoPath: '/r/x', tmuxSession: 'x', gitUrl: 'https://github.com/me/nope' })).toEqual([400, { error: 'git clone 실패: repository not found' }]);
+    expect(createSession).toHaveBeenCalledOnce();
+    expect(loadConfig(file, '/base').config.projects.map((p) => p.tmuxSession)).toEqual(['old', null, 'cl']);
   });
 
   it('hides an unregistered session via config and refuses registered ones', async () => {

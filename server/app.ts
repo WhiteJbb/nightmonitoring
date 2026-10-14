@@ -4,6 +4,7 @@ import type { ConfigView, EditableProject } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
+import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
@@ -64,6 +65,8 @@ export interface AppDeps {
     log: (projectId: string, input: ParsedInput) => void;
     /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
     createSession: (name: string, repoPath: string, size: TermSize) => Promise<string | null>;
+    /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
+    cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
     /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
     resize: (paneId: string, size: TermSize) => Promise<string | null>;
   };
@@ -192,12 +195,19 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
-    const { name, repoPath, tmuxSession, allowInput, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
+    const { name, repoPath, tmuxSession, allowInput, gitUrl, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
     }
     if (view.projects.some((p) => p.tmuxSession === tmuxSession)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
 
+    // 주소가 있으면 clone 부터. 주소 형식은 서버가 검증하고 명령은 고정이다 (git.ts).
+    if (typeof gitUrl === 'string' && gitUrl.trim()) {
+      const url = gitUrl.trim();
+      if (!GIT_URL_RE.test(url)) return void res.status(400).json({ error: 'Git 저장소 주소는 https://, ssh://, git@host:path 형식만 받습니다' });
+      const cloneError = await terminal.cloneRepo(url, repoPath.trim());
+      if (cloneError) return void res.status(400).json({ error: `git clone 실패: ${cloneError}` });
+    }
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
     const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows));
     if (error) return void res.status(400).json({ error });
