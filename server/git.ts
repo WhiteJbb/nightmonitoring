@@ -1,4 +1,5 @@
 import { statSync } from 'node:fs';
+import { NOT_A_REPO } from '../shared/types.ts';
 import { lstat, open } from 'node:fs/promises';
 import path from 'node:path';
 import type { Commit, FileChange, FileStat, GitBaseline, GitInfo, SinceBaseline } from '../shared/types.ts';
@@ -128,7 +129,7 @@ export async function collectGit(repoPath: string): Promise<GitInfo> {
   }
   const inside = await git(repoPath, 'rev-parse', '--is-inside-work-tree');
   if (inside.code === null) return failed(`git 을 실행할 수 없습니다: ${inside.stderr.trim()}`);
-  if (inside.code !== 0 || inside.stdout.trim() !== 'true') return failed('Git 저장소가 아닙니다');
+  if (inside.code !== 0 || inside.stdout.trim() !== 'true') return failed(NOT_A_REPO);
 
   // 커밋이 하나도 없는 저장소에서는 HEAD 관련 명령이 실패한다 → 빈 값으로 취급.
   const [branch, head, status, numstat, recent, today] = await Promise.all([

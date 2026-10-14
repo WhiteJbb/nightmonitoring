@@ -1,4 +1,5 @@
 import type { GitInfo, ProjectStatus, RunKind, RunResult, TmuxInfo } from '../shared/types.ts';
+import { NOT_A_REPO } from '../shared/types.ts';
 import type { Thresholds } from './config.ts';
 
 export interface StatusInput {
@@ -9,8 +10,6 @@ export interface StatusInput {
   runs: Record<RunKind, RunResult | null>;
   thresholds: Thresholds;
   sessionExitIsError: boolean;
-  /** 설정에 없는 tmux 세션: 디렉터리가 Git 저장소가 아니어도 오류로 보지 않는다 */
-  gitOptional?: boolean;
   now: number;
 }
 
@@ -35,7 +34,8 @@ function runFailure(label: string, r: RunResult | null): string | null {
 /** 우선순위: 오류 > 입력 대기 > 정지 의심 > 유휴 > 정상. */
 export function judge(i: StatusInput): ProjectStatus {
   const errors: string[] = [];
-  if (!i.git.ok && !i.gitOptional) errors.push(i.git.error ?? 'Git 정보를 가져올 수 없습니다');
+  // 저장소가 아닌 디렉터리는 설정 실수가 아니라 Git 없이 세션만 보는 것일 수 있다.
+  if (!i.git.ok && i.git.error !== NOT_A_REPO) errors.push(i.git.error ?? 'Git 정보를 가져올 수 없습니다');
   if (i.tmux.error) errors.push(i.tmux.error);
   else if (i.tmux.configured && !i.tmux.exists && i.sessionExitIsError) errors.push('tmux 세션이 종료되었거나 없습니다');
   if (i.logErrors.length) errors.push(`로그에서 오류 패턴 ${i.logErrors.length}건 발견`);

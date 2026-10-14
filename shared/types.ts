@@ -64,6 +64,9 @@ export interface SinceBaseline {
   deletions: number;
 }
 
+/** 경로가 Git 저장소가 아닐 때의 git.error. 오류 상태로 치지 않는다 (tmux 세션만 보는 프로젝트) */
+export const NOT_A_REPO = 'Git 저장소가 아닙니다';
+
 export interface TmuxPane {
   /** tmux pane id (예: "%12") */
   id: string;

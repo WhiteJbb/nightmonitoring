@@ -26,9 +26,6 @@ export function attachCommand(session: string): string {
   return `tmux attach -t ${quoted}`;
 }
 
-/** 설정이 아니라 떠 있는 tmux 세션에서 만든 임시 프로젝트인지 (id 가 "tmux:" 로 시작) */
-export const isDiscovered = (p: Pick<ProjectConfig, 'id'>): boolean => p.id.startsWith('tmux:');
-
 export const NO_LOG: LogScan = { errors: [], end: { offset: 0, ino: 0 } };
 const NO_TMUX: RawTmux = { configured: false, exists: false, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: null };
 
@@ -314,7 +311,7 @@ export class Monitor {
       const c = this.collected.get(p.id);
       if (!c) return [];
       const runs = this.opts.runs(p.id);
-      const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, gitOptional: isDiscovered(p), now });
+      const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, now });
       return [{ ...p, ...c, runs, history: this.opts.history?.(p.id) ?? { test: [], build: [] }, status }];
     });
     const count = (state: string) => projects.filter((p) => p.status.state === state).length;

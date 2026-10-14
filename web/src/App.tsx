@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type React from 'react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
+import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime } from './format.ts';
 import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
@@ -334,8 +335,8 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
               )}
             </div>
           </>
-        ) : p.id.startsWith('tmux:') ? (
-          <div className="dim">{git.error ?? 'Git 저장소가 아닙니다'}</div>
+        ) : git.error === NOT_A_REPO ? (
+          <div className="dim">{git.error}</div>
         ) : (
           <div className="err wrap">{git.error ?? 'Git 정보를 읽을 수 없습니다'}</div>
         )}

@@ -24,10 +24,8 @@ const input = (over: Partial<StatusInput> = {}): StatusInput => ({
 const outputIdle = (min: number) => ({ ...tmux, lastOutputChangeAt: ago(min) });
 
 describe('judge', () => {
-  it('does not flag a missing repo when git is optional', () => {
-    const broken = { ...git, ok: false, error: 'Git 저장소가 아닙니다' };
-    expect(judge(input({ git: broken })).state).toBe('error');
-    expect(judge(input({ git: broken, gitOptional: true })).state).toBe('running');
+  it('a directory that is not a git repo is not an error', () => {
+    expect(judge(input({ git: { ...git, ok: false, error: 'Git 저장소가 아닙니다' } })).state).toBe('running');
   });
 
   it('running when output is fresh', () => {
@@ -65,7 +63,7 @@ describe('judge', () => {
   });
 
   it('error on git failure, log errors, failed or timed out runs', () => {
-    expect(judge(input({ git: { ...git, ok: false, error: 'Git 저장소가 아닙니다' } }))).toEqual({ state: 'error', reasons: ['Git 저장소가 아닙니다'] });
+    expect(judge(input({ git: { ...git, ok: false, error: '저장소 경로가 존재하지 않습니다' } }))).toEqual({ state: 'error', reasons: ['저장소 경로가 존재하지 않습니다'] });
     expect(judge(input({ logErrors: ['Error: boom'] })).state).toBe('error');
     expect(judge(input({ runs: { test: run({ exitCode: 1 }), build: null } })).reasons).toEqual(['테스트 실패 (exit 1)']);
     expect(judge(input({ runs: { test: null, build: run({ kind: 'build', exitCode: null, timedOut: true }) } })).reasons).toEqual(['빌드 시간 초과']);
