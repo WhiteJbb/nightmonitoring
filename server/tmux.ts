@@ -24,7 +24,7 @@ export const MAX_PANES = 8;
 // session_activity 는 키 입력 위주라, pane 출력으로 갱신되는 window_activity 와 함께 본다.
 const LIST_FORMAT = '#{session_name}\t#{session_created}\t#{session_attached}\t#{session_activity}\t#{window_activity}';
 // window_name 은 임의 문자열이라 맨 뒤에 둔다.
-const PANE_FORMAT = '#{session_name}\t#{pane_id}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_active}\t#{window_active}\t#{pane_height}\t#{pane_width}\t#{window_name}';
+const PANE_FORMAT = '#{session_name}\t#{pane_id}\t#{window_index}\t#{pane_index}\t#{pane_current_command}\t#{pane_active}\t#{window_active}\t#{pane_height}\t#{pane_width}\t#{pane_current_path}\t#{window_name}';
 const epochToIso = (s: string | undefined) => new Date(Number(s) * 1000).toISOString();
 
 export function parseSessions(out: string): Map<string, TmuxSession> {
@@ -53,7 +53,7 @@ export async function listSessions(): Promise<TmuxSessions> {
 export function parsePanes(out: string): Map<string, PaneMeta[]> {
   const bySession = new Map<string, PaneMeta[]>();
   for (const line of out.split('\n')) {
-    const [session, id, window, index, command, paneActive, windowActive, height, width, ...name] = line.split('\t');
+    const [session, id, window, index, command, paneActive, windowActive, height, width, cwd, ...name] = line.split('\t');
     if (!session || !id || !/^%\d+$/.test(id)) continue;
     const pane: PaneMeta = {
       id,
@@ -64,6 +64,7 @@ export function parsePanes(out: string): Map<string, PaneMeta[]> {
       active: paneActive === '1' && windowActive === '1',
       height: Number(height) || 0,
       cols: Number(width) || 0,
+      cwd: cwd ?? '',
     };
     const list = bySession.get(session) ?? [];
     bySession.set(session, list);

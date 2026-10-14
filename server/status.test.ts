@@ -24,6 +24,12 @@ const input = (over: Partial<StatusInput> = {}): StatusInput => ({
 const outputIdle = (min: number) => ({ ...tmux, lastOutputChangeAt: ago(min) });
 
 describe('judge', () => {
+  it('does not flag a missing repo when git is optional', () => {
+    const broken = { ...git, ok: false, error: 'Git 저장소가 아닙니다' };
+    expect(judge(input({ git: broken })).state).toBe('error');
+    expect(judge(input({ git: broken, gitOptional: true })).state).toBe('running');
+  });
+
   it('running when output is fresh', () => {
     expect(judge(input())).toEqual({ state: 'running', reasons: ['1분 전 마지막 출력'] });
     expect(judge(input({ tmux: outputIdle(0.2) })).reasons).toEqual(['지금 출력 중']);

@@ -123,6 +123,23 @@ describe('Monitor', () => {
   });
 });
 
+describe('discover', () => {
+  it('shows unconfigured tmux sessions as temporary projects and drops them when they close', async () => {
+    let found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/scratch' }];
+    const collector = fakeCollector({ output: [], git: git() });
+    collector.discover = async () => found;
+    collector.tmux = async (projects) => new Map(projects.map((p) => [p.id, { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: 'x' }]));
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => T0 });
+    await m.tick();
+    expect(m.snapshot.projects.map((p) => p.id)).toEqual(['app', 'lib', 'tmux:scratch']);
+    expect(m.snapshot.projects[2]).toMatchObject({ name: 'scratch', repoPath: '/tmp/scratch', tmuxSession: 'scratch', allowInput: false });
+
+    found = [{ name: 'app', cwd: '/repo/app' }];
+    await m.tick();
+    expect(m.snapshot.projects.map((p) => p.id)).toEqual(['app', 'lib']);
+  });
+});
+
 describe('attachCommand', () => {
   it('quotes unusual session names', () => {
     expect(attachCommand('my-agent')).toBe('tmux attach -t my-agent');

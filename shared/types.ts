@@ -74,6 +74,8 @@ export interface TmuxPane {
   command: string;
   /** 세션의 활성 윈도우의 활성 pane 인지 */
   active: boolean;
+  /** pane 의 현재 디렉터리 (설정에 없는 세션의 저장소 경로로 쓴다) */
+  cwd?: string;
   /** pane 의 가로 칸 수. 터미널 영역보다 넓으면 가로 스크롤이 생긴다 */
   cols?: number;
   /**
