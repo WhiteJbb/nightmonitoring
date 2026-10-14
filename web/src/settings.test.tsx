@@ -17,6 +17,7 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
       errorPatterns: ['error', '/panic:/i'],
       errorIgnorePatterns: ['0 errors'],
       promptPatterns: ['(y/n)'],
+      hiddenSessions: [],
       ignoreSpinnerChanges: true,
       sessionExitIsError: false,
       notifications: false,

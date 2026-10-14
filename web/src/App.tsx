@@ -260,6 +260,37 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   );
 }
 
+/** 설정에 없는 tmux 세션 카드의 "미등록" 표시와 등록·숨김 버튼. 카드 전체가 링크라 클릭이 새지 않게 막는다. */
+function DiscoveredActions({ p }: { p: ProjectSnapshot }) {
+  const [busy, setBusy] = useState(false);
+  const act = (fn: () => Promise<unknown>) => async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setBusy(true);
+    try {
+      await fn();
+    } catch (err) {
+      window.alert(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const session = p.tmuxSession ?? p.name;
+  return (
+    <span className="discovered">
+      <span className="dim" title="설정에 없는 tmux 세션. 세션이 닫히면 카드도 사라집니다">
+        미등록
+      </span>
+      <button type="button" disabled={busy} title="이 세션을 지금 경로로 프로젝트에 등록합니다" onClick={act(() => api.createSession({ name: session, repoPath: p.repoPath, tmuxSession: session, allowInput: false }))}>
+        등록
+      </button>
+      <button type="button" disabled={busy} title="대시보드에서 숨깁니다. 설정 화면의 숨긴 세션 목록에서 되돌릴 수 있습니다" onClick={act(() => api.hideSession(session))}>
+        숨김
+      </button>
+    </span>
+  );
+}
+
 export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
   const { git, tmux, status } = p;
   const last = git.recentCommits[0];
@@ -267,7 +298,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
     <a className={`card state-${status.state}`} href={`#/project/${encodeURIComponent(p.id)}`}>
       <div className="card-head">
         <h2>{p.name}</h2>
-        {p.id.startsWith('tmux:') && <span className="dim" title="설정에 없는 tmux 세션. 세션이 닫히면 카드도 사라집니다">미등록</span>}
+        {p.id.startsWith('tmux:') && <DiscoveredActions p={p} />}
         <Badge state={status.state} />
       </div>
       <Reasons reasons={status.reasons} />

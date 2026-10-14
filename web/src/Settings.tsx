@@ -24,7 +24,7 @@ const PATTERNS = [
   ['errorIgnorePatterns', '오류 제외 패턴', '오류 패턴에 걸려도 무시할 줄'],
   ['promptPatterns', '입력 대기 패턴', '입력 대기 프롬프트로 판정할 줄'],
 ] as const;
-type PatternKey = (typeof PATTERNS)[number][0];
+type PatternKey = (typeof PATTERNS)[number][0] | 'hiddenSessions';
 
 interface DraftProject {
   id: string | null;
@@ -58,6 +58,7 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
     errorPatterns: s.errorPatterns.join('\n'),
     errorIgnorePatterns: s.errorIgnorePatterns.join('\n'),
     promptPatterns: s.promptPatterns.join('\n'),
+    hiddenSessions: s.hiddenSessions.join('\n'),
     projects: projects.map((p) => ({ ...p, tmuxSession: p.tmuxSession ?? '', logFile: p.logFile ?? '' })),
   };
 }
@@ -87,6 +88,7 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       autoReportTime: d.autoReport ? d.autoReportTime : null,
       commandTimeoutSec: num(d.commandTimeoutSec),
       ntfyUrl: d.ntfyUrl.trim() || null,
+      hiddenSessions: lines(d.hiddenSessions).map((l) => l.trim()),
     },
     projects: d.projects.map((p) => ({
       id: p.id,
@@ -339,6 +341,11 @@ export function Settings() {
       <p className="hint">
         테스트·빌드 명령은 config 파일에서만 등록·수정할 수 있습니다. 여기서 추가한 프로젝트에는 명령이 없습니다.
       </p>
+      <div className="settings-grid">
+        <Field label="숨긴 미등록 세션" hint="설정에 없는 tmux 세션은 자동으로 카드가 뜹니다. 카드의 '숨김'으로 여기 쌓이며, 줄을 지우면 다시 보입니다">
+          <textarea rows={3} spellCheck={false} value={draft.hiddenSessions} disabled={ro} onChange={(e) => set({ hiddenSessions: e.target.value })} />
+        </Field>
+      </div>
       {draft.projects.length === 0 && <p className="dim">등록된 프로젝트가 없습니다.</p>}
       {draft.projects.map((p, i) => (
         // 모든 입력이 제어 컴포넌트라 index key 로도 삭제 시 값이 섞이지 않는다

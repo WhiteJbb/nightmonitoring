@@ -53,6 +53,8 @@ export interface Config {
   ntfyStates: ProjectState[];
   commandTimeoutSec: number;
   reportsDir: string;
+  /** 설정에 없어도 카드로 뜨는 tmux 세션 중 대시보드에서 숨길 이름 */
+  hiddenSessions: string[];
   projects: ProjectConfig[];
 }
 
@@ -73,6 +75,7 @@ export const DEFAULTS = {
   ntfyStates: ['waiting', 'stalled', 'error'] as ProjectState[],
   commandTimeoutSec: 600,
   reportsDir: 'reports',
+  hiddenSessions: [] as string[],
 };
 
 export class ConfigError extends Error {
@@ -213,7 +216,14 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     else issues.push(`ntfyStates: ${allowed.join(', ')} 중에서 고른 배열이어야 합니다`);
   }
 
+  let hiddenSessions = DEFAULTS.hiddenSessions;
+  if (raw.hiddenSessions !== undefined) {
+    if (Array.isArray(raw.hiddenSessions) && raw.hiddenSessions.every((x) => typeof x === 'string')) hiddenSessions = raw.hiddenSessions.filter((x: string) => x.trim() !== '');
+    else issues.push('hiddenSessions: 문자열 배열이어야 합니다');
+  }
+
   const config: Config = {
+    hiddenSessions,
     host: optStr(raw, 'host', '') ?? DEFAULTS.host,
     allowedHosts,
     port: num(raw, 'port', DEFAULTS.port, '', 1),

@@ -390,6 +390,16 @@ main {
   gap: 4px 12px;
   margin-bottom: 4px;
 }
+.discovered {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.discovered button {
+  padding: 1px 8px;
+  font-size: 12px;
+}
 .card h2 {
   font-size: var(--fs-md);
   font-weight: 600;
