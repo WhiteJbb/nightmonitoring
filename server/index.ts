@@ -11,6 +11,7 @@ import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
 import { alertsFor, autoReportDue, localDate, MAC_ALERT_STATES } from './notify.ts';
+import type { AlertMemory } from './notify.ts';
 import { sendNtfy } from './push.ts';
 import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
@@ -79,9 +80,9 @@ async function main() {
 
   if (!demo) {
     // 상태 변화 알림과 예약된 Morning Report. 둘 다 실패해도 감시는 계속된다.
-    const prevStates = new Map(monitor.snapshot.projects.map((p) => [p.id, p.status.state]));
+    const alertMemory = new Map<string, AlertMemory>();
     monitor.subscribe((snapshot) => {
-      const alerts = alertsFor(prevStates, snapshot);
+      const alerts = alertsFor(alertMemory, snapshot);
       for (const a of alerts) {
         if (monitor.config.notifications && MAC_ALERT_STATES.includes(a.state)) void notify(a.title, a.message);
         const { ntfyUrl, ntfyStates } = monitor.config;

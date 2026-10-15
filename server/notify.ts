@@ -12,21 +12,58 @@ export interface Alert {
   state: ProjectState;
 }
 
+/** 프로젝트별로 알림 판단에 필요한 기억. alertsFor 가 호출마다 갱신한다. */
+export interface AlertMemory {
+  state: ProjectState;
+  /** 마지막으로 알린 상태 */
+  alertedState: ProjectState | null;
+  /** 마지막으로 알림 상태에 들어온 뒤 출력이 바뀐 tick 수 (Git 변화는 REALERT_ACTIVITY 로 친다) */
+  activity: number;
+  lastOutputAt: string | null;
+  lastGitAt: string | null;
+}
+
+/**
+ * 한 번 알린 상태로 되돌아왔을 때 다시 알리려면 그 사이에 이만큼의 활동이 있어야 한다.
+ * 멈춘 세션도 화면 갱신 한 번으로 "정상"이 됐다가 30분 뒤 다시 "정지 의심"이 되는데, 그건 새 소식이 아니다.
+ */
+export const REALERT_ACTIVITY = 3;
+
 /**
  * 이전 상태와 비교해 새로 입력 대기·정지 의심·오류가 된 프로젝트의 알림을 만든다.
- * prev 는 호출마다 현재 상태로 갱신된다. 처음 보는 프로젝트는 알리지 않는다 (시작 시 알림 폭주 방지).
+ * 처음 보는 프로젝트는 알리지 않는다 (시작 시 알림 폭주 방지). 같은 상태의 반복은 그 사이에 실제 활동이 있었을 때만 알린다.
  */
-export function alertsFor(prev: Map<string, ProjectState>, snapshot: Snapshot): Alert[] {
+export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot): Alert[] {
   const alerts: Alert[] = [];
   for (const p of snapshot.projects) {
-    const before = prev.get(p.id);
-    const label = ALERT_STATES[p.status.state];
-    if (before !== undefined && before !== p.status.state && label) {
-      alerts.push({ title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label, projectId: p.id, state: p.status.state });
+    const { state } = p.status;
+    const outputAt = p.tmux.lastOutputChangeAt;
+    const gitAt = p.lastGitChangeAt;
+    const m = memory.get(p.id);
+    if (!m) {
+      memory.set(p.id, { state, alertedState: null, activity: 0, lastOutputAt: outputAt, lastGitAt: gitAt });
+      continue;
     }
-    prev.set(p.id, p.status.state);
+    if (outputAt !== m.lastOutputAt) m.activity += 1;
+    if (gitAt !== m.lastGitAt) m.activity += REALERT_ACTIVITY;
+    m.lastOutputAt = outputAt;
+    m.lastGitAt = gitAt;
+    const label = ALERT_STATES[state];
+    if (m.state !== state && label) {
+      const alert = { title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label, projectId: p.id, state };
+      // 유휴는 정지 의심으로 가는 길목이라 반복 판단에 끼우지 않는다 (기본으로는 보내지도 않는다).
+      if (state === 'idle') alerts.push(alert);
+      else {
+        if (!(m.alertedState === state && m.activity < REALERT_ACTIVITY)) {
+          alerts.push(alert);
+          m.alertedState = state;
+        }
+        m.activity = 0;
+      }
+    }
+    m.state = state;
   }
-  for (const id of prev.keys()) if (!snapshot.projects.some((p) => p.id === id)) prev.delete(id);
+  for (const id of memory.keys()) if (!snapshot.projects.some((p) => p.id === id)) memory.delete(id);
   return alerts;
 }
 
