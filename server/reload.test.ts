@@ -93,7 +93,8 @@ describe('reloadConfig', () => {
 });
 
 describe('alerts', () => {
-  const snap = (states: Record<string, string>): Snapshot => ({ projects: Object.entries(states).map(([id, state]) => ({ id, name: id.toUpperCase(), status: { state, reasons: [`${state} reason`] } })) }) as unknown as Snapshot;
+  const snap = (states: Record<string, string>, activity: Record<string, string | null> = {}): Snapshot =>
+    ({ projects: Object.entries(states).map(([id, state]) => ({ id, name: id.toUpperCase(), status: { state, reasons: [`${state} reason`] }, tmux: { lastOutputChangeAt: activity[id] ?? null }, lastGitChangeAt: activity[`${id}.git`] ?? null })) }) as unknown as Snapshot;
 
   it('alerts on transitions into waiting, idle, stalled or error, never into running', () => {
     const prev = new Map();
@@ -105,6 +106,29 @@ describe('alerts', () => {
     expect([...prev.keys()]).toEqual(['a']);
     // Mac 알림에는 유휴가 포함되지 않는다
     expect(MAC_ALERT_STATES).toEqual(['waiting', 'stalled', 'error']);
+  });
+
+  it('does not repeat the same alert after a blip, but does after real activity', () => {
+    const memory = new Map();
+    const titles = (s: Snapshot) => alertsFor(memory, s).map((x) => x.title);
+    titles(snap({ a: 'running' }, { a: 't0' }));
+    expect(titles(snap({ a: 'stalled' }, { a: 't0' }))).toEqual(['NightShift · A: 정지 의심']);
+    // 화면이 한 번 바뀌어 정상 → 유휴 → 정지 의심: 반복이므로 조용히
+    titles(snap({ a: 'running' }, { a: 't1' }));
+    titles(snap({ a: 'idle' }, { a: 't1' }));
+    expect(titles(snap({ a: 'stalled' }, { a: 't1' }))).toEqual([]);
+    // 출력이 여러 tick 바뀌었다 = 실제로 돌았다 → 다시 알린다
+    titles(snap({ a: 'running' }, { a: 't2' }));
+    titles(snap({ a: 'running' }, { a: 't3' }));
+    titles(snap({ a: 'running' }, { a: 't4' }));
+    expect(titles(snap({ a: 'idle' }, { a: 't4' }))).toEqual(['NightShift · A: 유휴']);
+    expect(titles(snap({ a: 'stalled' }, { a: 't4' }))).toEqual(['NightShift · A: 정지 의심']);
+    // Git 변화 하나로도 충분하다
+    titles(snap({ a: 'running' }, { a: 't5', 'a.git': 'g1' }));
+    expect(titles(snap({ a: 'stalled' }, { a: 't5', 'a.git': 'g1' }))).toEqual(['NightShift · A: 정지 의심']);
+    // 다른 알림 상태를 거쳐 돌아온 것은 새 소식이다
+    expect(titles(snap({ a: 'waiting' }, { a: 't5', 'a.git': 'g1' }))).toEqual(['NightShift · A: 입력 대기']);
+    expect(titles(snap({ a: 'stalled' }, { a: 't6', 'a.git': 'g1' }))).toEqual(['NightShift · A: 정지 의심']);
   });
 });
 
