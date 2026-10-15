@@ -277,7 +277,7 @@ export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Le
 
 /**
  * POST /api/projects/:id/input — pane 에 키 입력을 보낸다. text 와 key 중 정확히 하나.
- * - text: 글자 그대로 입력한다 (최대 4000자). enter 가 true 면 이어서 Enter 를 누른다.
+ * - text: 글자 그대로 입력한다 (최대 20000자, 여러 줄이면 붙여넣기로 들어간다). enter 가 true 면 이어서 Enter 를 누른다.
  * - key: 특수 키 하나 (BTab = Shift+Tab, PPage/NPage = Page Up/Down, C-c = Ctrl+C).
  * 응답: 200 {ok:true} / 400 {error} / 403 {error} (allowInput 꺼짐, demo, 서버가 loopback·Tailscale 이 아닌 주소에 열림) / 404 {error} (프로젝트·pane 없음)
  */

@@ -31,7 +31,7 @@ describe('parseInput', () => {
   });
 
   it('rejects everything else', () => {
-    for (const body of [null, 'x', {}, { pane: 'agent:0.0', text: 'x' }, { pane: '%3' }, { pane: '%3', text: 'x', key: 'Enter' }, { pane: '%3', key: 'F1' }, { pane: '%3', key: 'Enter; kill-server' }, { pane: '%3', text: '' }, { pane: '%3', text: 5 }, { pane: '%3', text: 'a\0b' }, { pane: '%3', text: 'x'.repeat(4001) }]) {
+    for (const body of [null, 'x', {}, { pane: 'agent:0.0', text: 'x' }, { pane: '%3' }, { pane: '%3', text: 'x', key: 'Enter' }, { pane: '%3', key: 'F1' }, { pane: '%3', key: 'Enter; kill-server' }, { pane: '%3', text: '' }, { pane: '%3', text: 5 }, { pane: '%3', text: 'a\0b' }, { pane: '%3', text: 'x'.repeat(20001) }]) {
       expect(typeof parseInput(body)).toBe('string');
     }
   });
@@ -52,6 +52,14 @@ describe('sendInput', () => {
     await sendInput({ pane: '%3', key: 'BTab' });
     await sendInput({ pane: '%3', text: 'y', enter: false });
     expect(mockRun.mock.calls.map((c) => c[1])).toEqual([['send-keys', '-t', '%3', 'BTab'], ['send-keys', '-t', '%3', '-l', '--', 'y']]);
+  });
+
+  it('pastes multi-line text through a tmux buffer', async () => {
+    await sendInput({ pane: '%3', text: 'a\nb', enter: false });
+    expect(mockRun.mock.calls.map((c) => c[1])).toEqual([
+      ['set-buffer', '-b', 'nightshift-input', '--', 'a\nb'],
+      ['paste-buffer', '-p', '-d', '-b', 'nightshift-input', '-t', '%3'],
+    ]);
   });
 
   it('reports tmux failures and does not press Enter after a failed text', async () => {

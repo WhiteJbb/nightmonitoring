@@ -894,7 +894,7 @@ pre {
 }
 .settings input:not([type='checkbox']),
 .settings textarea,
-.input-row input {
+.input-row textarea {
   display: block;
   width: 100%;
   font: inherit;
@@ -907,7 +907,7 @@ pre {
 }
 .settings input:not([type='checkbox']):focus-visible,
 .settings textarea:focus-visible,
-.input-row input:focus-visible {
+.input-row textarea:focus-visible {
   outline: none;
   border-color: var(--accent);
 }
@@ -1005,10 +1005,11 @@ pre {
   flex-wrap: wrap;
   gap: 6px;
 }
-.input-row input {
+.input-row textarea {
   flex: 1 1 200px;
   min-width: 0;
   width: auto;
+  resize: none;
   font-family: var(--mono);
   font-size: var(--fs-code);
 }
@@ -1091,7 +1092,7 @@ pre {
   }
   .settings input:not([type='checkbox']),
   .settings textarea,
-  .input-row input {
+  .input-row textarea {
     font-size: 16px;
     padding: 9px 12px;
   }

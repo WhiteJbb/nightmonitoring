@@ -129,7 +129,7 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
   const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // 입력칸은 잠그지 않는다(포커스 유지). 보내는 중의 전송 시도만 무시한다
   const send = (body: InputRequest) => {
@@ -160,12 +160,13 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
     else if (enter) send({ pane, key: 'Enter' });
   };
 
-  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // 한글 등 IME 조합 중의 Enter 는 조합 확정이지 전송이 아니다
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const forward = FORWARD[e.key];
     if (e.key === 'Enter') {
+      if (e.shiftKey) return; // Shift+Enter 는 줄바꿈
       e.preventDefault();
       sendText(true);
     } else if (e.key === 'Tab') {
@@ -180,16 +181,16 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
   return (
     <div className="input-bar">
       <div className="input-row">
-        <input
+        <textarea
           ref={inputRef}
-          type="text"
           className="mono"
           aria-label="pane 에 보낼 입력"
-          placeholder="입력 후 Enter"
+          placeholder="입력 후 Enter (줄바꿈은 Shift+Enter)"
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
-          maxLength={4000}
+          maxLength={20000}
+          rows={Math.min(8, text.split('\n').length)}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
