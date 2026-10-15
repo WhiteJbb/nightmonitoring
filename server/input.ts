@@ -1,6 +1,7 @@
 // UI → tmux 키 입력. allowInput 을 켠 프로젝트에만, loopback·Tailscale 바인딩일 때만 허용된다 (app.ts).
 import { appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { InputKey } from '../shared/types.ts';
 import { sendKey, sendText } from './tmux.ts';
 
@@ -25,10 +26,16 @@ export function parseInput(body: unknown): ParsedInput | string {
   return { pane, text, enter: enter === true };
 }
 
+/** 글자를 넣고 Enter 를 누르기까지 쉬는 시간. Codex 는 글자 뒤 120ms 안의 Enter 를 붙여넣기의 줄바꿈으로 본다. */
+export const ENTER_DELAY_MS = 200;
+
 /** 입력을 tmux 로 보낸다. 실패하면 오류 메시지. */
 export async function sendInput(input: ParsedInput): Promise<string | null> {
   if ('key' in input) return sendKey(input.pane, input.key);
-  return (await sendText(input.pane, input.text)) ?? (input.enter ? sendKey(input.pane, 'Enter') : null);
+  const error = await sendText(input.pane, input.text);
+  if (error || !input.enter) return error;
+  await sleep(ENTER_DELAY_MS);
+  return sendKey(input.pane, 'Enter');
 }
 
 /** 보낸 입력을 한 줄 JSON 으로 남긴다. 기록 실패가 입력을 막지는 않는다. */

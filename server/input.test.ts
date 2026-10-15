@@ -8,7 +8,7 @@ import { loadConfig, parseConfig } from './config.ts';
 import { applyConfigUpdate, readConfigView } from './configEdit.ts';
 import { run } from './exec.ts';
 import type { ParsedInput } from './input.ts';
-import { logInput, parseInput, sendInput } from './input.ts';
+import { ENTER_DELAY_MS, logInput, parseInput, sendInput } from './input.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
 import { Runner } from './runner.ts';
@@ -38,8 +38,10 @@ describe('parseInput', () => {
 });
 
 describe('sendInput', () => {
-  it('sends text literally, then Enter when asked', async () => {
+  it('sends text literally, then Enter after a pause when asked', async () => {
+    const t0 = Date.now();
     expect(await sendInput({ pane: '%3', text: '-l Enter; rm -rf ~', enter: true })).toBeNull();
+    expect(Date.now() - t0).toBeGreaterThanOrEqual(ENTER_DELAY_MS - 5);
     expect(mockRun.mock.calls.map((c) => c.slice(0, 2))).toEqual([
       ['tmux', ['send-keys', '-t', '%3', '-l', '--', '-l Enter; rm -rf ~']],
       ['tmux', ['send-keys', '-t', '%3', 'Enter']],

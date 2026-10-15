@@ -203,7 +203,7 @@ npm run demo
 { "name": "My Web App", "repoPath": "~/code/my-web-app", "tmuxSession": "webapp-agent", "allowInput": true }
 ```
 
-- 입력 줄에 글을 쓰고 Enter(또는 "보내기")를 누르면 선택한 pane에 그대로 입력되고 Enter가 눌립니다. pane에서 AI 에이전트가 돌고 있으면 프롬프트로 전달됩니다.
+- 입력 줄에 글을 쓰고 Enter(또는 "보내기")를 누르면 선택한 pane에 그대로 입력되고, 잠시(0.2초) 뒤 Enter가 눌립니다. pane에서 AI 에이전트가 돌고 있으면 프롬프트로 전달됩니다. 이 짧은 간격은 Codex처럼 빠르게 들어온 글자를 붙여넣기로 보고 바로 뒤의 Enter를 줄바꿈으로 처리하는 프로그램을 위한 것입니다.
 - Esc, Tab, Shift+Tab, 방향키, PgUp/PgDn, Backspace, Ctrl+C/D/U/L은 버튼으로 보냅니다. 입력 줄이 비어 있을 때는 키보드의 방향키·Esc·Tab·Backspace도 그대로 전달됩니다.
 - 화면은 tmux pane의 크기를 따르고, 마우스 클릭은 전달되지 않습니다.
 - **위로 올려 보기**: 터미널 탭은 최근 500줄을 가져오고, "이전 출력 더 보기"로 5000줄까지 늘릴 수 있습니다(tmux의 스크롤백 한도 `history-limit`, 기본 2000줄까지). 위로 올려 읽는 동안에는 화면이 밀리지 않게 갱신이 멈추고, "맨 아래로"를 누르면 다시 이어집니다. 멈춘 동안에도 키나 글을 보내면 그 직후의 화면은 한 번 읽어 옵니다.
