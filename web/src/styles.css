@@ -1005,6 +1005,9 @@ pre {
   flex-wrap: wrap;
   gap: 6px;
 }
+.input-row {
+  align-items: flex-end;
+}
 .input-row textarea {
   flex: 1 1 200px;
   min-width: 0;
