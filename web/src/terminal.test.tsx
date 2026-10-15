@@ -81,7 +81,7 @@ const tick = (ms = 0) =>
   });
 
 const term = () => screen.getByLabelText('최근 터미널 출력');
-const box = () => screen.getByRole<HTMLInputElement>('textbox', { name: 'pane 에 보낼 입력' });
+const box = () => screen.getByRole<HTMLTextAreaElement>('textbox', { name: 'pane 에 보낼 입력' });
 const type = (value: string) => fireEvent.change(box(), { target: { value } });
 
 async function renderTab(p: ProjectSnapshot, refreshSec?: number) {
@@ -233,6 +233,15 @@ test('Enter sends the text with enter:true, clears the input, keeps focus and po
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '보내기' }).disabled).toBe(false);
   // 700ms 를 기다리지 않고 바로 다시 읽는다
   expect(gets()).toHaveLength(2);
+});
+
+test('Shift+Enter inserts a newline instead of sending', async () => {
+  serve(() => json(200, { lines: [] }));
+  await renderTab(project(ONE));
+  type('line 1');
+  expect(fireEvent.keyDown(box(), { key: 'Enter', shiftKey: true })).toBe(true);
+  await tick();
+  expect(posts()).toEqual([]);
 });
 
 test('Enter during IME composition does not send', async () => {
@@ -400,7 +409,7 @@ test('on a touch screen a key button does not pull focus into the input (no keyb
   serve(() => json(200, { lines: [] }));
   await renderTab(project(TWO));
   await tick();
-  const box = screen.getByPlaceholderText('입력 후 Enter');
+  const box = screen.getByPlaceholderText(/입력 후 Enter/);
   fireEvent.click(screen.getByRole('button', { name: 'Page Up 보내기 (프로그램 안에서 위로)' }));
   await tick();
   expect(document.activeElement).not.toBe(box);
