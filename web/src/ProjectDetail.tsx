@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
+import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
 import type { TermStatus } from './Term.tsx';
 import { api, errorMessage } from './api.ts';
@@ -496,6 +497,20 @@ function EndSession({ projectId, session }: { projectId: string; session: string
   );
 }
 
+/** 명령 출력의 색 시퀀스(vitest 등)를 색으로 그린다. 그대로 두면 "[32m✓" 같은 글자가 보인다 */
+function AnsiText({ text }: { text: string }) {
+  return parseAnsi(text.split('\n')).map((line, i) => (
+    <Fragment key={i}>
+      {i > 0 && '\n'}
+      {line.map((span, j) => (
+        <span key={j} style={span.style}>
+          {span.text}
+        </span>
+      ))}
+    </Fragment>
+  ));
+}
+
 const onVisibility = (cb: () => void) => {
   document.addEventListener('visibilitychange', cb);
   return () => document.removeEventListener('visibilitychange', cb);
@@ -779,24 +794,36 @@ function FilePath({ file }: { file: { path: string; from?: string } }) {
   );
 }
 
+/** 변경 파일 목록은 이만큼만 먼저 보여 준다 (수십 개면 휴대폰에서 화면 수십 장이 된다) */
+const FILES_SHOWN = 15;
+
 function Stats({ files, additions, deletions, empty }: { files: FileStat[]; additions: number; deletions: number; empty: string }) {
+  const [all, setAll] = useState(false);
   if (files.length === 0) return <p className="dim">{empty}</p>;
+  const hidden = files.length - FILES_SHOWN;
   return (
-    <ul className="rows">
-      {files.map((f) => (
-        <li key={f.path}>
-          <FilePath file={f} />
-          {f.untracked && <span className="new-mark">new</span>}
-          <span className="add">+{f.additions}</span>
-          <span className="del">−{f.deletions}</span>
+    <>
+      <ul className="rows">
+        {(all ? files : files.slice(0, FILES_SHOWN)).map((f) => (
+          <li key={f.path}>
+            <FilePath file={f} />
+            {f.untracked && <span className="new-mark">new</span>}
+            <span className="add">+{f.additions}</span>
+            <span className="del">−{f.deletions}</span>
+          </li>
+        ))}
+        <li className="total">
+          <span className="grow">합계 · 파일 {files.length}개</span>
+          <span className="add">+{additions}</span>
+          <span className="del">−{deletions}</span>
         </li>
-      ))}
-      <li className="total">
-        <span className="grow">합계 · 파일 {files.length}개</span>
-        <span className="add">+{additions}</span>
-        <span className="del">−{deletions}</span>
-      </li>
-    </ul>
+      </ul>
+      {hidden > 0 && (
+        <button type="button" className="more-rows" aria-expanded={all} onClick={() => setAll(!all)}>
+          {all ? '접기' : `파일 ${hidden}개 더 보기`}
+        </button>
+      )}
+    </>
   );
 }
 
@@ -1015,11 +1042,11 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
           )}
           <h4>stdout</h4>
           <pre className="output" tabIndex={0}>
-            {shown?.stdout || '(비어 있음)'}
+            {shown?.stdout ? <AnsiText text={shown.stdout} /> : '(비어 있음)'}
           </pre>
           <h4>stderr</h4>
           <pre className="output err-output" tabIndex={0}>
-            {shown?.stderr || '(비어 있음)'}
+            {shown?.stderr ? <AnsiText text={shown.stderr} /> : '(비어 있음)'}
           </pre>
         </>
       )}
