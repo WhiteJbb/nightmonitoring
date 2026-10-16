@@ -470,6 +470,28 @@ const onVisibility = (cb: () => void) => {
   document.addEventListener('visibilitychange', cb);
   return () => document.removeEventListener('visibilitychange', cb);
 };
+/** 이만큼 마우스·키보드·터치가 없으면 자리를 비운 것으로 본다 (터미널 연결을 닫아 서버가 다시 알림을 보낸다) */
+const AWAY_MS = 5 * 60_000;
+const ACTIVITY = ['pointermove', 'pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+
+/** 자리 비움: 마지막 입력 뒤 AWAY_MS 가 지났는지. 다시 움직이면 바로 돌아온다 */
+function useAway(): boolean {
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    let timer = setTimeout(() => setAway(true), AWAY_MS);
+    const onActivity = () => {
+      clearTimeout(timer);
+      setAway(false);
+      timer = setTimeout(() => setAway(true), AWAY_MS);
+    };
+    for (const e of ACTIVITY) window.addEventListener(e, onActivity, { passive: true, capture: true });
+    return () => {
+      clearTimeout(timer);
+      for (const e of ACTIVITY) window.removeEventListener(e, onActivity, { capture: true });
+    };
+  }, []);
+  return away;
+}
 
 export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
@@ -497,6 +519,8 @@ export function TerminalTab({ project: p, now }: Props) {
   const [full, setFull] = useState(false);
   // 탭이 뒤로 가거나 휴대폰 화면이 꺼지면 터미널 스트림을 닫는다. 서버는 "보고 있는 사람 없음"으로 보고 작업 끝남·입력 대기 알림을 보낸다
   const visible = useSyncExternalStore(onVisibility, () => document.visibilityState !== 'hidden');
+  // 탭을 앞에 띄워 둔 채 자리를 비워도 마찬가지로 닫는다
+  const away = useAway();
   // 터미널에서 복사·이미지 붙여넣기의 결과를 잠깐 보여 준다
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -665,7 +689,12 @@ export function TerminalTab({ project: p, now }: Props) {
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            visible && <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            visible && !away ? (
+              <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            ) : (
+              // 화면이 안 보이거나 자리를 비운 동안: 연결을 쉰다. 마우스·키를 움직이면 다시 붙는다
+              <p className="dim term-paused">{away ? '자리를 비운 동안 연결을 쉬는 중입니다. 마우스나 키를 움직이면 다시 연결합니다.' : '화면이 보이지 않아 연결을 쉬는 중입니다.'}</p>
+            )
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}

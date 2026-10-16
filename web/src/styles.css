@@ -1008,6 +1008,12 @@ pre {
     display: none;
   }
 }
+.term-paused {
+  margin: 0;
+  padding: 40px 10px;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
 .xterm-host .xterm {
   padding: 0;
   /* xterm 도 .terminal 클래스를 달아 아래 높이 제한이 걸린다. 높이는 줄 수를 따른다 */
