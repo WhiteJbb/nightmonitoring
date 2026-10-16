@@ -12,3 +12,4 @@ NIGHT_REPORT.md
 *.log
 .agents
 skills-lock.json
+*.tsbuildinfo
