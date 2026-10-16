@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ArrowRight } from '@phosphor-icons/react';
 import type { Report, ReportMeta } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime } from './format.ts';
@@ -63,10 +64,12 @@ export function Reports() {
 
   return (
     <>
+      <span className="eyebrow">SYS.MONITOR // REPORTS</span>
       <div className="detail-head">
         <h1>보고서</h1>
         <button type="button" className="primary" onClick={generate} disabled={generating}>
           {generating ? '생성 중…' : 'Morning Report 생성'}
+          <ArrowRight size={14} weight="bold" aria-hidden="true" />
         </button>
       </div>
       {genError && (

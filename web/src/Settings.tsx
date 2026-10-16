@@ -214,6 +214,7 @@ export function Settings() {
 
   return (
     <form className="settings" onSubmit={save}>
+      <span className="eyebrow">SYS.MONITOR // CONFIG</span>
       <div className="detail-head">
         <h1>설정</h1>
       </div>
