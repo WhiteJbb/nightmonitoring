@@ -1527,6 +1527,31 @@ fieldset.checks legend {
 .new-session .notice {
   margin-top: 12px;
 }
+/* 새 세션의 덜 쓰는 칸들: 접혀 있다가 "자세히"로 펼친다 */
+.more-fields {
+  margin-top: 14px;
+}
+.more-fields summary {
+  width: fit-content;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  color: var(--dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  list-style: none;
+}
+.more-fields summary::before {
+  content: '▸ ';
+}
+.more-fields[open] summary::before {
+  content: '▾ ';
+}
+.more-fields summary:hover {
+  color: var(--text);
+}
+.more-fields > .settings-grid {
+  margin-top: 10px;
+}
 /* clone 중: 도는 고리 + 안내. 몇 분 걸릴 수 있어 멈춘 것처럼 보이지 않게 */
 .new-session .pending {
   display: flex;

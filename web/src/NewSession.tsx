@@ -61,8 +61,9 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [error, setError] = useState<ApiError | Error | null>(null);
   const repo = repoNameFrom(gitUrl);
   const name = nameEdit ?? repo;
-  // 대부분 같은 폴더 아래에서 작업하므로 거기까지 미리 채워 둔다
-  const repoPath = pathEdit ?? defaultDir + repo;
+  // Git 주소를 적으면 같은 폴더 아래에 받는다. 아니면 비워 둔다 (서버가 홈 폴더에서 연다)
+  const repoPath = pathEdit ?? (repo ? defaultDir + repo : '');
+  const [more, setMore] = useState(false);
   const tmuxSession = session ?? sessionNameFrom(name);
   const cloning = busy && gitUrl.trim() !== '';
 
@@ -89,7 +90,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
     setError(null);
     api
       // 지금 보는 화면에 맞는 크기로 만든다: 터미널 탭에서 가로 스크롤이 생기지 않게
-      .createSession({ name: name.trim(), repoPath: repoPath.trim(), tmuxSession, allowInput, ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}), ...(agent ? { agent } : {}), ...fitSize(null) })
+      .createSession({ name: name.trim() || tmuxSession, repoPath: repoPath.trim(), tmuxSession, allowInput, ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}), ...(agent ? { agent } : {}), ...fitSize(null) })
       .then(({ id }) => {
         // 새 프로젝트의 터미널 화면으로 바로 이동한다
         window.location.hash = `#/project/${encodeURIComponent(id)}`;
@@ -103,49 +104,8 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   return (
     <form className={closing ? 'settings new-session closing' : 'settings new-session'} onSubmit={submit} aria-busy={busy}>
       <h3>tmux 세션 만들기</h3>
-      <p className="hint">
-        저장소 경로에서 새 세션을 만들고(고르면 에이전트까지 띄워) 프로젝트로 등록합니다. 같은 이름의 세션이 이미 있으면 그 세션을
-        등록합니다.
-      </p>
+      <p className="hint">세션 이름만 적고 에이전트를 고르면 바로 띄웁니다. 저장소를 받거나 폴더를 정하려면 "자세히"를 펼치세요.</p>
       <div className="settings-grid">
-        <div className="field">
-          <label>
-            <span>Git 저장소 주소 (선택)</span>
-            <input
-              type="text"
-              className="mono"
-              spellCheck={false}
-              placeholder="https://github.com/me/my-app.git"
-              value={gitUrl}
-              disabled={busy}
-              onChange={(e) => setGitUrl(e.target.value)}
-            />
-          </label>
-          <p className="hint">적으면 저장소 경로에 먼저 clone 합니다. 비공개 저장소는 이 Mac 의 SSH 키·자격 증명을 씁니다</p>
-        </div>
-        <div className="field">
-          <label>
-            <span>프로젝트 이름</span>
-            <input type="text" required value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
-          </label>
-        </div>
-        <div className="field">
-          <label>
-            <span>저장소 경로</span>
-            <input
-              type="text"
-              className="mono"
-              required
-              spellCheck={false}
-              placeholder="~/code/my-app"
-              value={repoPath}
-              disabled={busy}
-              // 미리 채운 폴더 뒤에 바로 이어 쓸 수 있게 커서를 끝에 둔다
-              onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
-              onChange={(e) => setRepoPath(e.target.value)}
-            />
-          </label>
-        </div>
         <div className="field">
           <label>
             <span>tmux 세션 이름</span>
@@ -191,6 +151,48 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
           <p className="hint">켜면 만들자마자 터미널 탭에서 입력을 보낼 수 있습니다</p>
         </div>
       </div>
+      <details className="more-fields" open={more} onToggle={(e) => setMore(e.currentTarget.open)}>
+        <summary>자세히 (Git 저장소·폴더·프로젝트 이름)</summary>
+        <div className="settings-grid">
+          <div className="field">
+            <label>
+              <span>Git 저장소 주소 (선택)</span>
+              <input
+                type="text"
+                className="mono"
+                spellCheck={false}
+                placeholder="https://github.com/me/my-app.git"
+                value={gitUrl}
+                disabled={busy}
+                onChange={(e) => setGitUrl(e.target.value)}
+              />
+            </label>
+            <p className="hint">적으면 저장소 경로에 먼저 clone 합니다. 비공개 저장소는 이 Mac 의 SSH 키·자격 증명을 씁니다</p>
+          </div>
+          <div className="field">
+            <label>
+              <span>프로젝트 이름</span>
+              <input type="text" placeholder="비우면 세션 이름" value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
+            </label>
+          </div>
+          <div className="field">
+            <label>
+              <span>저장소 경로</span>
+              <input
+                type="text"
+                className="mono"
+                spellCheck={false}
+                placeholder="비우면 홈 폴더 (~)"
+                value={repoPath}
+                disabled={busy}
+                // 미리 채운 폴더 뒤에 바로 이어 쓸 수 있게 커서를 끝에 둔다
+                onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
+                onChange={(e) => setRepoPath(e.target.value)}
+              />
+            </label>
+          </div>
+        </div>
+      </details>
       {/* 누른 버튼 바로 위에 둔다: 휴대폰에서는 버튼 아래가 화면 밖이기 쉽다 */}
       {cloning && (
         <p className="hint pending" role="status">
