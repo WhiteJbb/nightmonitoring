@@ -134,6 +134,15 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     res.status(202).json({ ok: true });
   });
 
+  // 스냅샷에는 출력의 끝부분만 실린다 (RunResult.truncated). 전체 출력은 화면에서 펼칠 때 여기서 받는다.
+  api.get('/projects/:id/run/:kind', (req, res) => {
+    const { id, kind } = req.params;
+    if (kind !== 'test' && kind !== 'build') return void res.status(400).json({ error: 'kind 는 test 또는 build 여야 합니다' });
+    const run = runner.peek(id)[kind];
+    if (!run) return void res.status(404).json({ error: '실행 기록이 없습니다' });
+    res.json(run);
+  });
+
   api.delete('/projects/:id/run/:kind', (req, res) => {
     const { id, kind } = req.params;
     if (kind !== 'test' && kind !== 'build') return void res.status(400).json({ error: 'kind 는 test 또는 build 여야 합니다' });

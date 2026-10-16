@@ -339,7 +339,7 @@ export class Monitor {
       if (!c) return [];
       const runs = this.opts.runs(p.id);
       const status = judge({ ...c, runs, thresholds: config.thresholds, sessionExitIsError: config.sessionExitIsError, now });
-      return [{ ...p, ...c, runs, history: this.opts.history?.(p.id) ?? { test: [], build: [] }, status }];
+      return [{ ...p, ...c, runs: { test: tailRun(runs.test), build: tailRun(runs.build) }, history: this.opts.history?.(p.id) ?? { test: [], build: [] }, status }];
     });
     const count = (state: string) => projects.filter((p) => p.status.state === state).length;
     return {
@@ -387,6 +387,13 @@ export class Monitor {
 }
 
 const MAX_LOG_ERRORS = 50;
+
+/** 스냅샷(매 tick SSE 로 나간다)에 싣는 실행 출력의 최대 길이 (stdout/stderr 각각). 전체는 따로 받는다 */
+export const SNAPSHOT_OUTPUT_CHARS = 16 * 1024;
+const tailRun = (r: RunResult | null): RunResult | null => {
+  if (!r || (r.stdout.length <= SNAPSHOT_OUTPUT_CHARS && r.stderr.length <= SNAPSHOT_OUTPUT_CHARS)) return r;
+  return { ...r, stdout: r.stdout.slice(-SNAPSHOT_OUTPUT_CHARS), stderr: r.stderr.slice(-SNAPSHOT_OUTPUT_CHARS), truncated: true };
+};
 const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null });
 
 const EMPTY_GIT: GitInfo = {

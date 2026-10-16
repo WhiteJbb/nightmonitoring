@@ -1,4 +1,4 @@
-import type { ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, RawInputRequest, Report, ReportMeta, RunKind, Snapshot, UploadRequest } from '../../shared/types.ts';
+import type { ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, RawInputRequest, Report, ReportMeta, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
@@ -38,6 +38,7 @@ export const api = {
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/run/${kind}`, 'POST'),
   cancelRun: (id: string, kind: RunKind) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/run/${kind}`, 'DELETE'),
+  runOutput: (id: string, kind: RunKind) => req<RunResult>(`/api/projects/${encodeURIComponent(id)}/run/${kind}`),
   ackErrors: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/ack-errors`, 'POST'),
   // pane id 는 "%12" 꼴이라 반드시 인코딩한다
   paneLive: (id: string, paneId: string, lines: number) =>

@@ -776,6 +776,17 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
   }, [pending]);
 
   const history = p.history[kind];
+  // 스냅샷에는 출력의 끝부분만 온다. 펼치면 전체를 받아 같은 실행인 동안 보여 준다
+  const [full, setFull] = useState<RunResult | null>(null);
+  const shown = full && run && full.startedAt === run.startedAt ? full : run;
+  const loadFull = () => {
+    setBusy(true);
+    setError(null);
+    api
+      .runOutput(p.id, kind)
+      .then(setFull, (e: unknown) => setError(`전체 출력을 불러오지 못했습니다: ${errorMessage(e)}`))
+      .finally(() => setBusy(false));
+  };
 
   const request = (action: typeof api.run, label: string) => {
     setBusy(true);
@@ -829,13 +840,21 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
             <dt>실행한 명령</dt>
             <dd className="wrap">{run.command}</dd>
           </dl>
+          {shown?.truncated && (
+            <p className="hint">
+              출력이 길어 끝부분만 보여 줍니다.{' '}
+              <button type="button" onClick={loadFull} disabled={busy}>
+                전체 출력 보기
+              </button>
+            </p>
+          )}
           <h4>stdout</h4>
           <pre className="output" tabIndex={0}>
-            {run.stdout || '(비어 있음)'}
+            {shown?.stdout || '(비어 있음)'}
           </pre>
           <h4>stderr</h4>
           <pre className="output err-output" tabIndex={0}>
-            {run.stderr || '(비어 있음)'}
+            {shown?.stderr || '(비어 있음)'}
           </pre>
         </>
       )}
