@@ -129,10 +129,17 @@ describe('discover', () => {
     const collector = fakeCollector({ output: [], git: git() });
     collector.discover = async () => found;
     collector.tmux = async (projects) => new Map(projects.map((p) => [p.id, { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: 'x' }]));
-    const m = new Monitor({ config, collector, runs: noRuns, now: () => T0 });
+    let now = T0;
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
     await m.tick();
     expect(m.snapshot.projects.map((p) => p.id)).toEqual(['app', 'lib', 'tmux:scratch']);
     expect(m.snapshot.projects[2]).toMatchObject({ name: 'scratch', repoPath: '/tmp/scratch', tmuxSession: 'scratch', allowInput: false });
+
+    // 세션이 다른 저장소로 옮겨 가면 기준점도 새로 잡는다
+    now = T0 + 60_000;
+    found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/other' }];
+    await m.tick();
+    expect(m.snapshot.projects[2]!.since?.baseline.at).toBe(new Date(now).toISOString());
 
     found = [{ name: 'app', cwd: '/repo/app' }];
     await m.tick();

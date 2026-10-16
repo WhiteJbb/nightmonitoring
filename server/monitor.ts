@@ -70,6 +70,8 @@ export function realCollector(config: Config): Collector {
 }
 
 interface Tracked {
+  /** 기준점을 잡은 저장소. 바뀌면(자동 발견 세션의 cwd 이동 등) 기준점을 버린다 */
+  repoPath: string;
   baseline: GitBaseline | null;
   fingerprint: string | null;
   gitChangedAt: string | null;
@@ -124,7 +126,7 @@ export class Monitor {
     this.startedAt = opts.restore?.startedAt ?? new Date(this.now()).toISOString();
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
-      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos });
+      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(p.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos });
     }
     this.snapshot = this.build();
   }
@@ -208,7 +210,6 @@ export class Monitor {
     const nowIso = new Date(this.now()).toISOString();
     const known = new Set(config.projects.map((p) => p.tmuxSession));
     const found = await collector.discover?.().catch(() => []);
-    // ponytail: 세션의 cwd 가 바뀌면 repoPath 도 바뀌지만 기준점(baseline)은 그대로다. 문제되면 repoPath 변경 시 tracked 를 버린다.
     this.discovered = (found ?? [])
       .filter((s) => !known.has(s.name) && !config.hiddenSessions.includes(s.name))
       .map((s) => ({ id: `tmux:${s.name}`, name: s.name, repoPath: s.cwd, tmuxSession: s.name, testCommand: null, buildCommand: null, logFile: null, allowInput: false }));
@@ -246,8 +247,8 @@ export class Monitor {
   }
 
   private async collectOne(p: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {
-    const tr = this.tracked.get(p.id) ?? newTracked();
-    this.tracked.set(p.id, tr);
+    let tr = this.tracked.get(p.id);
+    if (!tr || tr.repoPath !== p.repoPath) this.tracked.set(p.id, (tr = newTracked(p.repoPath)));
 
     // 로그 파일 설정이 바뀌면 이전 파일의 위치는 의미가 없다.
     if (tr.logFile !== p.logFile) Object.assign(tr, { logFile: p.logFile, logPos: null, logEnd: null });
@@ -359,7 +360,7 @@ export class Monitor {
   }
 }
 
-const newTracked = (): Tracked => ({ baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, output: null, outputChangedAt: null });
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, output: null, outputChangedAt: null });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,
