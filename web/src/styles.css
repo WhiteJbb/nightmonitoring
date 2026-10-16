@@ -1396,6 +1396,23 @@ form.settings {
 .new-session .notice {
   margin-top: 12px;
 }
+/* clone 중: 도는 고리 + 안내. 몇 분 걸릴 수 있어 멈춘 것처럼 보이지 않게 */
+.new-session .pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+.new-session .pending::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: sweep 0.9s linear infinite;
+}
 
 /* ── 좁은 화면: 사이드바가 떠 있는 유리 띠가 되고, 줄은 세로로 쌓인다 ── */
 @media (max-width: 900px) {
