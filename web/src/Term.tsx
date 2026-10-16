@@ -188,16 +188,48 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     };
     el.addEventListener('paste', onPaste, { capture: true });
 
-    // Shift+Enter 는 xterm 에선 Enter 와 같다. Claude Code·Codex 의 줄바꿈(Option+Enter 와 같은 ESC+CR)으로 보낸다
+    // 맥 터미널(Terminal·iTerm)과 같게: xterm 이 안 보내거나 다르게 보내는 키를 고친다
+    //  Shift+Enter → ESC+CR (Claude Code·Codex 줄바꿈), ⌘←/⌘→ → 줄 처음·끝(^A/^E), ⌘⌫ → 줄 지우기(^U),
+    //  ⌥←/⌥→ → 단어 이동(ESC b/f), ⌥⌫ → 단어 지우기(ESC DEL). ⌘K 는 이 화면의 스크롤백만 지운다
+    const MAC_KEYS: Record<string, string> = {
+      'shift+Enter': '\x1b\r',
+      'meta+ArrowLeft': '\x01',
+      'meta+ArrowRight': '\x05',
+      'meta+Backspace': '\x15',
+      'alt+ArrowLeft': '\x1bb',
+      'alt+ArrowRight': '\x1bf',
+      'alt+Backspace': '\x1b\x7f',
+    };
     term.attachCustomKeyEventHandler((ev) => {
-      if (ev.key !== 'Enter' || !ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey || !canInput) return true;
+      const mods = [ev.metaKey && 'meta', ev.ctrlKey && 'ctrl', ev.altKey && 'alt', ev.shiftKey && 'shift'].filter(Boolean).join('+');
+      const combo = `${mods}+${ev.key}`;
+      if (combo === 'meta+k') {
+        if (ev.type === 'keydown') term.clear();
+        ev.preventDefault();
+        return false;
+      }
+      const seq = MAC_KEYS[combo];
+      if (seq === undefined || !canInput) return true;
       if (ev.type === 'keydown') {
-        queue += '\x1b\r';
+        queue += seq;
         void flush();
       }
       ev.preventDefault();
       return false;
     });
+
+    // 우클릭 붙여넣기: 클립보드를 읽을 수 있으면(https) 바로 붙인다. http 에선 브라우저가 막으므로
+    // 기본 메뉴를 그대로 띄운다 (xterm 이 입력칸을 마우스 아래로 옮겨 두어 메뉴의 "붙여넣기"가 터미널로 간다)
+    const onContextMenu = (e: MouseEvent) => {
+      if (!canInput || !window.isSecureContext || !navigator.clipboard?.readText || term.hasSelection()) return;
+      e.preventDefault();
+      navigator.clipboard.readText().then(
+        (text) => text && term.paste(text),
+        () => cb.current.onNotice?.('클립보드를 읽지 못했습니다. Cmd+V 로 붙여넣으세요'),
+      );
+    };
+    el.addEventListener('contextmenu', onContextMenu);
+
     // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램(Codex)엔
     // xterm 이 화살표 키로 바꿔 보내는데, 거기선 화살표가 입력 기록 탐색이다. 대신 PgUp/PgDn 으로 넘긴다
     let wheelAcc = 0;
@@ -257,6 +289,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       queue = '';
       input.dispose();
       el.removeEventListener('paste', onPaste, { capture: true });
+      el.removeEventListener('contextmenu', onContextMenu);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
