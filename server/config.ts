@@ -65,7 +65,7 @@ export const DEFAULTS = {
   refreshIntervalSec: 5,
   thresholds: { idleMinutes: 15, stalledMinutes: 30, noCommitMinutes: 30 },
   errorPatterns: ['error', 'failed', 'exception'],
-  errorIgnorePatterns: ['0 errors', 'no errors', '0 failed'],
+  errorIgnorePatterns: ['/\\b0 errors\\b/', 'no errors', '/\\b0 failed\\b/'],
   promptPatterns: ['Do you want to', 'Would you like to', '(y/n)', '[y/n]', '(yes/no)', 'Press Enter to continue', '/❯\\s*1\\.\\s*Yes/'],
   ignoreSpinnerChanges: true,
   sessionExitIsError: true,
@@ -87,7 +87,7 @@ export class ConfigError extends Error {
 }
 
 // tmux 대상 문법(:, ., 선행 $ = @ %)과 옵션으로 해석될 수 있는 선행 '-'를 막는다.
-export const SESSION_RE = /^[^\s:.$=@%-][^\s:.]*$/;
+export const SESSION_RE = /^[^\s:.;$=@%-][^\s:.;]*$/; // ';' 는 tmux 가 명령 구분자로 먹는다
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -185,12 +185,13 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
       if (!repoPath) issues.push(`${where}repoPath: 필수입니다`);
       const tmuxSession = optStr(p, 'tmuxSession', where);
       if (tmuxSession && !SESSION_RE.test(tmuxSession)) {
-        issues.push(`${where}tmuxSession: 공백, ':', '.' 을 포함하거나 '-', '$', '=', '@', '%' 로 시작할 수 없습니다`);
+        issues.push(`${where}tmuxSession: 공백, ':', '.', ';' 을 포함하거나 '-', '$', '=', '@', '%' 로 시작할 수 없습니다`);
       }
       if (p.allowInput !== undefined && typeof p.allowInput !== 'boolean') issues.push(`${where}allowInput: true 또는 false 여야 합니다`);
       if (!name || !repoPath) return;
-      let id = slugify(name);
-      for (let n = 2; ids.has(id); n++) id = `${slugify(name)}-${n}`;
+      // id 는 이름에서 만든다. 자리 순서로 꼬리표를 붙이면 앞 프로젝트를 지울 때 뒤 프로젝트의 id 가 바뀌어 기록이 끊긴다.
+      const id = slugify(name);
+      if (ids.has(id)) issues.push(`${where}name: "${name}" 은(는) 다른 프로젝트와 같은 id(${id}) 가 됩니다. 이름을 바꾸세요`);
       ids.add(id);
       const repo = expandPath(repoPath, baseDir);
       const logFile = optStr(p, 'logFile', where);

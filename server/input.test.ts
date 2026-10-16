@@ -54,12 +54,23 @@ describe('sendInput', () => {
     expect(mockRun.mock.calls.map((c) => c[1])).toEqual([['send-keys', '-t', '%3', 'BTab'], ['send-keys', '-t', '%3', '-l', '--', 'y']]);
   });
 
+  it("escapes a trailing ';' which tmux would otherwise eat as a command separator", async () => {
+    await sendInput({ pane: '%3', text: 'ls -la;', enter: false });
+    expect(mockRun.mock.calls[0]![1].at(-1)).toBe('ls -la\\;');
+    await sendInput({ pane: '%3', text: 'a\nb;', enter: false });
+    expect(mockRun.mock.calls[1]![1].at(-1)).toBe('a\nb\\;');
+  });
+
   it('pastes multi-line text through a tmux buffer', async () => {
     await sendInput({ pane: '%3', text: 'a\nb', enter: false });
+    const buffer = mockRun.mock.calls[0]![1][2];
+    expect(buffer).toMatch(/^nightshift-\d+-\d+$/);
     expect(mockRun.mock.calls.map((c) => c[1])).toEqual([
-      ['set-buffer', '-b', 'nightshift-input', '--', 'a\nb'],
-      ['paste-buffer', '-p', '-d', '-b', 'nightshift-input', '-t', '%3'],
+      ['set-buffer', '-b', buffer, '--', 'a\nb'],
+      ['paste-buffer', '-p', '-d', '-b', buffer, '-t', '%3'],
     ]);
+    await sendInput({ pane: '%3', text: 'c\nd', enter: false });
+    expect(mockRun.mock.calls[2]![1][2]).not.toBe(buffer);
   });
 
   it('reports tmux failures and does not press Enter after a failed text', async () => {
@@ -210,8 +221,9 @@ describe('newSession', () => {
     mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: '', timedOut: false }).mockResolvedValueOnce(ok());
     await newSession('agent', '/repo/app', { cols: 96, rows: 30 });
     expect(mockRun.mock.calls[1]![1].slice(-4)).toEqual(['-x', '96', '-y', '30']);
+    const before = mockRun.mock.calls.length;
     await resizeWindow('%7', { cols: 88, rows: 30 });
-    expect(mockRun.mock.calls.at(-1)![1]).toEqual(['resize-window', '-t', '%7', '-x', '88', '-y', '30']);
+    expect(mockRun.mock.calls[before]![1]).toEqual(['resize-window', '-t', '%7', '-x', '88', '-y', '30']);
   });
 
   it('leaves an existing session alone and reports failures', async () => {

@@ -14,7 +14,7 @@ export const sessionNameFrom = (name: string) =>
   name
     .trim()
     .toLowerCase()
-    .replace(/[\s:.]+/g, '-')
+    .replace(/[\s:.;]+/g, '-')
     .replace(/^[-$=@%]+|-+$/g, '');
 
 /**

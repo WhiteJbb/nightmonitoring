@@ -32,15 +32,22 @@ export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailsca
  * 방어선.
  * - loopback 바인딩이면 Host 헤더가 loopback 이거나 allowedHosts 에 있어야 한다 (DNS rebinding 방어).
  *   allowedHosts 는 `tailscale serve` 같은 프록시를 거쳐 들어오는 이름을 허용하기 위한 것.
- *   host 를 loopback 밖으로 바꾼 경우는 사용자가 감수한 것으로 본다.
+ * - Tailscale 바인딩이면 그 주소, MagicDNS 이름(*.ts.net), allowedHosts 만 받는다. tailnet 의 브라우저도 rebinding 에 걸릴 수 있다.
+ *   그 밖의 주소로 바꾼 경우는 사용자가 감수한 것으로 본다.
  * - 변경 요청은 Origin 이 자기 자신(또는 allowedHosts)일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
  */
 export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
-  const checkHost = isLoopbackBind(config.host);
+  const tailscale = isTailscaleAddress(config.host);
+  const checkHost = isLoopbackBind(config.host) || tailscale;
   const allowed = new Set(config.allowedHosts ?? []);
+  const self = new Set([config.host.toLowerCase(), `[${config.host.toLowerCase()}]`]);
+  const hostOk = (host: string) => {
+    const name = hostname(host);
+    return isLoopback(host) || allowed.has(name) || (tailscale && (self.has(name) || name.endsWith('.ts.net')));
+  };
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
-    if (checkHost && !isLoopback(host) && !allowed.has(hostname(host))) return void res.status(403).json({ error: '허용되지 않은 Host' });
+    if (checkHost && !hostOk(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
     const origin = req.headers.origin;
     if (req.method !== 'GET' && req.method !== 'HEAD' && origin !== undefined) {
       const o = URL.parse(origin);
@@ -199,7 +206,9 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
     }
-    if (view.projects.some((p) => p.tmuxSession === tmuxSession)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
+    if (!SESSION_RE.test(tmuxSession)) return void res.status(400).json({ error: '세션 이름이 올바르지 않습니다' });
+    const registered = (v: ConfigView) => v.projects.some((p) => p.tmuxSession === tmuxSession);
+    if (registered(view)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
 
     // 주소가 있으면 clone 부터. 주소 형식은 서버가 검증하고 명령은 고정이다 (git.ts).
     if (typeof gitUrl === 'string' && gitUrl.trim()) {
@@ -211,10 +220,13 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
     const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows));
     if (error) return void res.status(400).json({ error });
+    // clone 하는 동안 설정이 바뀌었을 수 있으니 쓰기 직전에 다시 읽는다.
+    const latest = configEditor.view();
+    if (registered(latest)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
     const next = await configEditor.update({
-      version: view.version,
-      settings: view.settings,
-      projects: [...editableProjects(view), { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true }],
+      version: latest.version,
+      settings: latest.settings,
+      projects: [...editableProjects(latest), { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true }],
     });
     await monitor.tick();
     res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });

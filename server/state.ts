@@ -12,6 +12,8 @@ export interface TrackedState {
   /** 어느 로그 파일의 어디까지 확인했는지. 로그 파일이 바뀌면 버린다. */
   logFile: string | null;
   logPos: LogPos | null;
+  /** 마지막으로 터미널 출력이 바뀐 시각. 없으면 재시작 후 tmux 활동 시각으로 다시 잡는다 */
+  outputChangedAt?: string | null;
 }
 
 export interface MonitorState {
@@ -38,7 +40,8 @@ export function loadState(file: string): PersistedState | null {
   }
   try {
     const s = JSON.parse(text) as Partial<PersistedState>;
-    if (s.version !== 2 || typeof s.monitor?.startedAt !== 'string' || typeof s.monitor.tracked !== 'object' || !s.runner) throw new Error('알 수 없는 형식');
+    const isObj = (v: unknown): v is object => typeof v === 'object' && v !== null;
+    if (s.version !== 2 || typeof s.monitor?.startedAt !== 'string' || !isObj(s.monitor.tracked) || !isObj(s.runner)) throw new Error('알 수 없는 형식');
     return { version: 2, monitor: s.monitor, runner: s.runner, lastAutoReportDate: s.lastAutoReportDate ?? null };
   } catch (e) {
     console.warn(`저장된 상태를 읽지 못해 새 세션으로 시작합니다 (${file}): ${(e as Error).message}`);

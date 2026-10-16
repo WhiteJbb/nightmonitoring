@@ -123,16 +123,42 @@ describe('Monitor', () => {
   });
 });
 
+describe('restart', () => {
+  it('keeps the terminal-activity clock instead of re-seeding it from tmux', async () => {
+    let now = T0;
+    const state = { output: ['a'], git: git() };
+    const first = new Monitor({ config, collector: fakeCollector(state), runs: noRuns, now: () => now });
+    await first.tick();
+    now += 10 * 60_000;
+    state.output = ['b'];
+    await first.tick();
+    const changedAt = new Date(now).toISOString();
+    expect(first.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(changedAt);
+
+    now += 10 * 60_000;
+    const m = new Monitor({ config, collector: fakeCollector(state), runs: noRuns, now: () => now, restore: JSON.parse(JSON.stringify(first.exportState())) });
+    await m.tick();
+    expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(changedAt);
+  });
+});
+
 describe('discover', () => {
   it('shows unconfigured tmux sessions as temporary projects and drops them when they close', async () => {
     let found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/scratch' }];
     const collector = fakeCollector({ output: [], git: git() });
     collector.discover = async () => found;
     collector.tmux = async (projects) => new Map(projects.map((p) => [p.id, { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [], waitingPrompt: null, attachCommand: 'x' }]));
-    const m = new Monitor({ config, collector, runs: noRuns, now: () => T0 });
+    let now = T0;
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
     await m.tick();
     expect(m.snapshot.projects.map((p) => p.id)).toEqual(['app', 'lib', 'tmux:scratch']);
     expect(m.snapshot.projects[2]).toMatchObject({ name: 'scratch', repoPath: '/tmp/scratch', tmuxSession: 'scratch', allowInput: false });
+
+    // 세션이 다른 저장소로 옮겨 가면 기준점도 새로 잡는다
+    now = T0 + 60_000;
+    found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/other' }];
+    await m.tick();
+    expect(m.snapshot.projects[2]!.since?.baseline.at).toBe(new Date(now).toISOString());
 
     found = [{ name: 'app', cwd: '/repo/app' }];
     await m.tick();

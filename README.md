@@ -117,7 +117,7 @@ npm run demo
   "refreshIntervalSec": 5,
   "thresholds": { "idleMinutes": 15, "stalledMinutes": 30, "noCommitMinutes": 30 },
   "errorPatterns": ["error", "failed", "exception"],
-  "errorIgnorePatterns": ["0 errors", "no errors", "0 failed"],
+  "errorIgnorePatterns": ["/\\b0 errors\\b/", "no errors", "/\\b0 failed\\b/"],
   "promptPatterns": ["Do you want to", "(y/n)", "/❯\\s*1\\.\\s*Yes/"],
   "ignoreSpinnerChanges": true,
   "sessionExitIsError": true,
@@ -147,7 +147,7 @@ npm run demo
 | `thresholds.stalledMinutes` | 터미널 출력이 이 시간 동안 안 바뀌고… |
 | `thresholds.noCommitMinutes` | …Git 변화(커밋·working tree)도 이 시간 동안 없으면 **정지 의심** |
 | `errorPatterns` | 로그 파일에서 찾을 패턴. `[]`이면 로그 검사 끔 |
-| `errorIgnorePatterns` | 이 패턴에 걸리는 줄은 오류로 보지 않음 (예: `0 errors`) |
+| `errorIgnorePatterns` | 이 패턴에 걸리는 줄은 오류로 보지 않음. 기본값은 `/\b0 errors\b/` 처럼 정규식이라 `10 errors` 는 제외되지 않음 |
 | `promptPatterns` | 터미널 마지막 15줄에서 찾을 확인 프롬프트 패턴. 걸리면 **입력 대기**. `[]`이면 끔 |
 | `ignoreSpinnerChanges` | 숫자·스피너 문자만 바뀌는 출력은 활동으로 보지 않음 (멈춘 채 스피너만 도는 에이전트를 잡기 위함) |
 | `sessionExitIsError` | 등록된 tmux 세션이 없을 때 오류로 표시할지 |
@@ -200,7 +200,7 @@ npm run demo
 | --- | --- | --- |
 | `name` | ✓ | 표시 이름 |
 | `repoPath` | ✓ | Git 저장소 경로. `~` 사용 가능. 상대 경로는 NightShift 디렉터리 기준 |
-| `tmuxSession` | | 연결할 tmux 세션 이름 |
+| `tmuxSession` | | 연결할 tmux 세션 이름. 공백, `:`, `.`, `;` 는 쓸 수 없음 |
 | `testCommand` | | 테스트 명령 (저장소 경로에서 실행) |
 | `buildCommand` | | 빌드 명령 (저장소 경로에서 실행) |
 | `logFile` | | 오류 패턴을 검사할 로그 파일. 상대 경로는 `repoPath` 기준 |
@@ -226,7 +226,7 @@ npm run demo
 
 대시보드의 **+ tmux 세션 만들기**에서 프로젝트 이름, 저장소 경로, 세션 이름을 적으면(경로는 등록된 프로젝트들이 가장 많이 모여 있는 상위 폴더까지 미리 채워집니다) 그 경로에서 셸만 띄운 새 tmux 세션을 만들고 바로 프로젝트로 등록한 뒤 터미널 화면으로 이동합니다. 터미널 입력 허용을 함께 켜면 그 자리에서 에이전트를 실행할 수 있습니다.
 
-- 세션은 만드는 순간 보고 있던 화면의 폭에 맞는 크기로 만들어져, 터미널 탭에서 가로 스크롤이 생기지 않습니다. 이미 있는 세션이 화면보다 넓으면 터미널 위에 **화면에 맞추기** 버튼이 나옵니다(터미널이 붙어 있지 않은 세션에서만. 붙어 있으면 그 터미널 화면까지 바뀌기 때문입니다).
+- 세션은 만드는 순간 보고 있던 화면의 폭에 맞는 크기로 만들어져, 터미널 탭에서 가로 스크롤이 생기지 않습니다. 이미 있는 세션이 화면보다 넓으면 터미널 위에 **화면에 맞추기** 버튼이 나옵니다(터미널이 붙어 있지 않은 세션에서만. 붙어 있으면 그 터미널 화면까지 바뀌기 때문입니다). 맞춘 뒤에도 나중에 터미널을 붙이면 그 터미널 크기를 따라갑니다.
 - **Git 저장소 주소**를 적으면 저장소 경로에 먼저 `git clone` 한 뒤 세션을 만듭니다. 주소를 붙여 넣으면 프로젝트 이름과 경로가 저장소 이름으로 채워집니다. `https://`, `ssh://`, `git@host:path` 형식만 받고, 경로에 이미 저장소가 있으면 clone 을 건너뜁니다. 자격 증명을 묻는 상황이면 멈추지 않고 실패합니다(비공개 저장소는 이 Mac에 SSH 키나 자격 증명이 있어야 합니다). 시간 제한은 `commandTimeoutSec`과 같습니다.
 - 실행할 명령은 받지 않습니다. 항상 기본 셸만 뜨고, 무엇을 실행할지는 터미널 입력이나 `tmux attach`로 정합니다.
 - 같은 이름의 세션이 이미 있으면 새로 만들지 않고 그 세션을 등록합니다. 이미 프로젝트로 등록된 세션 이름은 거부합니다.
@@ -282,6 +282,8 @@ tailscale serve --bg 4477          # https://<기기이름>.<tailnet>.ts.net 으
 { "host": "100.101.102.103" }
 ```
 
+이때 접속은 그 주소(`http://100.101.102.103:4477`)나 MagicDNS 이름(`*.ts.net`)으로만 받습니다. 다른 이름으로 들어오는 요청은 DNS rebinding 방어를 위해 거부하므로, 다른 이름을 쓰려면 `allowedHosts`에 적으세요.
+
 `host`와 `allowedHosts`는 파일에서만 바꿀 수 있고 재시작해야 적용됩니다. `tailscale funnel`(인터넷 공개)로는 절대 노출하지 마세요.
 
 ## 상태 판정
@@ -326,7 +328,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 - `testCommand` / `buildCommand`는 셸에서 실행됩니다. **config 파일을 수정할 수 있는 사람은 임의 명령을 실행할 수 있는 것**과 같으니 config 파일 권한을 관리하세요.
 - git·tmux·osascript(알림)는 셸을 거치지 않고 인자 배열로만 실행됩니다(`server/exec.ts` 한 곳). 알림 문구도 스크립트에 끼워 넣지 않고 인자로 전달합니다.
 - config 파일을 쓰는 경로는 설정 화면의 저장 하나뿐이고, Origin 검사를 통과한 같은 출처의 요청만 받습니다.
-- loopback이 아닌 Host 헤더(DNS rebinding)와 다른 Origin에서 온 변경 요청(CSRF)은 거부합니다.
+- 바인딩한 주소와 맞지 않는 Host 헤더(DNS rebinding)와 다른 Origin에서 온 변경 요청(CSRF)은 거부합니다. loopback이면 loopback 이름만, Tailscale 주소면 그 주소와 `*.ts.net`만 받습니다.
 - 터미널 출력, 보고서, `.nightshift/`(실행 로그·세션 상태)에는 비밀 값이 포함될 수 있습니다. `reports/`와 `.nightshift/`는 git에서 제외되어 있습니다.
 
 ## 문제 해결

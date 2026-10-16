@@ -56,6 +56,16 @@ describe('API', () => {
     }
   });
 
+  it('on a Tailscale bind accepts its own address, MagicDNS names and allowedHosts only', () => {
+    const status = vi.fn(() => ({ json: vi.fn() }));
+    const next = vi.fn();
+    const g = guard({ host: '100.101.102.103', allowedHosts: ['proxy.example'] }) as unknown as (req: object, res: object, next: () => void) => void;
+    for (const host of ['100.101.102.103:4477', 'my-mac.tail1234.ts.net', 'proxy.example', 'localhost:4477']) g({ method: 'GET', headers: { host } }, { status }, next);
+    expect(next).toHaveBeenCalledTimes(4);
+    g({ method: 'GET', headers: { host: 'evil.example:4477' } }, { status }, next);
+    expect(status).toHaveBeenCalledWith(403);
+  });
+
   it('sends a test push through the injected sender, and refuses without one', async () => {
     const testPush = vi.fn<() => Promise<string | null>>(async () => null);
     const withPush = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent/reports', testPush }).listen(0, '127.0.0.1');

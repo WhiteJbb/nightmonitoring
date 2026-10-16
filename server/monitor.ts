@@ -70,6 +70,8 @@ export function realCollector(config: Config): Collector {
 }
 
 interface Tracked {
+  /** 기준점을 잡은 저장소. 바뀌면(자동 발견 세션의 cwd 이동 등) 기준점을 버린다 */
+  repoPath: string;
   baseline: GitBaseline | null;
   fingerprint: string | null;
   gitChangedAt: string | null;
@@ -78,6 +80,8 @@ interface Tracked {
   logPos: LogPos | null;
   /** 마지막 스캔에서 본 파일 끝 ("확인 처리" 시 여기로 옮긴다) */
   logEnd: LogPos | null;
+  /** 확인 처리 전까지 남겨 두는 로그 오류. 스캔 창(파일 끝 64KB)에서 밀려나도 잊지 않는다 */
+  logErrors: string[];
   output: string | null;
   outputChangedAt: string | null;
 }
@@ -124,7 +128,7 @@ export class Monitor {
     this.startedAt = opts.restore?.startedAt ?? new Date(this.now()).toISOString();
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
-      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos });
+      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(p.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, outputChangedAt: saved.outputChangedAt ?? null });
     }
     this.snapshot = this.build();
   }
@@ -172,7 +176,7 @@ export class Monitor {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos };
+      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, outputChangedAt: tr.outputChangedAt };
     }
     return { startedAt: this.startedAt, tracked };
   }
@@ -193,6 +197,7 @@ export class Monitor {
     if (!tr || !c) return false;
     // 진행 중인 스캔은 logPos 가 바뀐 것을 보고 자기 결과를 버린다 (collectOne 참고).
     tr.logPos = tr.logEnd;
+    tr.logErrors = [];
     c.logErrors = [];
     this.publish();
     return true;
@@ -208,7 +213,6 @@ export class Monitor {
     const nowIso = new Date(this.now()).toISOString();
     const known = new Set(config.projects.map((p) => p.tmuxSession));
     const found = await collector.discover?.().catch(() => []);
-    // ponytail: 세션의 cwd 가 바뀌면 repoPath 도 바뀌지만 기준점(baseline)은 그대로다. 문제되면 repoPath 변경 시 tracked 를 버린다.
     this.discovered = (found ?? [])
       .filter((s) => !known.has(s.name) && !config.hiddenSessions.includes(s.name))
       .map((s) => ({ id: `tmux:${s.name}`, name: s.name, repoPath: s.cwd, tmuxSession: s.name, testCommand: null, buildCommand: null, logFile: null, allowInput: false }));
@@ -246,15 +250,16 @@ export class Monitor {
   }
 
   private async collectOne(p: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {
-    const tr = this.tracked.get(p.id) ?? newTracked();
-    this.tracked.set(p.id, tr);
+    let tr = this.tracked.get(p.id);
+    if (!tr || tr.repoPath !== p.repoPath) this.tracked.set(p.id, (tr = newTracked(p.repoPath)));
 
     // 로그 파일 설정이 바뀌면 이전 파일의 위치는 의미가 없다.
-    if (tr.logFile !== p.logFile) Object.assign(tr, { logFile: p.logFile, logPos: null, logEnd: null });
+    if (tr.logFile !== p.logFile) Object.assign(tr, { logFile: p.logFile, logPos: null, logEnd: null, logErrors: [] });
     const scannedFrom = tr.logPos;
     const [git, log] = await Promise.all([this.opts.collector.git(p), this.opts.collector.logErrors(p, scannedFrom)]);
     // 스캔하는 사이 "확인 처리"로 위치가 옮겨졌으면 이 결과는 낡은 것이므로 버린다.
-    const logErrors = tr.logPos === scannedFrom && scannedFrom !== null ? log.errors : [];
+    if (tr.logPos === scannedFrom && scannedFrom !== null) tr.logErrors = [...new Set([...tr.logErrors, ...log.errors])].slice(-MAX_LOG_ERRORS);
+    const logErrors = tr.logErrors;
     if (tr.logPos === scannedFrom) {
       tr.logEnd = log.end;
       // 최초 관측 이전의 내용은 검사하지 않는다. 파일이 교체·축소됐으면 처음부터 다시 본다.
@@ -359,7 +364,8 @@ export class Monitor {
   }
 }
 
-const newTracked = (): Tracked => ({ baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, output: null, outputChangedAt: null });
+const MAX_LOG_ERRORS = 50;
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,

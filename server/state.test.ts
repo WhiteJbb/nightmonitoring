@@ -36,7 +36,9 @@ describe('state file', () => {
     expect(loadState(bad)).toBeNull();
     await writeFile(bad, '{"version": 99}');
     expect(loadState(bad)).toBeNull();
-    expect(warn).toHaveBeenCalledTimes(2);
+    await writeFile(bad, '{"version": 2, "monitor": {"startedAt": "x", "tracked": null}, "runner": {}}');
+    expect(loadState(bad)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(3);
     warn.mockRestore();
   });
 });
@@ -136,6 +138,10 @@ describe('Monitor session state', () => {
     expect(m.exportState().tracked.app!.logPos).toEqual({ offset: 30, ino: 1 });
 
     state.log = { errors: ['Error: again'], size: 50 };
+    await m.tick();
+    expect(m.snapshot.projects[0]!.logErrors).toEqual(['Error: again']);
+    // 스캔 창에서 밀려나 더는 안 보여도 확인 처리 전까지는 남는다
+    state.log = { errors: [], size: 200_000 };
     await m.tick();
     expect(m.snapshot.projects[0]!.logErrors).toEqual(['Error: again']);
     expect(m.ackErrors('nope')).toBe(false);

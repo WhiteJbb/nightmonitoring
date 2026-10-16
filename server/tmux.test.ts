@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { compileMatcher, findErrors, findPrompt, stripAnsi, stripVolatile } from './logs.ts';
-import { capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes } from './tmux.ts';
+import { capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -70,6 +70,20 @@ describe('capturePane', () => {
   it('returns nothing when the capture fails', async () => {
     mockRun.mockResolvedValue({ code: 1, stdout: '', stderr: "can't find pane", timedOut: false });
     expect(await capturePane({ id: '%7', height: 40 })).toEqual([]);
+  });
+});
+
+describe('resizeWindow', () => {
+  it('resizes, then unpins the window and keeps the size as the session default', async () => {
+    mockRun.mockResolvedValue({ code: 0, stdout: '', stderr: '', timedOut: false });
+    expect(await resizeWindow('%7', { cols: 100, rows: 30 })).toBeNull();
+    expect(mockRun.mock.calls.map((c) => c[1])).toEqual([
+      ['resize-window', '-t', '%7', '-x', '100', '-y', '30'],
+      ['set-option', '-w', '-t', '%7', '-u', 'window-size'],
+      ['set-option', '-t', '%7', 'default-size', '100x30'],
+    ]);
+    mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: "can't find pane", timedOut: false });
+    expect(await resizeWindow('%9', { cols: 80, rows: 24 })).toBe("can't find pane");
   });
 });
 

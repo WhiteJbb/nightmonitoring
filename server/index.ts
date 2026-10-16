@@ -55,7 +55,7 @@ async function main() {
   const monitor = new Monitor({
     config,
     collector: demo ? demoCollector() : realCollector(config),
-    runs: runner.get,
+    runs: runner.peek,
     history: runner.history,
     demo,
     configPath,
@@ -66,8 +66,9 @@ async function main() {
 
   // 휴대폰에서 눌러 열 수 있는 주소. loopback 은 휴대폰에서 닿지 않으므로 붙이지 않는다.
   const reachable = !['127.0.0.1', 'localhost', '::1'].includes(config.host);
+  const hostForUrl = config.host.includes(':') ? `[${config.host}]` : config.host;
   const clickFor = (projectId?: string) =>
-    reachable ? { click: `http://${config.host}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
+    reachable ? { click: `http://${hostForUrl}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
   const testPush = async () => {
     const url = monitor.config.ntfyUrl;
     if (!url) return 'ntfy 주소가 설정되어 있지 않습니다. 먼저 저장하세요.';
@@ -167,8 +168,8 @@ async function main() {
   if (dev) {
     const { createServer } = await import('vite');
     // Vite 개발 서버는 낯선 Host 헤더를 스스로 차단한다. Host 검사는 guard 가 이미 하므로 같은 기준을 넘겨준다:
-    // loopback 바인딩이면 allowedHosts 만, 그 밖의 주소(Tailscale 등)에 바인딩했으면 MagicDNS 이름 등 모든 이름을 받는다.
-    const allowedHosts = ['127.0.0.1', 'localhost', '::1'].includes(config.host) ? config.allowedHosts : true;
+    // loopback 이면 allowedHosts 만, Tailscale 이면 그 주소·*.ts.net·allowedHosts, 그 밖의 주소면 모든 이름을 받는다.
+    const allowedHosts = ['127.0.0.1', 'localhost', '::1'].includes(config.host) ? config.allowedHosts : isTailscaleAddress(config.host) ? [config.host, '.ts.net', ...config.allowedHosts] : true;
     const vite = await createServer({ server: { middlewareMode: true, hmr: { server }, allowedHosts }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {

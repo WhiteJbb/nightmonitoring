@@ -16,13 +16,13 @@ describe('parseConfig', () => {
     expect(parseConfig({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] }, '/base')).toMatchObject({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] });
   });
 
-  it('resolves paths and generates unique ids', () => {
+  it('resolves paths and rejects duplicate ids', () => {
     const c = parseConfig(
       {
         thresholds: { idleMinutes: 1 },
         projects: [
           { name: 'My App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'agent.log' },
-          { name: 'My App', repoPath: 'rel' },
+          { name: 'Other', repoPath: 'rel' },
         ],
       },
       '/base',
@@ -37,7 +37,8 @@ describe('parseConfig', () => {
     });
     expect(parseConfig({ projects: [{ name: 'a', repoPath: '/a', allowInput: true }] }, '/base').projects[0]!.allowInput).toBe(true);
     expect(() => parseConfig({ projects: [{ name: 'a', repoPath: '/a', allowInput: 'yes' }] }, '/base')).toThrow(/allowInput/);
-    expect(c.projects[1]).toMatchObject({ id: 'my-app-2', repoPath: '/base/rel', tmuxSession: null });
+    expect(c.projects[1]).toMatchObject({ id: 'other', repoPath: '/base/rel', tmuxSession: null });
+    expect(() => parseConfig({ projects: [{ name: 'My App', repoPath: '/a' }, { name: 'my-app', repoPath: '/b' }] }, '/base')).toThrow(/같은 id/);
   });
 
   it('collects all issues', () => {

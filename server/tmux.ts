@@ -105,22 +105,26 @@ export async function capturePaneNow(id: string, lines = OUTPUT_LINES): Promise<
   return capturePane({ id, height: Number(h.stdout.trim()) || 0 }, lines);
 }
 
+/** tmux 는 인자 끝의 ';' 를 명령 구분자로 먹는다 (-l 이나 -- 뒤라도). '\;' 로 쓰면 글자 ';' 가 된다. */
+const tmuxArg = (s: string) => (s.endsWith(';') ? `${s.slice(0, -1)}\\;` : s);
+
 /**
  * pane 에 글자를 그대로 입력한다. -l 로 키 이름 해석을 끄고, -- 로 옵션 해석을 막는다. 실패하면 오류 메시지.
  * 여러 줄은 붙여넣기(bracketed paste)로 넣는다. 키로 보내면 줄바꿈마다 Enter 가 눌리지만,
  * 붙여넣기는 프로그램이 글 안의 줄바꿈으로 받는다 (Claude Code·Codex 는 긴 글을 한 덩어리로 접어 보여 준다).
  */
 export async function sendText(id: string, text: string): Promise<string | null> {
-  const r = text.includes('\n') ? await paste(id, text) : await run('tmux', ['send-keys', '-t', id, '-l', '--', text]);
+  const r = text.includes('\n') ? await paste(id, text) : await run('tmux', ['send-keys', '-t', id, '-l', '--', tmuxArg(text)]);
   return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
 }
 
-// ponytail: 버퍼 이름이 하나라 동시에 두 번 보내면 섞일 수 있다. 입력창이 한 번에 하나만 보내므로 충분하다.
-const PASTE_BUFFER = 'nightshift-input';
+// 탭 두 개가 동시에 보내도 섞이지 않게 요청마다 다른 버퍼를 쓴다.
+let pasteSeq = 0;
 async function paste(id: string, text: string) {
-  const set = await run('tmux', ['set-buffer', '-b', PASTE_BUFFER, '--', text]);
+  const buffer = `nightshift-${process.pid}-${++pasteSeq}`;
+  const set = await run('tmux', ['set-buffer', '-b', buffer, '--', tmuxArg(text)]);
   // -p: 프로그램이 bracketed paste 를 켰을 때만 괄호 코드를 붙인다. -d: 쓰고 나서 버퍼를 지운다.
-  return set.code === 0 ? run('tmux', ['paste-buffer', '-p', '-d', '-b', PASTE_BUFFER, '-t', id]) : set;
+  return set.code === 0 ? run('tmux', ['paste-buffer', '-p', '-d', '-b', buffer, '-t', id]) : set;
 }
 
 /** pane 에 특수 키 하나를 보낸다. key 는 호출부가 허용 목록으로 검증한 값이어야 한다. */
@@ -158,6 +162,12 @@ export async function newSession(name: string, cwd: string, size: TermSize = DEF
 
 /** pane 이 속한 윈도우의 크기를 바꾼다. 프로그램에는 터미널 크기 변경 신호만 간다. 실패하면 오류 메시지. */
 export async function resizeWindow(paneId: string, size: TermSize): Promise<string | null> {
-  const r = await run('tmux', ['resize-window', '-t', paneId, '-x', String(size.cols), '-y', String(size.rows)]);
-  return r.code === 0 ? null : r.stderr.trim() || 'tmux resize-window 실패';
+  const wh = `${size.cols}x${size.rows}`;
+  // resize-window 는 window-size 를 manual 로 고정해 나중에 붙는 터미널 크기를 따라가지 않는다. 고정을 풀고,
+  // 붙은 터미널이 없을 때의 크기(default-size)를 이 크기로 둬서 되돌아가지 않게 한다.
+  for (const args of [['resize-window', '-t', paneId, '-x', String(size.cols), '-y', String(size.rows)], ['set-option', '-w', '-t', paneId, '-u', 'window-size'], ['set-option', '-t', paneId, 'default-size', wh]]) {
+    const r = await run('tmux', args);
+    if (r.code !== 0) return r.stderr.trim() || `tmux ${args[0]} 실패`;
+  }
+  return null;
 }
