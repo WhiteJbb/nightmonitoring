@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { TermEvent } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
-import { charWidth, ROW_RATIO, TERM_MAX_VIEWPORT } from './termsize.ts';
+import { charWidth, ROW_RATIO, termHeight } from './termsize.ts';
 
 /** 'connecting' | 'live' | 'down' | 'exit' 또는 서버가 보낸 오류 메시지 */
 export type TermStatus = string;
@@ -28,11 +28,14 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * pane 하나를 실제 터미널(xterm.js)로 그린다. 서버의 SSE 스트림(첫 화면 + 이어지는 바이트)을 그대로 쓰고,
  * 입력이 허용된 프로젝트면 키·마우스 보고 바이트를 pane 으로 돌려보낸다. 크기는 tmux pane 을 따른다.
  */
-export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectId: string; pane: string; canInput: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void }) {
+export function Term({ projectId, pane, canInput, full = false, onStatus, onSize }: { projectId: string; pane: string; canInput: boolean; full?: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize });
   cb.current = { onStatus, onSize };
+  // 전체 화면 여부는 글자 크기 계산에만 쓴다. 바뀌어도 터미널을 다시 만들지 않는다
+  const fullRef = useRef(full);
+  fullRef.current = full;
 
   useEffect(() => {
     const el = host.current;
@@ -46,6 +49,8 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       lineHeight: LINE_HEIGHT,
       disableStdin: !canInput,
       cursorBlink: canInput,
+      // Option+←/→/Backspace 를 터미널처럼 단어 이동·삭제(Meta)로 쓴다
+      macOptionIsMeta: true,
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
@@ -57,7 +62,7 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       if (!width) return;
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
       const byWidth = Math.floor(width / (term.cols * perPx));
-      const byHeight = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT) / (term.rows * ROW_RATIO));
+      const byHeight = Math.floor(termHeight(fullRef.current) / (term.rows * ROW_RATIO));
       term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
 
@@ -72,6 +77,8 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
         term.write(decode(e.data));
         cb.current.onStatus('live');
         cb.current.onSize(e.cols, e.rows);
+        // 컴퓨터에선 열자마자 키를 칠 수 있게 (휴대폰은 화면 키보드가 튀어나오므로 두지 않는다)
+        if (canInput && window.matchMedia?.('(pointer: fine)').matches) term.focus();
       } else if (e.type === 'out') term.write(decode(e.data));
       else if (e.type === 'resize') {
         term.resize(e.cols, e.rows);
@@ -112,6 +119,16 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       void flush();
     });
 
+    // Shift+Enter 는 xterm 에선 Enter 와 같다. Claude Code·Codex 의 줄바꿈(Option+Enter 와 같은 ESC+CR)으로 보낸다
+    term.attachCustomKeyEventHandler((ev) => {
+      if (ev.key !== 'Enter' || !ev.shiftKey || ev.metaKey || ev.ctrlKey || ev.altKey || !canInput) return true;
+      if (ev.type === 'keydown') {
+        queue += '\x1b\r';
+        void flush();
+      }
+      ev.preventDefault();
+      return false;
+    });
     // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램(Codex)엔
     // xterm 이 화살표 키로 바꿔 보내는데, 거기선 화살표가 입력 기록 탐색이다. 대신 PgUp/PgDn 으로 넘긴다
     let wheelAcc = 0;

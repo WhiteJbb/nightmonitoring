@@ -996,6 +996,24 @@ pre {
   background: var(--term);
   overflow-x: auto;
 }
+/* 전체 화면: 터미널 틀이 창을 다 덮는다 */
+.term-frame.full {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0;
+}
+.term-frame.full .term-view {
+  flex: 1;
+  overflow: auto;
+}
+@media (pointer: coarse) {
+  .full-toggle {
+    display: none;
+  }
+}
 .xterm-host .xterm {
   padding: 0;
   /* xterm 도 .terminal 클래스를 달아 아래 높이 제한이 걸린다. 높이는 줄 수를 따른다 */
