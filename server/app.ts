@@ -32,15 +32,22 @@ export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailsca
  * 방어선.
  * - loopback 바인딩이면 Host 헤더가 loopback 이거나 allowedHosts 에 있어야 한다 (DNS rebinding 방어).
  *   allowedHosts 는 `tailscale serve` 같은 프록시를 거쳐 들어오는 이름을 허용하기 위한 것.
- *   host 를 loopback 밖으로 바꾼 경우는 사용자가 감수한 것으로 본다.
+ * - Tailscale 바인딩이면 그 주소, MagicDNS 이름(*.ts.net), allowedHosts 만 받는다. tailnet 의 브라우저도 rebinding 에 걸릴 수 있다.
+ *   그 밖의 주소로 바꾼 경우는 사용자가 감수한 것으로 본다.
  * - 변경 요청은 Origin 이 자기 자신(또는 allowedHosts)일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
  */
 export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
-  const checkHost = isLoopbackBind(config.host);
+  const tailscale = isTailscaleAddress(config.host);
+  const checkHost = isLoopbackBind(config.host) || tailscale;
   const allowed = new Set(config.allowedHosts ?? []);
+  const self = new Set([config.host.toLowerCase(), `[${config.host.toLowerCase()}]`]);
+  const hostOk = (host: string) => {
+    const name = hostname(host);
+    return isLoopback(host) || allowed.has(name) || (tailscale && (self.has(name) || name.endsWith('.ts.net')));
+  };
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
-    if (checkHost && !isLoopback(host) && !allowed.has(hostname(host))) return void res.status(403).json({ error: '허용되지 않은 Host' });
+    if (checkHost && !hostOk(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
     const origin = req.headers.origin;
     if (req.method !== 'GET' && req.method !== 'HEAD' && origin !== undefined) {
       const o = URL.parse(origin);
