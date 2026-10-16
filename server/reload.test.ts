@@ -6,7 +6,7 @@ import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { DEFAULTS, defaultConfigPath, loadConfig } from './config.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
-import { alertsFor, exportAlerts, MAC_ALERT_STATES, REALERT_COOLDOWN_MS, restoreAlerts } from './notify.ts';
+import { alertsFor, exportAlerts, FINISH_HOLD_MS, gateAlerts, MAC_ALERT_STATES, REALERT_COOLDOWN_MS, restoreAlerts } from './notify.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
 
@@ -165,6 +165,28 @@ describe('alerts', () => {
     };
     alertsFor(memory, withPrompt(null));
     expect(alertsFor(memory, withPrompt('Do you want to proceed?')).map((x) => [x.title, x.message])).toEqual([['NightShift · A: 입력 대기', '입력 대기: Do you want to proceed?']]);
+  });
+
+  it('작업 끝남 waits a few minutes and is dropped if work starts again; watched terminals defer finish and prompt alerts', () => {
+    const deferred = new Map();
+    const done = { title: 'A: 작업 끝남', message: '', projectId: 'a', state: 'idle' as const };
+    const ask = { title: 'B: 입력 대기', message: '', projectId: 'b', state: 'waiting' as const };
+    const err = { title: 'C: 오류', message: '', projectId: 'c', state: 'error' as const };
+    let state: Record<string, string> = { a: 'idle', b: 'waiting', c: 'error' };
+    const stateNow = (id: string) => state[id] as never;
+    const watching = new Set(['b']);
+    const watched = (id: string) => watching.has(id);
+    expect(gateAlerts(deferred, [done, ask, err], 0, watched, stateNow)).toEqual([err]);
+    expect(gateAlerts(deferred, [], FINISH_HOLD_MS - 1, watched, stateNow)).toEqual([]);
+    expect(gateAlerts(deferred, [], FINISH_HOLD_MS, watched, stateNow)).toEqual([done]);
+    // 보고 있는 동안은 입력 대기도 미루고, 그만 보면 보낸다
+    watching.clear();
+    expect(gateAlerts(deferred, [], FINISH_HOLD_MS + 1, watched, stateNow)).toEqual([ask]);
+    // 기다리는 사이 다시 일을 시작하면 버린다
+    gateAlerts(deferred, [done], 0, watched, stateNow);
+    state = { ...state, a: 'running' };
+    expect(gateAlerts(deferred, [], FINISH_HOLD_MS, watched, stateNow)).toEqual([]);
+    expect(deferred.size).toBe(0);
   });
 
   it('remembers sent alerts across a restart', () => {

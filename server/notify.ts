@@ -89,3 +89,35 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
   for (const id of memory.keys()) if (!snapshot.projects.some((p) => p.id === id)) memory.delete(id);
   return alerts;
 }
+
+/** "작업 끝남"은 이만큼 기다렸다 보낸다: 그 사이 다시 일을 시작하면(대화 중 다음 지시) 알리지 않는다 */
+export const FINISH_HOLD_MS = 3 * 60_000;
+
+/**
+ * 보낼 알림을 고른다. 미뤄 둔 알림(deferred)도 함께 다룬다.
+ * - 작업 끝남·입력 대기: 그 세션 터미널을 보고 있으면 미룬다
+ * - 작업 끝남: FINISH_HOLD_MS 동안 미룬다
+ * 미뤄 둔 알림은 그 사이 상태가 바뀌면 버리고, 조건이 풀리면 보낸다.
+ */
+export function gateAlerts(
+  deferred: Map<string, { alert: Alert; at: number }>,
+  fresh: Alert[],
+  now: number,
+  watched: (projectId: string) => boolean,
+  stateNow: (projectId: string) => ProjectState | undefined,
+): Alert[] {
+  const send: Alert[] = [];
+  const held = (a: Alert, at: number) => ((a.state === 'idle' || a.state === 'waiting') && watched(a.projectId)) || (a.state === 'idle' && now - at < FINISH_HOLD_MS);
+  for (const [id, d] of deferred) {
+    if (stateNow(id) !== d.alert.state) deferred.delete(id);
+    else if (!held(d.alert, d.at)) {
+      deferred.delete(id);
+      send.push(d.alert);
+    }
+  }
+  for (const a of fresh) {
+    if (held(a, now)) deferred.set(a.projectId, { alert: a, at: now });
+    else send.push(a);
+  }
+  return send;
+}
