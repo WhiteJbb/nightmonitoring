@@ -223,6 +223,22 @@ test('Shift+Enter in the terminal sends ESC+CR (a newline in Claude Code), plain
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'Enter' }))).toBe(true);
 });
 
+test('mac line-editing keys are sent like Terminal and iTerm do', async () => {
+  fetchMock.mockResolvedValue(json(200, { ok: true }));
+  await renderTab(project(ONE));
+  await init();
+  const press = (init: KeyboardEventInit) => act(() => void xterm().key!(new KeyboardEvent('keydown', init)));
+  press({ key: 'ArrowLeft', metaKey: true });
+  await tick();
+  press({ key: 'Backspace', altKey: true });
+  await tick();
+  press({ key: 'ArrowRight', altKey: true });
+  await tick();
+  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x01\x1b\x7f\x1bf');
+  // 그 밖의 키는 xterm 이 그대로 처리한다
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))).toBe(true);
+});
+
 test('OSC 52 from the program copies to the clipboard and says so', async () => {
   const exec = vi.fn(() => true);
   Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
