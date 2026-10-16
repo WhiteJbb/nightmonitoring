@@ -336,6 +336,20 @@ test('the stream is closed and the terminal disposed on unmount', async () => {
   expect(xterm().disposed).toBe(true);
 });
 
+test('a hidden page closes the terminal stream and a visible one opens it again', async () => {
+  await renderTab(project(ONE));
+  const first = es();
+  const setVisibility = (v: string) => {
+    Object.defineProperty(document, 'visibilityState', { value: v, configurable: true });
+    act(() => void document.dispatchEvent(new Event('visibilitychange')));
+  };
+  setVisibility('hidden');
+  expect(first.closed).toBe(true);
+  setVisibility('visible');
+  expect(es()).not.toBe(first);
+  expect(es().closed).toBe(false);
+});
+
 test('Enter sends the text with enter:true, clears the input and keeps focus', async () => {
   await renderTab(project(ONE));
   expect(screen.getByText(/^입력은 선택한 pane 에 그대로 전달됩니다/)).toBeTruthy();

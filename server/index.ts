@@ -75,6 +75,7 @@ async function main() {
     return sendNtfy(url, { title: 'NightShift 시험 알림', message: '이 알림이 보이면 휴대폰 푸시가 연결된 것입니다.', ...clickFor() });
   };
 
+  const streams = new TermStreams();
   // 재시작해도 이미 보낸 알림을 다시 보내지 않게 저장해 둔 기억에서 시작한다
   const alertMemory = restoreAlerts(saved?.alerts);
 
@@ -83,6 +84,9 @@ async function main() {
     monitor.subscribe((snapshot) => {
       const alerts = alertsFor(alertMemory, snapshot);
       for (const a of alerts) {
+        // 그 세션의 터미널을 지금 보고 있으면 "작업 끝남"·"입력 대기"는 화면으로 이미 안다. 알리지 않는다
+        const session = snapshot.projects.find((p) => p.id === a.projectId)?.tmuxSession;
+        if ((a.state === 'idle' || a.state === 'waiting') && session && streams.watching(session)) continue;
         if (monitor.config.notifications && MAC_ALERT_STATES.includes(a.state)) void notify(a.title, a.message);
         const { ntfyUrl, ntfyStates } = monitor.config;
         if (ntfyUrl && ntfyStates.includes(a.state)) {
@@ -146,7 +150,6 @@ async function main() {
     // clone 도 등록된 명령과 같은 시간 제한을 쓴다 (hot reload 를 따라가게 매번 읽는다)
     return cloneRepo(url, dir, monitor.config.commandTimeoutSec * 1000);
   };
-  const streams = new TermStreams();
 const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, sendRaw, stream: (session: string, pane: string, sink: (e: TermEvent) => void) => streams.subscribe(session, pane, sink), log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
   const app = createApp({ config, monitor, runner, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);

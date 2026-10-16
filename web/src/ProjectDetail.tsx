@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
@@ -432,6 +432,11 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
   );
 }
 
+const onVisibility = (cb: () => void) => {
+  document.addEventListener('visibilitychange', cb);
+  return () => document.removeEventListener('visibilitychange', cb);
+};
+
 export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
   const viewRef = useRef<HTMLDivElement>(null);
@@ -456,6 +461,8 @@ export function TerminalTab({ project: p, now }: Props) {
   const [attempt, setAttempt] = useState(0);
   // 전체 화면: 터미널이 창을 다 채우고, 붙은 터미널이 없으면 tmux 크기도 그 화면에 맞춘다
   const [full, setFull] = useState(false);
+  // 탭이 뒤로 가거나 휴대폰 화면이 꺼지면 터미널 스트림을 닫는다. 서버는 "보고 있는 사람 없음"으로 보고 작업 끝남·입력 대기 알림을 보낸다
+  const visible = useSyncExternalStore(onVisibility, () => document.visibilityState !== 'hidden');
   // 터미널에서 복사·이미지 붙여넣기의 결과를 잠깐 보여 준다
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -652,7 +659,7 @@ export function TerminalTab({ project: p, now }: Props) {
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            visible && <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}

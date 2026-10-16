@@ -53,6 +53,11 @@ const STATE_FORMAT =
 export class TermStreams {
   private clients = new Map<string, Client>();
 
+  /** 지금 이 세션의 터미널을 화면에 띄워 보고 있는 브라우저가 있는지 (숨은 탭은 스트림을 닫는다) */
+  watching(session: string): boolean {
+    return (this.clients.get(session)?.subs.size ?? 0) > 0;
+  }
+
   /** 구독을 시작한다. 돌려주는 함수로 끊는다. */
   subscribe(session: string, pane: string, sink: Sink): () => void {
     const client = this.client(session);
