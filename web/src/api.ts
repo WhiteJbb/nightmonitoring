@@ -1,4 +1,4 @@
-import type { ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
+import type { ProjectSnapshot, ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
@@ -34,6 +34,7 @@ export const errorMessage = (e: unknown): string => (e instanceof Error ? e.mess
 
 export const api = {
   snapshot: () => req<Snapshot>('/api/snapshot'),
+  project: (id: string) => req<ProjectSnapshot>(`/api/projects/${encodeURIComponent(id)}`),
   run: (id: string, kind: RunKind) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/run/${kind}`, 'POST'),
   cancelRun: (id: string, kind: RunKind) =>

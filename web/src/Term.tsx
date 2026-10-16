@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
+import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TermEvent } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
@@ -81,6 +82,8 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
+    // 출력의 http(s) 주소를 눌러 새 탭으로 연다 (PR 링크 등). 프로그램이 마우스를 받으면 Cmd(⌘)+클릭
+    term.loadAddon(new WebLinksAddon((_ev, uri) => void window.open(uri, '_blank', 'noopener,noreferrer')));
 
     // 프로그램이 클립보드에 넣으라고 보내는 OSC 52 (Claude Code 에서 끌어 고르면 이걸로 복사한다)
     term.parser.registerOscHandler(52, (data) => {

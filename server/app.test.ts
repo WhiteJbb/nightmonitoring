@@ -1,6 +1,6 @@
 import type { AddressInfo } from 'node:net';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { createApp, guard } from './app.ts';
+import { createApp, guard, slimSnapshot } from './app.ts';
 import { parseConfig } from './config.ts';
 import { demoCollector } from './demo.ts';
 import { Monitor, SNAPSHOT_OUTPUT_CHARS } from './monitor.ts';
@@ -23,6 +23,17 @@ describe('API', () => {
   it('serves the snapshot', async () => {
     const s = await (await fetch(`${base}/api/snapshot`)).json();
     expect(s.projects).toHaveLength(1);
+  });
+
+  it('the live stream drops pane copies and Git lists; one project is served in full', async () => {
+    const full = monitor.snapshot.projects[0]!;
+    const slim = slimSnapshot(monitor.snapshot).projects[0]!;
+    expect(slim.tmux.panes.every((x) => x.lines.length === 0)).toBe(true);
+    if (full.since) expect(slim.since).toMatchObject({ commits: [], files: [], partial: true, additions: full.since.additions });
+    expect(monitor.snapshot.projects[0]).toBe(full); // 원본은 그대로
+    const one = await (await fetch(`${base}/api/projects/${full.id}`)).json();
+    expect(one.since?.partial).toBeUndefined();
+    expect((await fetch(`${base}/api/projects/nope`)).status).toBe(404);
   });
 
   it('runs only registered commands and ignores the request body', async () => {

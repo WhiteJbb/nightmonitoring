@@ -1,6 +1,6 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import type { ConfigView, EditableProject, RawInputRequest, TermEvent } from '../shared/types.ts';
+import type { ConfigView, EditableProject, RawInputRequest, Snapshot, TermEvent } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
@@ -102,6 +102,19 @@ export interface AppDeps {
   };
 }
 
+/**
+ * 5초마다 가는 실시간 스냅샷에서 큰 것을 뺀다: pane 화면 사본(터미널은 따로 스트림으로 받는다)과
+ * 기준점 이후 커밋·파일 목록(Git 탭이 열 때 따로 받는다). 휴대폰에서 시간당 수십 MB 가 나가던 것을 줄인다.
+ */
+export const slimSnapshot = (s: Snapshot): Snapshot => ({
+  ...s,
+  projects: s.projects.map((p) => ({
+    ...p,
+    tmux: { ...p.tmux, panes: p.tmux.panes.map((x) => ({ ...x, lines: [] })), output: p.tmux.panes.length ? [] : p.tmux.output },
+    since: p.since && { ...p.since, commits: [], files: [], partial: true },
+  })),
+});
+
 export function createApp({ config, monitor, runner, configEditor, terminal, testPush }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
@@ -111,14 +124,21 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
 
   api.get('/snapshot', (_req, res) => void res.json(monitor.snapshot));
 
+  // 한 프로젝트의 전체 상태 (스트림에서 뺀 기준점 이후 커밋·파일 목록 포함). Git 탭이 열 때 받는다
+  api.get('/projects/:id', (req, res) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    res.json(project);
+  });
+
   api.get('/events', (req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
     // 느린 클라이언트에는 쌓아 두지 않고 건너뛴다. 스냅샷은 매번 전체 상태라 다음 것만 받아도 된다.
     const send = (s: unknown) => {
       if (!res.writableNeedDrain) res.write(`data: ${JSON.stringify(s)}\n\n`);
     };
-    send(monitor.snapshot);
-    req.on('close', monitor.subscribe(send));
+    send(slimSnapshot(monitor.snapshot));
+    req.on('close', monitor.subscribe((s) => send(slimSnapshot(s))));
   });
 
   // 요청 본문은 읽지 않는다. 실행되는 명령은 항상 config 에 적힌 것.
