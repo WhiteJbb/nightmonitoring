@@ -1462,6 +1462,10 @@ form.settings {
   .report-list ul {
     display: none;
   }
+  /* 제목으로 스크롤할 때 떠 있는 상단 띠(.side)에 가리지 않게 */
+  .report-body h3 {
+    scroll-margin-top: 240px;
+  }
 }
 @media (max-width: 720px) {
   .term-info:not(.open) {

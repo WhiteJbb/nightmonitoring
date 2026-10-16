@@ -83,8 +83,9 @@ export function Reports() {
   useEffect(() => {
     if (!report || !jump.current) return;
     jump.current = false;
-    head.current?.focus();
-    head.current?.scrollIntoView?.({ block: 'start' });
+    // 이미 보이면 움직이지 않는다. 폰의 떠 있는 상단 띠 아래로 숨지 않게 여백은 CSS scroll-margin 이 맡는다
+    head.current?.focus({ preventScroll: true });
+    head.current?.scrollIntoView?.({ block: 'nearest' });
   }, [report]);
 
   const generate = () => {
