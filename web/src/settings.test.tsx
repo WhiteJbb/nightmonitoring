@@ -23,6 +23,7 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
       notifications: false,
       commandTimeoutSec: 600,
       ntfyUrl: null,
+      ntfyStates: ['waiting', 'stalled', 'error'],
     },
     projects: [
       {
@@ -130,6 +131,17 @@ test('locked repoPath is disabled, unlocked one is not', async () => {
   expect(input('저장소 경로', project('api-server')).disabled).toBe(true);
   expect(within(project('api-server')).getByText(/config 파일에서만 바꿀 수 있습니다/)).toBeTruthy();
   expect(input('저장소 경로', project('web-app')).disabled).toBe(false);
+});
+
+test('push states are chosen with checkboxes and saved', async () => {
+  await renderLoaded(view());
+  const finished = screen.getByLabelText<HTMLInputElement>('작업 끝남 (에이전트가 일을 마침)');
+  expect(finished.checked).toBe(false);
+  expect(screen.getByLabelText<HTMLInputElement>('입력 대기').checked).toBe(true);
+  fireEvent.click(finished);
+  fireEvent.click(screen.getByLabelText('정지 의심'));
+  const body = await save(json(200, view()));
+  expect(body.settings.ntfyStates).toEqual(['waiting', 'error', 'idle']);
 });
 
 test('terminal input can be turned on after a confirm, and is sent in the PUT body', async () => {

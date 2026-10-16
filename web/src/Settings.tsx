@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import type { ConfigUpdate, ConfigView } from '../../shared/types.ts';
+import type { ConfigUpdate, ConfigView, ProjectState } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
 
 const NUMBERS = [
@@ -25,6 +25,13 @@ const PATTERNS = [
   ['promptPatterns', '입력 대기 패턴', '입력 대기 프롬프트로 판정할 줄. 글자는 줄 맨 앞이나 맨 끝에 있을 때만 맞음'],
 ] as const;
 type PatternKey = (typeof PATTERNS)[number][0];
+/** 휴대폰 알림을 고를 수 있는 상태 (정상 실행은 알릴 일이 아니다) */
+const PUSH_STATES: [ProjectState, string][] = [
+  ['waiting', '입력 대기'],
+  ['idle', '작업 끝남 (에이전트가 일을 마침)'],
+  ['stalled', '정지 의심'],
+  ['error', '오류'],
+];
 
 interface DraftProject {
   id: string | null;
@@ -40,7 +47,7 @@ interface DraftProject {
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
 type Draft = Record<NumKey | PatternKey, string> &
-  Record<ToggleKey, boolean> & { ntfyUrl: string; hiddenSessions: string[]; projects: DraftProject[] };
+  Record<ToggleKey, boolean> & { ntfyUrl: string; ntfyStates: ProjectState[]; hiddenSessions: string[]; projects: DraftProject[] };
 
 function toDraft({ settings: s, projects }: ConfigView): Draft {
   return {
@@ -53,6 +60,7 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
     sessionExitIsError: s.sessionExitIsError,
     notifications: s.notifications,
     ntfyUrl: s.ntfyUrl ?? '',
+    ntfyStates: s.ntfyStates,
     errorPatterns: s.errorPatterns.join('\n'),
     errorIgnorePatterns: s.errorIgnorePatterns.join('\n'),
     promptPatterns: s.promptPatterns.join('\n'),
@@ -85,6 +93,7 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       notifications: d.notifications,
       commandTimeoutSec: num(d.commandTimeoutSec),
       ntfyUrl: d.ntfyUrl.trim() || null,
+      ntfyStates: d.ntfyStates,
       hiddenSessions: d.hiddenSessions,
     },
     projects: d.projects.map((p) => ({
@@ -331,11 +340,22 @@ export function Settings() {
             onChange={(e) => set({ ntfyUrl: e.target.value })}
           />
         </label>
-        <p className="hint">
-          입력 대기·정지 의심·오류로 바뀔 때 이 주소로 알림을 보냅니다. 휴대폰의 ntfy 앱에서 같은 주제를 구독하세요. 비워
-          두면 보내지 않습니다.
-        </p>
+        <p className="hint">아래에서 고른 상태가 되면 이 주소로 알림을 보냅니다. 휴대폰의 ntfy 앱에서 같은 주제를 구독하세요. 비워 두면 보내지 않습니다.</p>
         {errorOf('f-ntfyUrl')}
+        <fieldset className="checks">
+          <legend>알림 받을 상태</legend>
+          {PUSH_STATES.map(([state, label]) => (
+            <label key={state} className="check">
+              <input
+                type="checkbox"
+                checked={draft.ntfyStates.includes(state)}
+                disabled={lock}
+                onChange={(e) => set({ ntfyStates: e.target.checked ? [...draft.ntfyStates, state] : draft.ntfyStates.filter((x) => x !== state) })}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
         {!ro && (
           <div className="row">
             <button type="button" onClick={testPush} disabled={pushing || !view.settings.ntfyUrl || pushStale} aria-describedby={pushStale ? 'push-stale' : undefined}>

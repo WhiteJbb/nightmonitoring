@@ -4,7 +4,7 @@ import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime, STATE_LABEL } from './format.ts';
-import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
+import { Badge, ProjectDetail, QuickAnswers, Reasons } from './ProjectDetail.tsx';
 import { commonParentDir, NewSession } from './NewSession.tsx';
 import { Settings } from './Settings.tsx';
 
@@ -48,6 +48,12 @@ export function App() {
     setTimeout(() => root.classList.remove('theming'), 650);
     setTheme(theme === 'dark' ? 'light' : 'dark');
   };
+
+  // 탭 제목에 봐야 할 프로젝트 수: 다른 탭에 있어도 "(2) NightShift" 로 보인다
+  const attention = snapshot ? snapshot.summary.waiting + snapshot.summary.error + snapshot.summary.stalled : 0;
+  useEffect(() => {
+    document.title = attention > 0 ? `(${attention}) NightShift` : 'NightShift';
+  }, [attention]);
 
   // 배경의 빛이 마우스를 살짝 따라온다 (움직임 줄이기면 끈다)
   useEffect(() => {
@@ -397,6 +403,8 @@ export function ProjectCard({ p, now, onHidden }: { p: ProjectSnapshot; now: str
           {p.id.startsWith('tmux:') && <DiscoveredActions p={p} onHidden={onHidden} />}
         </div>
         <Reasons reasons={status.reasons} />
+        {/* 입력 대기면 카드에서 바로 답한다 (버튼은 카드 링크 위에 뜬다) */}
+        <QuickAnswers project={p} />
       </div>
       <div className="row-col">
         <Lbl icon={<GitBranch size={14} />} text="브랜치 · 변경" />

@@ -12,7 +12,7 @@ import { ConfigError, expandPath, parseConfig, slugify } from './config.ts';
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-const SETTING_KEYS = ['refreshIntervalSec', 'errorPatterns', 'errorIgnorePatterns', 'promptPatterns', 'ignoreSpinnerChanges', 'sessionExitIsError', 'notifications', 'commandTimeoutSec', 'ntfyUrl', 'hiddenSessions'] as const;
+const SETTING_KEYS = ['refreshIntervalSec', 'errorPatterns', 'errorIgnorePatterns', 'promptPatterns', 'ignoreSpinnerChanges', 'sessionExitIsError', 'notifications', 'commandTimeoutSec', 'ntfyUrl', 'ntfyStates', 'hiddenSessions'] as const;
 const THRESHOLD_KEYS = ['idleMinutes', 'stalledMinutes', 'noCommitMinutes'] as const;
 
 const isYaml = (file: string) => /\.ya?ml$/i.test(file);
@@ -50,6 +50,7 @@ const settingsOf = (c: Config): EditableSettings => ({
   notifications: c.notifications,
   commandTimeoutSec: c.commandTimeoutSec,
   ntfyUrl: c.ntfyUrl,
+  ntfyStates: c.ntfyStates,
   hiddenSessions: c.hiddenSessions,
 });
 
