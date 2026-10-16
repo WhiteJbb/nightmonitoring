@@ -8,6 +8,19 @@ describe('run', () => {
   });
 });
 
+describe('run', () => {
+  it('gives the child a UTF-8 locale when the environment has none', async () => {
+    const saved = process.env.LANG;
+    delete process.env.LANG;
+    try {
+      const r = await run('git', ['-c', 'alias.env=!env', 'env']);
+      expect(r.stdout).toContain('LANG=en_US.UTF-8');
+    } finally {
+      if (saved !== undefined) process.env.LANG = saved;
+    }
+  });
+});
+
 describe('runConfigured', () => {
   const cwd = process.cwd();
 
