@@ -11,6 +11,7 @@ import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
 import { alertsFor, exportAlerts, MAC_ALERT_STATES, restoreAlerts } from './notify.ts';
+import type { Alert } from './notify.ts';
 import { sendNtfy, withRetry } from './push.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
@@ -76,6 +77,7 @@ async function main() {
   };
 
   const streams = new TermStreams();
+  const deferred = new Map<string, Alert>();
   // 재시작해도 이미 보낸 알림을 다시 보내지 않게 저장해 둔 기억에서 시작한다
   const alertMemory = restoreAlerts(saved?.alerts);
 
@@ -83,10 +85,28 @@ async function main() {
     // 상태 변화 알림. 실패해도 감시는 계속된다.
     monitor.subscribe((snapshot) => {
       const alerts = alertsFor(alertMemory, snapshot);
+      // 보고 있어서 미룬 알림: 그 사이 상태가 바뀌었으면 버리고, 아직 그대로인데 이제 안 보고 있으면 보낸다
+      const watched = (projectId: string) => {
+        const session = snapshot.projects.find((p) => p.id === projectId)?.tmuxSession;
+        return session !== undefined && session !== null && streams.watching(session);
+      };
+      const stateNow = (projectId: string) => {
+        const p = snapshot.projects.find((x) => x.id === projectId);
+        return p && (p.tmux.exists && p.tmux.waitingPrompt ? 'waiting' : p.status.state);
+      };
+      for (const [id, a] of deferred) {
+        if (stateNow(id) !== a.state) deferred.delete(id);
+        else if (!watched(id)) {
+          deferred.delete(id);
+          alerts.push(a);
+        }
+      }
       for (const a of alerts) {
-        // 그 세션의 터미널을 지금 보고 있으면 "작업 끝남"·"입력 대기"는 화면으로 이미 안다. 알리지 않는다
-        const session = snapshot.projects.find((p) => p.id === a.projectId)?.tmuxSession;
-        if ((a.state === 'idle' || a.state === 'waiting') && session && streams.watching(session)) continue;
+        // 그 세션의 터미널을 지금 보고 있으면 "작업 끝남"·"입력 대기"는 화면으로 이미 안다. 미뤄 둔다
+        if ((a.state === 'idle' || a.state === 'waiting') && watched(a.projectId)) {
+          deferred.set(a.projectId, a);
+          continue;
+        }
         if (monitor.config.notifications && MAC_ALERT_STATES.includes(a.state)) void notify(a.title, a.message);
         const { ntfyUrl, ntfyStates } = monitor.config;
         if (ntfyUrl && ntfyStates.includes(a.state)) {

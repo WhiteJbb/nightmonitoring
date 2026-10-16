@@ -4,7 +4,7 @@ import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, Project
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
-import { Term } from './Term.tsx';
+import { copyText, Term } from './Term.tsx';
 import type { TermStatus } from './Term.tsx';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
@@ -507,6 +507,10 @@ export function TerminalTab({ project: p, now }: Props) {
   const chosen = t.panes.find((x) => x.id === paneId);
   const lost = paneId !== null && !chosen;
   const pane = chosen ?? t.panes.find((x) => x.active) ?? t.panes[0];
+  // 처음 보여 준 pane 에 고정한다: 다른 tmux 클라이언트가 활성 pane 을 바꿔도 입력이 다른 셸로 가지 않게
+  useEffect(() => {
+    if (paneId === null && pane) setPaneId(pane.id);
+  }, [paneId, pane]);
   const [showInfo, setShowInfo] = useState(false);
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
@@ -578,10 +582,7 @@ export function TerminalTab({ project: p, now }: Props) {
   };
 
   const copy = (cmd: string) => {
-    navigator.clipboard.writeText(cmd).then(
-      () => setCopyMsg('복사됨'),
-      () => setCopyMsg('복사 실패'),
-    );
+    setCopyMsg(copyText(cmd) ? '복사됨' : '복사 실패');
     setTimeout(() => setCopyMsg(null), 1500);
   };
 
@@ -773,17 +774,23 @@ export function GitTab({ project: p, now }: Props) {
   const { git } = p;
   // 실시간 스냅샷의 기준점 정보는 목록이 빠진 요약이다 (partial). 탭을 열거나 Git 이 바뀌면 전체를 받는다
   const [full, setFull] = useState<ProjectSnapshot['since']>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     if (!p.since?.partial) return;
     let live = true;
     api.project(p.id).then(
-      (x) => live && setFull(x.since),
-      () => {},
+      (x) => {
+        if (!live) return;
+        setFull(x.since);
+        setLoadError(null);
+      },
+      (e: unknown) => live && setLoadError(errorMessage(e)),
     );
     return () => {
       live = false;
     };
-  }, [p.id, p.lastGitChangeAt, p.since?.partial]);
+  }, [p.id, p.lastGitChangeAt, p.since?.partial, p.since?.baseline.at, retry]);
   const since = p.since?.partial ? full : p.since;
   return (
     <>
@@ -844,6 +851,14 @@ export function GitTab({ project: p, now }: Props) {
         </div>
       )}
 
+      {loadError && (
+        <p className="err" role="alert">
+          기준점 이후 목록을 불러오지 못했습니다: {loadError}{' '}
+          <button type="button" className="more-rows" onClick={() => setRetry(retry + 1)}>
+            다시 불러오기
+          </button>
+        </p>
+      )}
       {since && (
         <section>
           <h3>모니터링 시작 이후</h3>

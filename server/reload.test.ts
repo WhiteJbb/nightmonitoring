@@ -156,6 +156,17 @@ describe('alerts', () => {
     expect(alertsFor(memory, withAgent('idle', 'ready')).map((x) => [x.title, x.state])).toEqual([['NightShift · A: 작업 끝남', 'idle']]);
   });
 
+  it('a prompt is announced even while an old error keeps the status at 오류', () => {
+    const memory = new Map();
+    const withPrompt = (prompt: string | null) => {
+      const s = snap({ a: 'error' });
+      Object.assign(s.projects[0]!.tmux, { exists: true, waitingPrompt: prompt });
+      return s;
+    };
+    alertsFor(memory, withPrompt(null));
+    expect(alertsFor(memory, withPrompt('Do you want to proceed?')).map((x) => [x.title, x.message])).toEqual([['NightShift · A: 입력 대기', '입력 대기: Do you want to proceed?']]);
+  });
+
   it('remembers sent alerts across a restart', () => {
     const before = new Map();
     alertsFor(before, snap({ a: 'running' }, { a: 't0' }));
