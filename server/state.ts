@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { GitBaseline } from '../shared/types.ts';
 import type { LogPos } from './logs.ts';
 import type { RunnerState } from './runner.ts';
-import type { SavedAlerts } from './notify.ts';
+import type { Alert, SavedAlerts } from './notify.ts';
 
 export interface TrackedState {
   /** 저장소 경로가 바뀌면 기준점을 버리기 위해 함께 저장한다 */
@@ -33,6 +33,8 @@ export interface PersistedState {
   runner: RunnerState;
   /** 알림 반복을 막는 기억 (어느 상태를 언제 알렸는지) */
   alerts?: SavedAlerts;
+  /** 보류 중인 알림 ("작업 끝남" 3분 대기 등). 재시작해도 이어서 보낸다 */
+  deferred?: { alert: Alert; at: number }[];
 }
 
 /** 파일이 없거나 읽을 수 없거나 형식이 다르면 null (새 세션으로 시작). */
@@ -47,7 +49,7 @@ export function loadState(file: string): PersistedState | null {
     const s = JSON.parse(text) as Partial<PersistedState>;
     const isObj = (v: unknown): v is object => typeof v === 'object' && v !== null;
     if (s.version !== 2 || typeof s.monitor?.startedAt !== 'string' || !isObj(s.monitor.tracked) || !isObj(s.runner)) throw new Error('알 수 없는 형식');
-    return { version: 2, monitor: s.monitor, runner: s.runner, alerts: s.alerts };
+    return { version: 2, monitor: s.monitor, runner: s.runner, alerts: s.alerts, deferred: s.deferred };
   } catch (e) {
     console.warn(`저장된 상태를 읽지 못해 새 세션으로 시작합니다 (${file}): ${(e as Error).message}`);
     return null;

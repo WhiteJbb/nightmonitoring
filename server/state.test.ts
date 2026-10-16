@@ -28,7 +28,7 @@ describe('state file', () => {
     await expect(readFile(`${file}.tmp`)).rejects.toThrow();
     // 예전 상태 파일에 남은 보고서 날짜는 무시한다
     await writeFile(file, JSON.stringify({ ...state, lastAutoReportDate: '2026-10-04' }));
-    expect(loadState(file)).toStrictEqual({ ...state, alerts: undefined });
+    expect(loadState(file)).toStrictEqual({ ...state, alerts: undefined, deferred: undefined });
   });
 
   it('starts fresh on a missing, corrupt or unknown file', async () => {

@@ -92,6 +92,17 @@ describe('logInput', () => {
     await rm(dir, { recursive: true });
   });
 
+  it('writes concurrent inputs one after another without losing any while rotating', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-input-'));
+    const file = path.join(dir, 'input.log');
+    // 한 줄이 약 90바이트: 두 줄이 쌓이면 한 번만 돌린다
+    await logInput(file, 'app', { pane: '%3', text: 'first', enter: false }, 150);
+    await Promise.all(['a', 'b', 'c'].map((t) => logInput(file, 'app', { pane: '%3', text: t, enter: false }, 150)));
+    const all = (await readFile(file, 'utf8')) + (await readFile(`${file}.1`, 'utf8').catch(() => ''));
+    expect(['"a"', '"b"', '"c"'].every((t) => all.includes(t))).toBe(true);
+    await rm(dir, { recursive: true });
+  });
+
   it('moves a full log aside to .1 before writing more', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-input-'));
     const file = path.join(dir, 'input.log');
