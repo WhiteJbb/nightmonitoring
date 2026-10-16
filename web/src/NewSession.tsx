@@ -168,20 +168,21 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
           <p className="hint">켜면 만들자마자 터미널 탭에서 입력을 보낼 수 있습니다</p>
         </div>
       </div>
-      <div className="row">
-        <button type="submit" className="primary cta" disabled={busy}>
-          {busy ? (cloning ? '저장소를 받는 중…' : '만드는 중…') : '만들기'}
-          <ArrowRight size={18} weight="bold" aria-hidden="true" />
-        </button>
-        <button type="button" onClick={close} disabled={busy || closing}>
-          닫기
-        </button>
-      </div>
+      {/* 누른 버튼 바로 위에 둔다: 휴대폰에서는 버튼 아래가 화면 밖이기 쉽다 */}
       {cloning && (
         <p className="hint pending" role="status">
           저장소를 받는 중… 큰 저장소는 몇 분 걸릴 수 있습니다. 끝나면 터미널 화면으로 넘어갑니다.
         </p>
       )}
+      <div className="row">
+        <button type="submit" className="primary cta" disabled={busy}>
+          {busy ? (cloning ? '저장소를 받는 중…' : '만드는 중…') : '만들기'}
+          {!busy && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
+        </button>
+        <button type="button" onClick={close} disabled={busy || closing}>
+          닫기
+        </button>
+      </div>
       {error && (
         <div className="notice error" role="alert">
           <strong>세션을 만들지 못했습니다.</strong>

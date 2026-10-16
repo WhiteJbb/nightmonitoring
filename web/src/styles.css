@@ -1299,7 +1299,15 @@ form.settings {
   border: none;
   text-decoration: underline;
   text-underline-offset: 3px;
+  min-height: 0;
   cursor: pointer;
+}
+.settings-actions .notice li + li {
+  margin-top: 6px;
+}
+.settings-actions .issue-link:hover {
+  background: none;
+  transform: none;
 }
 .field .field-err,
 .toggle-row .field-err {
@@ -1308,6 +1316,7 @@ form.settings {
 }
 .settings [aria-invalid='true'] {
   box-shadow: 0 0 0 1px var(--red);
+  scroll-margin-top: 30vh;
 }
 .hidden-sessions {
   display: grid;

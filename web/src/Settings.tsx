@@ -127,10 +127,10 @@ export function fieldOf(issue: string): string | null {
   return `f-p${m[1]}-${PROJECT_KEYS.has(m[2]!) ? m[2] : 'name'}`;
 }
 
-/** 칸으로 옮겨 간다. 바닥의 저장 막대에 가리지 않게 화면 가운데로 */
+/** 칸으로 옮겨 간다. 위 띠·바닥의 저장 막대에 가리지 않게 scroll-margin-top 만큼 띄운다 (styles.css) */
 function jump(id: string) {
   const el = document.getElementById(id);
-  el?.scrollIntoView?.({ block: 'center' });
+  el?.scrollIntoView?.({ block: 'start' });
   el?.focus({ preventScroll: true });
 }
 
