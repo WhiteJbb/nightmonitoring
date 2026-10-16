@@ -60,8 +60,8 @@ describe('API', () => {
     const status = vi.fn(() => ({ json: vi.fn() }));
     const next = vi.fn();
     const g = guard({ host: '100.101.102.103', allowedHosts: ['proxy.example'] }) as unknown as (req: object, res: object, next: () => void) => void;
-    for (const host of ['100.101.102.103:4477', 'my-mac.tail1234.ts.net', 'proxy.example', 'localhost:4477']) g({ method: 'GET', headers: { host } }, { status }, next);
-    expect(next).toHaveBeenCalledTimes(4);
+    for (const host of ['100.101.102.103:4477', 'my-mac.tail1234.ts.net', 'my-mac:4477', 'proxy.example', 'localhost:4477']) g({ method: 'GET', headers: { host } }, { status }, next);
+    expect(next).toHaveBeenCalledTimes(5);
     g({ method: 'GET', headers: { host: 'evil.example:4477' } }, { status }, next);
     expect(status).toHaveBeenCalledWith(403);
   });

@@ -282,7 +282,7 @@ tailscale serve --bg 4477          # https://<기기이름>.<tailnet>.ts.net 으
 { "host": "100.101.102.103" }
 ```
 
-이때 접속은 그 주소(`http://100.101.102.103:4477`)나 MagicDNS 이름(`*.ts.net`)으로만 받습니다. 다른 이름으로 들어오는 요청은 DNS rebinding 방어를 위해 거부하므로, 다른 이름을 쓰려면 `allowedHosts`에 적으세요.
+이때 접속은 그 주소(`http://100.101.102.103:4477`)나 MagicDNS 이름(`http://my-mac:4477`, `*.ts.net`)으로만 받습니다. 다른 이름으로 들어오는 요청은 DNS rebinding 방어를 위해 거부하므로, 다른 이름을 쓰려면 `allowedHosts`에 적으세요.
 
 `host`와 `allowedHosts`는 파일에서만 바꿀 수 있고 재시작해야 적용됩니다. `tailscale funnel`(인터넷 공개)로는 절대 노출하지 마세요.
 
@@ -328,7 +328,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 - `testCommand` / `buildCommand`는 셸에서 실행됩니다. **config 파일을 수정할 수 있는 사람은 임의 명령을 실행할 수 있는 것**과 같으니 config 파일 권한을 관리하세요.
 - git·tmux·osascript(알림)는 셸을 거치지 않고 인자 배열로만 실행됩니다(`server/exec.ts` 한 곳). 알림 문구도 스크립트에 끼워 넣지 않고 인자로 전달합니다.
 - config 파일을 쓰는 경로는 설정 화면의 저장 하나뿐이고, Origin 검사를 통과한 같은 출처의 요청만 받습니다.
-- 바인딩한 주소와 맞지 않는 Host 헤더(DNS rebinding)와 다른 Origin에서 온 변경 요청(CSRF)은 거부합니다. loopback이면 loopback 이름만, Tailscale 주소면 그 주소와 `*.ts.net`만 받습니다.
+- 바인딩한 주소와 맞지 않는 Host 헤더(DNS rebinding)와 다른 Origin에서 온 변경 요청(CSRF)은 거부합니다. loopback이면 loopback 이름만, Tailscale 주소면 그 주소와 MagicDNS 이름(`*.ts.net`, 점 없는 짧은 이름)만 받습니다.
 - 터미널 출력, 보고서, `.nightshift/`(실행 로그·세션 상태)에는 비밀 값이 포함될 수 있습니다. `reports/`와 `.nightshift/`는 git에서 제외되어 있습니다.
 
 ## 문제 해결
