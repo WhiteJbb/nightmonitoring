@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import type { ConfigUpdate, ConfigView, ProjectState } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
@@ -153,6 +153,14 @@ function Field({ label, hint, error, children }: { label: string; hint?: ReactNo
   );
 }
 
+/**
+ * 저장하지 않은 채 화면을 벗어난 초안 (휴대폰의 뒤로 가기 스와이프는 확인 창 없이 화면을 바꾼다).
+ * 설정 화면에 다시 오면, 그 사이 파일이 바뀌지 않았을 때(version 이 같을 때) 되살린다.
+ */
+let kept: { version: string; draft: Draft } | null = null;
+/** 테스트끼리 초안이 새지 않게 */
+export const forgetKeptDraft = () => void (kept = null);
+
 export function Settings() {
   const [view, setView] = useState<ConfigView | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -164,9 +172,13 @@ export function Settings() {
   const [pushResult, setPushResult] = useState<{ ok: boolean; text: string } | null>(null);
   const [pushing, setPushing] = useState(false);
 
+  const [restored, setRestored] = useState(false);
   const loaded = (v: ConfigView) => {
     setView(v);
-    setDraft(toDraft(v));
+    const back = kept?.version === v.version ? kept.draft : null;
+    kept = null;
+    setDraft(back ?? toDraft(v));
+    setRestored(back !== null);
   };
   const load = () => {
     setLoadError(null);
@@ -182,6 +194,16 @@ export function Settings() {
   }, [saveError]);
 
   const dirty = view !== null && draft !== null && JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
+  // 화면이 바뀔 때 저장하지 않은 초안을 남긴다. "떠날까요?"에 예라고 답한 경우는 버린 것이다
+  const latest = useRef({ dirty, draft, version: view?.version, discard: false });
+  latest.current = { ...latest.current, dirty, draft, version: view?.version };
+  useEffect(
+    () => () => {
+      const l = latest.current;
+      if (l.dirty && !l.discard && l.draft && l.version) kept = { version: l.version, draft: l.draft };
+    },
+    [],
+  );
   // 저장하지 않은 변경이 있으면 새로 고침·닫기·다른 화면으로 이동하기 전에 묻는다
   useEffect(() => {
     if (!dirty) return;
@@ -191,6 +213,7 @@ export function Settings() {
       const a = e.target instanceof Element ? e.target.closest('a[href^="#"]') : null;
       if (!a || a.getAttribute('href') === '#/settings') return;
       if (!window.confirm('저장하지 않은 설정이 있습니다. 그래도 이 화면을 떠날까요?')) e.preventDefault();
+      else latest.current.discard = true;
     };
     window.addEventListener('beforeunload', onUnload);
     document.addEventListener('click', onClick, true);
@@ -289,6 +312,12 @@ export function Settings() {
       <p className="hint mono wrap">
         {view.path} · {view.format}
       </p>
+      {restored && dirty && (
+        <div className="notice banner" role="status">
+          <strong>저장하지 않은 변경을 되살렸습니다.</strong>
+          <p>화면을 떠나기 전에 고치던 내용입니다. 저장하거나 "되돌리기"로 버리세요.</p>
+        </div>
+      )}
       {ro && (
         <div className="notice banner" role="status">
           <strong>읽기 전용</strong>

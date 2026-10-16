@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ConfigUpdate, ConfigView } from '../../shared/types.ts';
-import { Settings } from './Settings.tsx';
+import { Settings, forgetKeptDraft } from './Settings.tsx';
 
 function view(over: Partial<ConfigView> = {}): ConfigView {
   return {
@@ -64,12 +64,19 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
+  forgetKeptDraft();
 });
 
 async function renderLoaded(v = view()) {
   fetchMock.mockResolvedValueOnce(json(200, v));
   render(<Settings />);
   await screen.findByRole('heading', { name: '설정' });
+}
+async function renderLoadedWith(v = view()) {
+  fetchMock.mockResolvedValueOnce(json(200, v));
+  const r = render(<Settings />);
+  await screen.findByRole('heading', { name: '설정' });
+  return r;
 }
 
 const input = (label: string, within_: HTMLElement = document.body) =>
@@ -131,6 +138,15 @@ test('locked repoPath is disabled, unlocked one is not', async () => {
   expect(input('저장소 경로', project('api-server')).disabled).toBe(true);
   expect(within(project('api-server')).getByText(/config 파일에서만 바꿀 수 있습니다/)).toBeTruthy();
   expect(input('저장소 경로', project('web-app')).disabled).toBe(false);
+});
+
+test('an unsaved draft survives leaving the screen without the link guard (back swipe) and comes back', async () => {
+  const { unmount } = await renderLoadedWith(view());
+  change(input('갱신 주기(초)'), '9');
+  unmount();
+  await renderLoadedWith(view());
+  expect(input('갱신 주기(초)').value).toBe('9');
+  expect(screen.getByText('저장하지 않은 변경을 되살렸습니다.')).toBeTruthy();
 });
 
 test('push states are chosen with checkboxes and saved', async () => {
