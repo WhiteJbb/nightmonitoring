@@ -76,11 +76,18 @@ describe('applyConfigUpdate', () => {
     const raw = JSON.parse(await readFile(file, 'utf8'));
     expect(raw).toMatchObject({ port: 4999, customKey: 'kept', refreshIntervalSec: 2, thresholds: { idleMinutes: 10, stalledMinutes: 45 }, promptPatterns: ['(y/n)'], autoReportTime: '06:30' });
     expect(raw.projects).toEqual([
-      { name: 'App Renamed', repoPath: '~/code/app', testCommand: 'npm test', logFile: 'logs/a.log' },
+      { name: 'App Renamed', repoPath: '~/code/app', testCommand: 'npm test', logFile: 'logs/a.log', id: 'app' },
       { name: 'Lib', repoPath: '/repo/lib2' },
       { name: 'New', repoPath: '~/code/new', tmuxSession: 'new' },
     ]);
-    expect(loadConfig(file, '/base').config.projects.map((p) => p.id)).toEqual(['app-renamed', 'lib', 'new']);
+    // 이름을 바꿔도 id 는 그대로라 기준점·실행 이력이 이어진다
+    expect(loadConfig(file, '/base').config.projects.map((p) => p.id)).toEqual(['app', 'lib', 'new']);
+    // 원래 이름으로 되돌리면 id 를 따로 적어 둘 필요가 없다
+    const back = toUpdate(readConfigView(file, '/base'));
+    back.projects[0]!.name = 'App';
+    applyConfigUpdate(file, '/base', back);
+    expect(JSON.parse(await readFile(file, 'utf8')).projects[0]).not.toHaveProperty('id');
+    expect(loadConfig(file, '/base').config.projects[0]!.id).toBe('app');
     // 건드리지 않은 기본값은 파일에 쓰지 않는다
     expect(raw).not.toHaveProperty('errorPatterns');
     expect(raw.thresholds).not.toHaveProperty('noCommitMinutes');

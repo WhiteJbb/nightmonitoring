@@ -7,7 +7,7 @@ import path from 'node:path';
 import { Document, parseDocument } from 'yaml';
 import type { ConfigProjectView, ConfigView, EditableSettings } from '../shared/types.ts';
 import type { Config } from './config.ts';
-import { ConfigError, expandPath, parseConfig } from './config.ts';
+import { ConfigError, expandPath, parseConfig, slugify } from './config.ts';
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -146,6 +146,9 @@ export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir:
       }
     }
     const project: Obj = { ...base, name: u.name, repoPath: u.repoPath };
+    // 이름을 바꿔도 id 는 그대로 둔다 (id 가 바뀌면 기준점·실행 이력이 끊긴다). 이름에서 나오는 id 와 같으면 적지 않는다.
+    if (typeof u.id === 'string' && typeof u.name === 'string' && slugify(u.name) !== u.id) project.id = u.id;
+    else delete project.id;
     for (const key of ['tmuxSession', 'logFile'] as const) {
       if (u[key] === null || u[key] === undefined || u[key] === '') delete project[key];
       else project[key] = u[key];

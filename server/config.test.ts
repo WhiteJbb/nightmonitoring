@@ -39,6 +39,10 @@ describe('parseConfig', () => {
     expect(() => parseConfig({ projects: [{ name: 'a', repoPath: '/a', allowInput: 'yes' }] }, '/base')).toThrow(/allowInput/);
     expect(c.projects[1]).toMatchObject({ id: 'other', repoPath: '/base/rel', tmuxSession: null });
     expect(() => parseConfig({ projects: [{ name: 'My App', repoPath: '/a' }, { name: 'my-app', repoPath: '/b' }] }, '/base')).toThrow(/같은 id/);
+    // 이름을 바꾼 프로젝트는 적어 둔 id 를 쓴다
+    expect(parseConfig({ projects: [{ name: 'Renamed', repoPath: '/a', id: 'my-app' }] }, '/base').projects[0]!.id).toBe('my-app');
+    expect(() => parseConfig({ projects: [{ name: 'a', repoPath: '/a', id: 'Bad Id' }] }, '/base')).toThrow(/id:/);
+    expect(() => parseConfig({ projects: [{ name: 'X', repoPath: '/a', id: 'b' }, { name: 'B', repoPath: '/b' }] }, '/base')).toThrow(/같은 id/);
   });
 
   it('collects all issues', () => {
