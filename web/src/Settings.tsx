@@ -159,7 +159,8 @@ export function Settings() {
   }
   if (!view || !draft) return <div className="notice">불러오는 중…</div>;
 
-  const ro = !view.editable || saving; // 저장 중의 수정은 응답이 덮어쓰므로 잠근다
+  const ro = !view.editable;
+  const lock = ro || saving; // 저장 중의 수정은 응답이 덮어쓰므로 입력만 잠근다
   const dirty = JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
 
   const set = (patch: Partial<Draft>) => {
@@ -249,7 +250,7 @@ export function Settings() {
               step="any"
               required
               value={draft[key]}
-              disabled={ro}
+              disabled={lock}
               onChange={(e) => set({ [key]: e.target.value })}
             />
           </Field>
@@ -261,7 +262,7 @@ export function Settings() {
             <input
               type="checkbox"
               checked={draft.autoReport}
-              disabled={ro}
+              disabled={lock}
               onChange={(e) => set({ autoReport: e.target.checked })}
             />
             Morning Report 자동 생성
@@ -271,14 +272,14 @@ export function Settings() {
             aria-label="자동 생성 시각"
             required={draft.autoReport}
             value={draft.autoReportTime}
-            disabled={ro || !draft.autoReport}
+            disabled={lock || !draft.autoReport}
             onChange={(e) => set({ autoReportTime: e.target.value })}
           />
         </div>
         {TOGGLES.map(([key, label, hint]) => (
           <div className="toggle-row" key={key}>
             <label className="check">
-              <input type="checkbox" checked={draft[key]} disabled={ro} onChange={(e) => set({ [key]: e.target.checked })} />
+              <input type="checkbox" checked={draft[key]} disabled={lock} onChange={(e) => set({ [key]: e.target.checked })} />
               {label}
             </label>
             <p className="hint">{hint}</p>
@@ -296,7 +297,7 @@ export function Settings() {
             spellCheck={false}
             placeholder="https://ntfy.sh/추측하기-어려운-주제"
             value={draft.ntfyUrl}
-            disabled={ro}
+            disabled={lock}
             onChange={(e) => set({ ntfyUrl: e.target.value })}
           />
         </label>
@@ -330,7 +331,7 @@ export function Settings() {
               rows={6}
               spellCheck={false}
               value={draft[key]}
-              disabled={ro}
+              disabled={lock}
               onChange={(e) => set({ [key]: e.target.value })}
             />
           </Field>
@@ -343,7 +344,7 @@ export function Settings() {
       </p>
       <div className="settings-grid">
         <Field label="숨긴 미등록 세션" hint="설정에 없는 tmux 세션은 자동으로 카드가 뜹니다. 카드의 '숨김'으로 여기 쌓이며, 줄을 지우면 다시 보입니다">
-          <textarea rows={3} spellCheck={false} value={draft.hiddenSessions} disabled={ro} onChange={(e) => set({ hiddenSessions: e.target.value })} />
+          <textarea rows={3} spellCheck={false} value={draft.hiddenSessions} disabled={lock} onChange={(e) => set({ hiddenSessions: e.target.value })} />
         </Field>
       </div>
       {draft.projects.length === 0 && <p className="dim">등록된 프로젝트가 없습니다.</p>}
@@ -359,7 +360,7 @@ export function Settings() {
                 '이름을 바꾸면 프로젝트 id 가 바뀌어 "모니터링 시작 이후" 기준점과 실행 이력이 초기화됩니다.'
               }
             >
-              <input type="text" required value={p.name} disabled={ro} onChange={(e) => setProject(i, { name: e.target.value })} />
+              <input type="text" required value={p.name} disabled={lock} onChange={(e) => setProject(i, { name: e.target.value })} />
             </Field>
             <Field
               label="저장소 경로"
@@ -371,7 +372,7 @@ export function Settings() {
                 required
                 spellCheck={false}
                 value={p.repoPath}
-                disabled={ro || p.repoPathLocked}
+                disabled={lock || p.repoPathLocked}
                 onChange={(e) => setProject(i, { repoPath: e.target.value })}
               />
             </Field>
@@ -384,7 +385,7 @@ export function Settings() {
                 className="mono"
                 spellCheck={false}
                 value={p.tmuxSession}
-                disabled={ro}
+                disabled={lock}
                 onChange={(e) => setProject(i, { tmuxSession: e.target.value })}
               />
             </Field>
@@ -394,7 +395,7 @@ export function Settings() {
                 className="mono"
                 spellCheck={false}
                 value={p.logFile}
-                disabled={ro}
+                disabled={lock}
                 onChange={(e) => setProject(i, { logFile: e.target.value })}
               />
             </Field>
@@ -410,7 +411,7 @@ export function Settings() {
               <input
                 type="checkbox"
                 checked={p.allowInput}
-                disabled={ro}
+                disabled={lock}
                 onChange={(e) => {
                   // 켜는 것은 "브라우저에서 이 계정으로 명령 실행"을 여는 일이라 한 번 확인한다.
                   if (e.target.checked && !window.confirm(ALLOW_INPUT_CONFIRM)) return;
@@ -424,14 +425,14 @@ export function Settings() {
             </p>
           </div>
           {!ro && (
-            <button type="button" className="danger" onClick={() => removeProject(i)}>
+            <button type="button" className="danger" disabled={saving} onClick={() => removeProject(i)}>
               삭제
             </button>
           )}
         </fieldset>
       ))}
       {!ro && (
-        <button type="button" onClick={() => set({ projects: [...draft.projects, BLANK_PROJECT] })}>
+        <button type="button" disabled={saving} onClick={() => set({ projects: [...draft.projects, BLANK_PROJECT] })}>
           프로젝트 추가
         </button>
       )}
