@@ -85,7 +85,7 @@ test('project card shows state label and reasons', () => {
   render(<ProjectCard p={p} now={NOW} />);
   expect(screen.getByText('입력 대기').className).toContain('state-waiting');
   expect(screen.getByText('확인 프롬프트에서 대기 중')).toBeTruthy();
-  expect(screen.getByRole('link').className).toContain('state-waiting');
+  expect(screen.getByRole('link', { name: 'api-server' }).closest('.card')?.className).toContain('state-waiting');
   // 라벨 없이 값만 나오고, 무엇인지는 title 로 알려 준다
   expect(screen.getByTitle(/^브랜치: /)).toBeTruthy();
 });
@@ -244,4 +244,51 @@ test('git tab: long commit lists show ten rows until expanded', () => {
 test('run tab: the run button is not styled as the primary action', () => {
   render(<RunPanel project={project({ testCommand: 'npm test' })} kind="test" title="테스트" />);
   expect(screen.getByRole('button', { name: '실행' }).className).not.toContain('primary');
+});
+
+const dash = (over: Partial<Snapshot> = {}): Snapshot => ({
+  generatedAt: NOW,
+  startedAt: NOW,
+  demo: false,
+  refreshIntervalSec: 5,
+  configPath: '/c.json',
+  configMissing: false,
+  configError: null,
+  autoReportTime: null,
+  summary: { total: 1, sessionsRunning: 1, running: 0, waiting: 1, idle: 0, stalled: 0, error: 0 },
+  projects: [project({ status: { state: 'waiting', reasons: [] } })],
+  ...over,
+});
+
+test('dashboard: the chosen filter survives dropping to 0, with an empty message and 전체 보기', () => {
+  const { container, rerender } = render(<Dashboard snapshot={dash()} />);
+  fireEvent.click(screen.getByRole('button', { name: '입력 대기1' }));
+  expect(screen.getByRole('button', { name: '전체 보기' })).toBeTruthy();
+  // 입력 대기가 0 이 되어도 타일과 필터는 남고, 전체 목록으로 돌아가지 않는다
+  rerender(<Dashboard snapshot={dash({ summary: { total: 1, sessionsRunning: 1, running: 1, waiting: 0, idle: 0, stalled: 0, error: 0 }, projects: [project()] })} />);
+  expect(screen.getByRole('button', { name: '입력 대기0' }).getAttribute('aria-pressed')).toBe('true');
+  expect(container.querySelectorAll('.card')).toHaveLength(0);
+  expect(screen.getByText('현재 입력 대기 프로젝트가 없습니다.')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '전체 보기' }));
+  expect(container.querySelectorAll('.card')).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: /^입력 대기/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull();
+});
+
+test('dashboard: hiding a discovered session offers an undo that un-hides it', async () => {
+  fetchMock.mockImplementation(async () => new Response(JSON.stringify({ ok: true })));
+  const alert = vi.fn();
+  vi.stubGlobal('alert', alert);
+  const p = project({ id: 'tmux:scratch', name: 'scratch', tmuxSession: 'scratch' });
+  render(<Dashboard snapshot={dash({ projects: [p] })} />);
+  // 버튼은 카드 링크 안에 들어 있지 않다
+  expect(screen.getByRole('button', { name: '숨김' }).closest('a')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '숨김' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/sessions/scratch/hide', { method: 'POST' }));
+  expect((await screen.findByRole('status')).textContent).toContain('scratch 세션을 숨겼습니다');
+  fireEvent.click(screen.getByRole('button', { name: '실행 취소' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/sessions/scratch/hide', { method: 'DELETE' }));
+  expect(screen.queryByRole('button', { name: '실행 취소' })).toBeNull();
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+  expect(alert).not.toHaveBeenCalled();
 });

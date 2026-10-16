@@ -307,6 +307,11 @@ button.primary.cta {
 button[aria-pressed='true'] {
   background: var(--s4);
 }
+/* 되돌릴 수 없는 동작: 평범한 버튼과 섞이지 않게 붉은 글자 + 붉은 면 */
+button.danger {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+}
 button.quiet,
 .more-rows,
 .meta button,
@@ -333,11 +338,13 @@ button.quiet,
     background: var(--ink);
     box-shadow: 0 0 56px var(--glow);
   }
-  button.danger:hover:not(:disabled),
+  button.danger:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--red) 22%, transparent);
+  }
   .keys button.caution:hover:not(:disabled) {
     color: var(--red);
   }
-  a.row:hover,
+  .card-link:hover,
   .side-item:hover,
   .wordmark:hover,
   .side nav a:hover,
@@ -345,7 +352,7 @@ button.quiet,
   .crumb a:hover {
     text-decoration: none;
   }
-  a.row:hover {
+  .card:hover {
     background: var(--s3);
     transform: translateY(-2px);
   }
@@ -457,6 +464,19 @@ button.quiet,
   font: 10.5px var(--mono);
   color: var(--faint);
 }
+.side-state {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--state);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
 .side-foot {
   margin-top: auto;
   display: grid;
@@ -465,8 +485,8 @@ button.quiet,
 }
 .side-foot .theme {
   justify-self: start;
-  min-height: 30px;
-  padding: 4px 12px;
+  min-height: 40px;
+  padding: 4px 14px;
   font: inherit;
   color: var(--dim);
 }
@@ -590,7 +610,7 @@ main {
 
 /* ── 면: 테두리 없이 반투명 흰색으로만 구분한다 ── */
 .stat,
-a.row,
+.card,
 .notice,
 .project-edit,
 .new-session,
@@ -638,15 +658,60 @@ button.stat .num {
 }
 button.stat[aria-pressed='true'] {
   background: color-mix(in srgb, var(--state) 14%, var(--s2));
-  box-shadow: 0 0 40px color-mix(in srgb, var(--state) 25%, transparent);
+  box-shadow:
+    inset 0 0 0 2px var(--state),
+    0 0 40px color-mix(in srgb, var(--state) 25%, transparent);
+}
+.overview .show-all {
+  align-self: center;
 }
 
-/* ── 프로젝트 줄 목록 ── */
+/* ── 새 tmux 세션: 대시보드 맨 위의 주 동작 ── */
+.dash-new {
+  margin-bottom: 20px;
+}
+.dash-new .new-session-toggle {
+  display: inline-flex;
+  width: auto;
+  margin: 0;
+  padding: 0 24px;
+  color: var(--on-ink);
+  background: var(--ink);
+  box-shadow: 0 0 40px var(--glow);
+}
+.dash-new .new-session {
+  margin: 0;
+}
+
+/* ── 숨김 실행 취소 알림: 화면 아래 가운데에 잠깐 ── */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  translate: -50% 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  max-width: calc(100vw - 32px);
+  padding: 8px 8px 8px 22px;
+  border-radius: var(--r-pill);
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 0 1px var(--line),
+    0 8px 40px rgba(0, 0, 0, 0.35);
+}
+
+/* ── 프로젝트 줄 목록: 보드 폭에 맞춰 칸이 4 → 2 → 1 로 접힌다 ── */
 .board {
   display: grid;
   gap: 12px;
+  container-type: inline-size;
 }
-a.row {
+.card {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(200px, 1.3fr) minmax(150px, 0.9fr) minmax(200px, 1.4fr) minmax(130px, 0.7fr);
   gap: 8px 24px;
@@ -659,12 +724,42 @@ a.row {
     background-color 180ms ease,
     box-shadow 180ms ease;
 }
-a.row:active {
+.card:active {
   transform: scale(0.995);
 }
-a.row.state-error,
-a.row.state-stalled,
-a.row.state-waiting {
+@container (max-width: 860px) {
+  .card {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .row-main {
+    grid-column: 1 / -1;
+  }
+}
+@container (max-width: 520px) {
+  .card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* 이름 링크가 줄 전체를 덮는다. 등록·숨김 버튼만 그 위로 올라온다 */
+.card-link {
+  color: inherit;
+}
+.card-link::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+}
+.card:has(.card-link:focus-visible) {
+  outline: 2px solid color-mix(in srgb, var(--text) 50%, transparent);
+  outline-offset: 2px;
+}
+.card-link:focus-visible {
+  outline: none;
+}
+.card.state-error,
+.card.state-stalled,
+.card.state-waiting {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state) 30%, transparent);
 }
 .row-main {
@@ -676,7 +771,7 @@ a.row.state-waiting {
   align-items: center;
   gap: 4px 12px;
 }
-a.row h2 {
+.card h2 {
   font-size: 17px;
   font-weight: 500;
   letter-spacing: -0.01em;
@@ -697,6 +792,10 @@ a.row h2 {
   display: grid;
   gap: 4px;
   min-width: 0;
+}
+.row-col .lbl {
+  text-transform: none;
+  letter-spacing: 0.08em;
 }
 .row-col .val {
   display: flex;
@@ -722,6 +821,8 @@ a.row h2 {
   color: var(--dim);
 }
 .discovered {
+  position: relative;
+  z-index: 1;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1413,9 +1514,8 @@ form.settings {
   main {
     padding: 20px 14px 40px;
   }
-  a.row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 8px;
+  .card {
+    gap: 8px 16px;
     padding: 18px 24px;
     border-radius: var(--r-box);
   }
@@ -1557,8 +1657,8 @@ form.settings {
   }
   button:active:not(:disabled),
   button:hover:not(:disabled),
-  a.row:hover,
-  a.row:active {
+  .card:hover,
+  .card:active {
     transform: none;
   }
   .notice,
