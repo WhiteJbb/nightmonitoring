@@ -1665,12 +1665,31 @@ form.settings {
   .kv.inline dd {
     margin-right: 0;
   }
-  /* 입력칸은 한 줄을 다 쓰고, 버튼은 그 아래 한 줄에 */
-  .input-row textarea {
-    flex-basis: 100%;
-  }
   .info-toggle {
     display: inline-block;
+  }
+  /* 휴대폰: 위 띠를 한 줄로 줄이고 따라다니지 않게 한다. 터미널과 입력칸이 한 화면에 들어오게 */
+  .side {
+    position: relative;
+    top: 0;
+    flex-wrap: nowrap;
+    margin: 6px 8px 0;
+    padding: 6px 8px;
+  }
+  .wordmark,
+  .side-foot .conn,
+  .side-foot .theme {
+    font-size: 0;
+    gap: 0;
+  }
+  .side-foot span:not(.conn) {
+    display: none;
+  }
+  .input-help {
+    display: none;
+  }
+  .input-row textarea {
+    flex-basis: 0;
   }
   .terminal {
     height: 62svh;
@@ -1679,9 +1698,6 @@ form.settings {
   }
 }
 @media (max-width: 480px) {
-  .side-foot span:not(.conn) {
-    display: none;
-  }
   .rows.commits li {
     flex-wrap: wrap;
     justify-content: space-between;
@@ -1714,7 +1730,8 @@ form.settings {
   .panes {
     gap: 8px;
   }
-  .keys:not(.open) .extra {
+  .keys:not(.open) .extra,
+  .input-row .type-only {
     display: none;
   }
   .keys .more {

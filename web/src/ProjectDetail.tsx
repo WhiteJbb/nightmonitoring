@@ -364,7 +364,7 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
           ref={inputRef}
           className="mono"
           aria-label="pane 에 보낼 입력"
-          placeholder={finePointer() ? '입력 후 Enter (줄바꿈은 Shift+Enter)' : '입력 후 보내기 (Enter 는 줄바꿈)'}
+          placeholder={finePointer() ? '입력 후 Enter (줄바꿈은 Shift+Enter)' : '입력 후 보내기'}
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
@@ -380,7 +380,7 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
         <button type="button" className="primary" disabled={blocked} onClick={() => sendText(true)}>
           보내기
         </button>
-        <button type="button" disabled={blocked || text === ''} title="Enter 를 누르지 않고 글만 pane 에 넣습니다 (아직 제출하지 않음)" onClick={() => sendText(false)}>
+        <button type="button" className="type-only" disabled={blocked || text === ''} title="Enter 를 누르지 않고 글만 pane 에 넣습니다 (아직 제출하지 않음)" onClick={() => sendText(false)}>
           입력만 하기
         </button>
         <button type="button" disabled={uploading > 0} title="이미지를 골라 파일로 저장하고 경로를 입력에 넣습니다 (붙여넣기·끌어다 놓기도 됩니다)" onClick={() => fileRef.current?.click()}>
@@ -425,7 +425,7 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
           {error}
         </p>
       )}
-      <p className="hint">
+      <p className="hint input-help">
         입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다. 빈 입력칸에서는 Esc·방향키·Tab·PgUp/PgDn·Ctrl+C 같은 키가 그대로 pane 으로 갑니다. 이미지를 붙여넣거나 끌어다 놓으면 파일로 저장돼 경로가 들어갑니다.
       </p>
     </div>
@@ -435,6 +435,11 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
 export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
   const viewRef = useRef<HTMLDivElement>(null);
+  const frameRef = useRef<HTMLDivElement>(null);
+  // 휴대폰에선 터미널 탭을 열면 터미널 틀을 화면 맨 위로 올린다: 터미널과 입력칸이 한 화면에 들어온다
+  useEffect(() => {
+    if (window.matchMedia?.('(max-width: 720px)').matches) frameRef.current?.scrollIntoView?.({ block: 'start' });
+  }, []);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [paneId, setPaneId] = useState<string | null>(null);
   // 고른 pane 이 사라지면 보기는 활성 pane 으로 돌아가지만, 입력은 다시 고를 때까지 막는다 (다른 pane 으로 새지 않게)
@@ -544,7 +549,7 @@ export function TerminalTab({ project: p, now }: Props) {
         </dl>
       </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
-      <div className="term-frame">
+      <div className="term-frame" ref={frameRef}>
         {pane && (
           <div className="term-bar">
             {(t.panes.length > 1 || lost) && (
