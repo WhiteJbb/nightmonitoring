@@ -118,7 +118,7 @@ npm run demo
   "thresholds": { "idleMinutes": 15, "stalledMinutes": 30, "noCommitMinutes": 30 },
   "errorPatterns": ["error", "failed", "exception"],
   "errorIgnorePatterns": ["/\\b0 errors\\b/", "no errors", "/\\b0 failed\\b/"],
-  "promptPatterns": ["Do you want to", "(y/n)", "/❯\\s*1\\.\\s*Yes/"],
+  "promptPatterns": ["Do you want to", "(y/n)", "/^\\s*❯\\s*1\\.\\s*Yes/"],
   "ignoreSpinnerChanges": true,
   "sessionExitIsError": true,
   "notifications": true,
@@ -148,7 +148,7 @@ npm run demo
 | `thresholds.noCommitMinutes` | …Git 변화(커밋·working tree)도 이 시간 동안 없으면 **정지 의심** |
 | `errorPatterns` | 로그 파일에서 찾을 패턴. `[]`이면 로그 검사 끔 |
 | `errorIgnorePatterns` | 이 패턴에 걸리는 줄은 오류로 보지 않음. 기본값은 `/\b0 errors\b/` 처럼 정규식이라 `10 errors` 는 제외되지 않음 |
-| `promptPatterns` | 터미널 마지막 15줄에서 찾을 확인 프롬프트 패턴. 걸리면 **입력 대기**. `[]`이면 끔 |
+| `promptPatterns` | 터미널 마지막 15줄에서 찾을 확인 프롬프트 패턴. 걸리면 **입력 대기**. 글자 패턴은 줄 맨 앞이나 맨 끝에 있을 때만 맞습니다(대화 본문에 인용된 문구는 무시). `/정규식/`은 그대로. `[]`이면 끔 |
 | `ignoreSpinnerChanges` | 숫자·스피너 문자만 바뀌는 출력은 활동으로 보지 않음 (멈춘 채 스피너만 도는 에이전트를 잡기 위함) |
 | `sessionExitIsError` | 등록된 tmux 세션이 없을 때 오류로 표시할지 |
 | `notifications` | 상태가 입력 대기·정지 의심·오류로 바뀔 때 macOS 알림 |
