@@ -181,7 +181,7 @@ export function App() {
         <div className="side-foot">
           <span className={`conn conn-${conn}`} role="status">
             <span className="dot" aria-hidden="true" />
-            {conn === 'live' ? 'UPLINK // ON-LINE' : conn === 'down' ? 'UPLINK // LOST · 재연결 중' : 'UPLINK // SYNC'}
+            {conn === 'live' ? '서버 연결됨' : conn === 'down' ? '연결 끊김 · 재연결 중' : '연결 중'}
           </span>
           {snapshot && <span>마지막 갱신 {dateTime(snapshot.generatedAt)}</span>}
           <button type="button" className="theme" onClick={toggleTheme} aria-label={theme === 'dark' ? '밝은 테마로' : '어두운 테마로'}>

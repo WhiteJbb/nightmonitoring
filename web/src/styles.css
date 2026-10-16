@@ -482,6 +482,10 @@ button.quiet,
   gap: 10px;
   padding: 0 14px;
 }
+.side-foot .conn {
+  white-space: nowrap;
+  letter-spacing: 0.04em;
+}
 .side-foot .theme {
   justify-self: start;
   min-height: 40px;
