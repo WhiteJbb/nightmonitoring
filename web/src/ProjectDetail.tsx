@@ -454,6 +454,8 @@ export function TerminalTab({ project: p, now }: Props) {
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
   // 늘리면 터미널을 새로 붙인다 (끊김·pane 종료 뒤 "다시 연결")
   const [attempt, setAttempt] = useState(0);
+  // 전체 화면: 터미널이 창을 다 채우고, 붙은 터미널이 없으면 tmux 크기도 그 화면에 맞춘다
+  const [full, setFull] = useState(false);
   const [answering, setAnswering] = useState<string | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const autoFitted = useRef<string | null>(null);
@@ -492,14 +494,14 @@ export function TerminalTab({ project: p, now }: Props) {
   }
 
   // pane 이 터미널 영역과 크기가 다른지
-  const want = fitSize(viewRef.current);
+  const want = fitSize(viewRef.current, full);
   const misfit = size !== null && (size.cols !== want.cols || size.rows !== want.rows);
   const fit = () => {
     if (!pane) return;
     setFitting(true);
     setFitError(null);
     api
-      .fitPane(p.id, pane.id, fitSize(viewRef.current))
+      .fitPane(p.id, pane.id, fitSize(viewRef.current, full))
       .catch((e: unknown) => setFitError(errorMessage(e)))
       .finally(() => setFitting(false));
   };
@@ -580,7 +582,7 @@ export function TerminalTab({ project: p, now }: Props) {
         </dl>
       </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
-      <div className="term-frame" ref={frameRef}>
+      <div className={full ? 'term-frame full' : 'term-frame'} ref={frameRef}>
         {pane && (
           <div className="term-bar">
             {(t.panes.length > 1 || lost) && (
@@ -615,6 +617,19 @@ export function TerminalTab({ project: p, now }: Props) {
               <span className="dot" />
               {statusLabel}
             </span>
+            <button
+              type="button"
+              className="more-rows full-toggle"
+              aria-pressed={full}
+              onClick={() => {
+                const next = !full;
+                setFull(next);
+                // 바뀐 틀이 그려진 뒤에 재서 맞춘다
+                if (canFit && pane) requestAnimationFrame(() => void api.fitPane(p.id, pane.id, fitSize(viewRef.current, next)).catch((e: unknown) => setFitError(errorMessage(e))));
+              }}
+            >
+              {full ? '전체 화면 끝내기' : '전체 화면'}
+            </button>
             {status !== 'live' && status !== 'connecting' && (
               <button type="button" className="more-rows" onClick={() => setAttempt(attempt + 1)}>
                 다시 연결
@@ -624,7 +639,7 @@ export function TerminalTab({ project: p, now }: Props) {
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}

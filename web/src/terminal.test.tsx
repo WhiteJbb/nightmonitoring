@@ -26,6 +26,11 @@ const { FakeTerminal } = vi.hoisted(() => {
     attachCustomWheelEventHandler(h: (ev: WheelEvent) => boolean) {
       this.wheel = h;
     }
+    key: ((ev: KeyboardEvent) => boolean) | null = null;
+    attachCustomKeyEventHandler(h: (ev: KeyboardEvent) => boolean) {
+      this.key = h;
+    }
+    focus() {}
     reset() {
       this.resets++;
     }
@@ -200,6 +205,18 @@ test('keys typed into the terminal are posted as raw base64 bytes, one request a
   await tick();
   expect(posts()).toHaveLength(2);
   expect(posts()[1]![1].data).toBe(btoa('\x1b[A' + String.fromCharCode(...new TextEncoder().encode('한'))));
+});
+
+test('Shift+Enter in the terminal sends ESC+CR (a newline in Claude Code), plain Enter is left to xterm', async () => {
+  fetchMock.mockResolvedValue(json(200, { ok: true }));
+  await renderTab(project(ONE));
+  await init();
+  let handled = true;
+  act(() => void (handled = xterm().key!(new KeyboardEvent('keydown', { key: 'Enter', shiftKey: true }))));
+  await tick();
+  expect(handled).toBe(false);
+  expect(posts()).toEqual([['/api/projects/api/raw', { pane: '%12', data: b64('\x1b\r') }]]);
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'Enter' }))).toBe(true);
 });
 
 test('mouse moves without a button are not sent; wheel reports are', async () => {
