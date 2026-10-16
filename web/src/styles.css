@@ -1674,6 +1674,17 @@ fieldset.checks legend {
   .input-help {
     display: none;
   }
+  /* 휴대폰 대시보드: 누를 수 없는 숫자 칩(프로젝트·실행 중인 세션)은 빼고, 카드를 촘촘하게 */
+  .overview > span.stat {
+    display: none;
+  }
+  .board {
+    gap: 10px;
+  }
+  .board .card {
+    gap: 6px;
+    padding: 16px 20px;
+  }
   /* 드물게 쓰는 "모니터링 새로 시작"은 컴퓨터에서만. 휴대폰에선 카드가 먼저 보이게 */
   .page-head .meta button {
     display: none;
