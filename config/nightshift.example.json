@@ -9,7 +9,7 @@
   },
   "errorPatterns": ["error", "failed", "exception"],
   "errorIgnorePatterns": ["/\\b0 errors\\b/", "no errors", "/\\b0 failed\\b/"],
-  "promptPatterns": ["Do you want to", "Would you like to", "(y/n)", "[y/n]", "(yes/no)", "Press Enter to continue", "/❯\\s*1\\.\\s*Yes/"],
+  "promptPatterns": ["Do you want to", "Would you like to", "(y/n)", "[y/n]", "(yes/no)", "Press Enter to continue", "/^\\s*❯\\s*1\\.\\s*Yes/"],
   "ignoreSpinnerChanges": true,
   "sessionExitIsError": true,
   "notifications": true,

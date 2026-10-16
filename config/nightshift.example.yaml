@@ -19,7 +19,7 @@ promptPatterns:
   - "[y/n]"
   - (yes/no)
   - Press Enter to continue
-  - /❯\s*1\.\s*Yes/
+  - '/^\s*❯\s*1\.\s*Yes/'
 
 ignoreSpinnerChanges: true
 sessionExitIsError: true

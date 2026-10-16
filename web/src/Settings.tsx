@@ -22,7 +22,7 @@ type ToggleKey = (typeof TOGGLES)[number][0];
 const PATTERNS = [
   ['errorPatterns', '오류 패턴', '출력·로그에서 오류로 판정할 줄'],
   ['errorIgnorePatterns', '오류 제외 패턴', '오류 패턴에 걸려도 무시할 줄'],
-  ['promptPatterns', '입력 대기 패턴', '입력 대기 프롬프트로 판정할 줄'],
+  ['promptPatterns', '입력 대기 패턴', '입력 대기 프롬프트로 판정할 줄. 글자는 줄 맨 앞이나 맨 끝에 있을 때만 맞음'],
 ] as const;
 type PatternKey = (typeof PATTERNS)[number][0];
 

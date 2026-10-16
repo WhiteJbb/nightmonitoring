@@ -34,12 +34,26 @@ const VOLATILE_RE = /[\d\u2800-\u28ff✢✳✶✻✽✺·∗*|/\\—-]/g;
 export const stripVolatile = (s: string): string => s.replace(VOLATILE_RE, '');
 
 const PROMPT_SCAN_LINES = 15;
-/** 화면 마지막 줄들에서 입력 대기 프롬프트를 찾는다. 없으면 null. */
+// 줄 앞뒤의 공백·상자 테두리, 끝의 문장 부호
+const EDGE_RE = /^[\s│┃║▌]+|[\s│┃║▌]+$/g;
+const TAIL_PUNCT_RE = /[\s:?.!>]+$/;
+/**
+ * 화면 마지막 줄들에서 입력 대기 프롬프트를 찾는다. 없으면 null.
+ * 글자 패턴은 줄 맨 앞("Do you want to …")이나 맨 끝("… (y/n)")에 있을 때만 맞는다:
+ * 대화 본문 중간에 그 문구가 인용돼도 입력 대기로 보지 않는다. /정규식/ 은 그대로 쓴다.
+ */
 export function findPrompt(lines: string[], patterns: string[]): string | null {
   if (!patterns.length) return null;
-  const match = compileMatcher(patterns);
+  const tests = patterns.map((p) => {
+    if (/^\/(.+)\/([a-z]*)$/.test(p)) return compileMatcher([p]);
+    const needle = p.toLowerCase();
+    return (line: string) => {
+      const l = line.replace(EDGE_RE, '').toLowerCase();
+      return l.startsWith(needle) || l.endsWith(needle) || l.replace(TAIL_PUNCT_RE, '').endsWith(needle.replace(TAIL_PUNCT_RE, ''));
+    };
+  });
   const recent = lines.filter((l) => l.trim() !== '').slice(-PROMPT_SCAN_LINES);
-  return recent.find(match)?.trim() ?? null;
+  return recent.find((l) => tests.some((t) => t(l)))?.trim() ?? null;
 }
 
 const TAIL_BYTES = 64 * 1024;

@@ -124,6 +124,18 @@ describe('pattern helpers', () => {
     const scrolledAway = ['Overwrite? (y/n)', ...Array.from({ length: 20 }, (_, i) => `line ${i}`)];
     expect(findPrompt(scrolledAway, patterns)).toBeNull();
     expect(findPrompt(['Do you want to proceed?'], [])).toBeNull();
+    // 줄 끝의 (y/n)·[Y/n], 상자 테두리 안의 문구
+    expect(findPrompt(['Overwrite file? (y/n)'], patterns)).toBe('Overwrite file? (y/n)');
+    expect(findPrompt(['Proceed? [Y/n]: '], ['[y/n]'])).toBe('Proceed? [Y/n]:');
+    expect(findPrompt(['│ Do you want to make this edit? │'], patterns)).toBe('│ Do you want to make this edit? │');
+  });
+
+  it('ignores prompt words quoted in the middle of conversation text', () => {
+    const patterns = ['Do you want to', '(y/n)', '/^\\s*❯\\s*1\\.\\s*Yes/'];
+    const chat = ['⏺ 5. 입력 대기 줄 강조: 입력 대기 패턴((y/n), Do you want to 등)에 걸린 줄을 표시', '  알림 예: 입력 대기: ❯ 1. Yes 가 왔습니다', '❯ ', '  ⏵⏵ auto mode on'];
+    expect(findPrompt(chat, patterns)).toBeNull();
+    expect(findPrompt(['  Do you want to proceed?', '  ❯ 1. Yes', '    2. No'], patterns)).toBe('Do you want to proceed?');
+    expect(findPrompt(['  ❯ 1. Yes', '    2. No'], patterns)).toBe('❯ 1. Yes');
   });
 
   it('normalizes spinner and counter churn', () => {
