@@ -12,6 +12,7 @@ import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
 import type { TermSize } from './tmux.ts';
 import { clampSize, MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
+import { parseUpload } from './upload.ts';
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
@@ -77,6 +78,8 @@ export interface AppDeps {
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
     /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
     resize: (paneId: string, size: TermSize) => Promise<string | null>;
+    /** 올린 이미지를 저장하고 절대 경로를 돌려준다 */
+    saveUpload: (projectId: string, ext: string, data: Buffer) => Promise<string>;
   };
   /** 휴대폰 푸시 시험 전송. 실패하면 오류 메시지. 없으면(demo) 거부한다 */
   testPush?: () => Promise<string | null>;
@@ -142,19 +145,36 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
 
   // 웹에서 터미널로 키 입력을 보내는 유일한 경로. 임의 명령 실행과 같으므로 여러 겹으로 막는다:
   // allowInput 을 켠 프로젝트만, loopback·Tailscale 바인딩일 때만, 그 프로젝트 세션의 pane 으로만.
+  const inputBlocked = (project: { allowInput: boolean }): string | null => {
+    if (!terminal) return 'demo mode 에서는 입력을 보낼 수 없습니다';
+    if (!project.allowInput) return '이 프로젝트는 터미널 입력이 꺼져 있습니다. 설정 화면에서 켜세요.';
+    if (!isPrivateBind(config.host)) return '서버가 loopback·Tailscale 이 아닌 주소에 열려 있어 입력을 보낼 수 없습니다';
+    return null;
+  };
   api.post('/projects/:id/input', express.json({ limit: '32kb' }), async (req, res) => {
     const input = parseInput(req.body);
     if (typeof input === 'string') return void res.status(400).json({ error: input });
     const { project, pane } = findPane(req.params.id, input.pane);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
-    if (!terminal) return void res.status(403).json({ error: 'demo mode 에서는 입력을 보낼 수 없습니다' });
-    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 터미널 입력이 꺼져 있습니다. 설정 화면에서 켜세요.' });
-    if (!isPrivateBind(config.host)) return void res.status(403).json({ error: '서버가 loopback·Tailscale 이 아닌 주소에 열려 있어 입력을 보낼 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     terminal.log(project.id, input);
     const error = await terminal.send(input);
     if (error) return void res.status(500).json({ error });
     res.json({ ok: true });
+  });
+
+  // 이미지는 파일로 저장만 한다. 경로를 입력에 넣어 보내는 것은 평범한 글 입력과 같은 경로를 탄다.
+  // base64 는 원본의 4/3 이라 10MB 이미지가 14MB 안에 들어온다.
+  api.post('/projects/:id/upload', express.json({ limit: '14mb' }), async (req, res) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    const upload = parseUpload(req.body);
+    if (typeof upload === 'string') return void res.status(400).json({ error: upload });
+    res.json({ path: await terminal.saveUpload(project.id, upload.ext, upload.data) });
   });
 
   // 세션 만들기는 셸 프로세스를 띄우는 일이라 입력과 같은 범위(loopback·Tailscale)에서만 받는다.

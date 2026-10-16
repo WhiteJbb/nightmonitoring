@@ -126,7 +126,7 @@ describe('terminal API', () => {
     const runner = new Runner({ timeoutSec: 1, logDir: null });
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null) };
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
     const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -162,6 +162,19 @@ describe('terminal API', () => {
     expect((await post('open', { pane: '%1', text: 'x' }, { Origin: 'https://evil.example' })).status).toBe(403);
     expect((await fetch(`${(await start()).base}/open/input`, { method: 'POST', body: '{"pane":"%1","text":"x"}' })).status).toBe(400); // JSON 이 아닌 본문
     expect(terminal.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores an uploaded image under the same rules as input and returns its path', async () => {
+    const { base, terminal } = await start();
+    const upload = (id: string, body: unknown) => fetch(`${base}/${id}/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const png = { type: 'image/png', data: Buffer.from('png!').toString('base64') };
+    const ok = await upload('open', png);
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ path: '/up/open.png' });
+    expect(terminal.saveUpload).toHaveBeenCalledExactlyOnceWith('open', 'png', Buffer.from('png!'));
+    expect((await upload('open', { type: 'text/plain', data: 'aGk=' })).status).toBe(400);
+    expect((await upload('closed', png)).status).toBe(403);
+    expect((await upload('nope', png)).status).toBe(404);
   });
 
   it('fits an unattached session to the viewer, but never one with a terminal attached', async () => {
@@ -256,7 +269,7 @@ describe('session API', () => {
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
     const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null) };
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {
