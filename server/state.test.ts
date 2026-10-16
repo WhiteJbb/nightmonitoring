@@ -36,7 +36,9 @@ describe('state file', () => {
     expect(loadState(bad)).toBeNull();
     await writeFile(bad, '{"version": 99}');
     expect(loadState(bad)).toBeNull();
-    expect(warn).toHaveBeenCalledTimes(2);
+    await writeFile(bad, '{"version": 2, "monitor": {"startedAt": "x", "tracked": null}, "runner": {}}');
+    expect(loadState(bad)).toBeNull();
+    expect(warn).toHaveBeenCalledTimes(3);
     warn.mockRestore();
   });
 });

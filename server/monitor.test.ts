@@ -123,6 +123,25 @@ describe('Monitor', () => {
   });
 });
 
+describe('restart', () => {
+  it('keeps the terminal-activity clock instead of re-seeding it from tmux', async () => {
+    let now = T0;
+    const state = { output: ['a'], git: git() };
+    const first = new Monitor({ config, collector: fakeCollector(state), runs: noRuns, now: () => now });
+    await first.tick();
+    now += 10 * 60_000;
+    state.output = ['b'];
+    await first.tick();
+    const changedAt = new Date(now).toISOString();
+    expect(first.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(changedAt);
+
+    now += 10 * 60_000;
+    const m = new Monitor({ config, collector: fakeCollector(state), runs: noRuns, now: () => now, restore: JSON.parse(JSON.stringify(first.exportState())) });
+    await m.tick();
+    expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(changedAt);
+  });
+});
+
 describe('discover', () => {
   it('shows unconfigured tmux sessions as temporary projects and drops them when they close', async () => {
     let found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/scratch' }];

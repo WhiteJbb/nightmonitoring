@@ -128,7 +128,7 @@ export class Monitor {
     this.startedAt = opts.restore?.startedAt ?? new Date(this.now()).toISOString();
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
-      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(p.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos });
+      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(p.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, outputChangedAt: saved.outputChangedAt ?? null });
     }
     this.snapshot = this.build();
   }
@@ -176,7 +176,7 @@ export class Monitor {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos };
+      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, outputChangedAt: tr.outputChangedAt };
     }
     return { startedAt: this.startedAt, tracked };
   }
