@@ -426,7 +426,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
           <button type="button" className="more-rows" aria-pressed={wrap} title="긴 줄을 화면 폭에 맞춰 접습니다" onClick={() => setWrap(!wrap)}>
             줄바꿈
           </button>
-          {isLive && lines < MAX_LIVE_LINES && live.lines.length >= lines && (
+          {isLive && lines < MAX_LIVE_LINES && (
             <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
               이전 출력 더 보기
             </button>

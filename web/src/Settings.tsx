@@ -159,7 +159,7 @@ export function Settings() {
   }
   if (!view || !draft) return <div className="notice">불러오는 중…</div>;
 
-  const ro = !view.editable;
+  const ro = !view.editable || saving; // 저장 중의 수정은 응답이 덮어쓰므로 잠근다
   const dirty = JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
 
   const set = (patch: Partial<Draft>) => {
