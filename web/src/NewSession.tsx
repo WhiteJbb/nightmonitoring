@@ -1,3 +1,4 @@
+import type { AgentKind } from '../../shared/types.ts';
 import { useState } from 'react';
 import { ArrowRight } from '@phosphor-icons/react';
 import type { FormEvent } from 'react';
@@ -47,6 +48,8 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [pathEdit, setRepoPath] = useState<string | null>(null);
   const [session, setSession] = useState<string | null>(null);
   const [allowInput, setAllowInput] = useState(false);
+  // 만들자마자 띄울 에이전트 ('' = 셸만)
+  const [agent, setAgent] = useState<AgentKind | ''>('');
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
@@ -80,7 +83,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
     setError(null);
     api
       // 지금 보는 화면에 맞는 크기로 만든다: 터미널 탭에서 가로 스크롤이 생기지 않게
-      .createSession({ name: name.trim(), repoPath: repoPath.trim(), tmuxSession, allowInput, ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}), ...fitSize(null) })
+      .createSession({ name: name.trim(), repoPath: repoPath.trim(), tmuxSession, allowInput, ...(gitUrl.trim() ? { gitUrl: gitUrl.trim() } : {}), ...(agent ? { agent } : {}), ...fitSize(null) })
       .then(({ id }) => {
         // 새 프로젝트의 터미널 화면으로 바로 이동한다
         window.location.hash = `#/project/${encodeURIComponent(id)}`;
@@ -151,6 +154,17 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
             />
           </label>
           <p className="hint">공백, ":", "." 은 쓸 수 없습니다</p>
+        </div>
+        <div className="field">
+          <label>
+            <span>바로 시작할 에이전트</span>
+            <select value={agent} disabled={busy} onChange={(e) => setAgent(e.target.value as AgentKind | '')}>
+              <option value="">없음 (셸만)</option>
+              <option value="claude">Claude Code</option>
+              <option value="codex">Codex</option>
+            </select>
+          </label>
+          <p className="hint">새로 만든 세션에서 <code>claude</code> 또는 <code>codex</code> 를 쳐서 띄웁니다 (이미 있던 세션이면 건드리지 않음)</p>
         </div>
         <div className="field">
           <label className="check">

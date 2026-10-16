@@ -330,6 +330,10 @@ export interface UploadRequest {
  *
  * POST /api/projects/:id/session (본문 없음) — 등록된 프로젝트의 세션이 없을 때 그 이름으로 다시 만든다. 200 {ok:true} / 400 / 403 / 404
  */
+/** 새 세션에서 바로 띄울 수 있는 에이전트와 그 명령 (웹에서 임의 명령은 받지 않는다) */
+export const AGENT_COMMANDS = { claude: 'claude', codex: 'codex' } as const;
+export type AgentKind = keyof typeof AGENT_COMMANDS;
+
 export interface NewSessionRequest {
   /** 프로젝트 표시 이름 */
   name: string;
@@ -341,6 +345,8 @@ export interface NewSessionRequest {
   allowInput: boolean;
   /** 있으면 repoPath 에 먼저 git clone 한다 (https://, ssh://, git@host:path 만). 이미 저장소가 있으면 건너뛴다 */
   gitUrl?: string;
+  /** 새 세션에서 바로 시작할 에이전트. 정해진 명령만 친다 (AGENT_COMMANDS) */
+  agent?: AgentKind;
   /** 세션의 화면 크기. 보는 화면에 맞춰 보내면 가로 스크롤이 생기지 않는다 (생략 시 120×40) */
   cols?: number;
   rows?: number;

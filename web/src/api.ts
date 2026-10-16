@@ -47,6 +47,7 @@ export const api = {
   createSession: (body: NewSessionRequest) => req<{ id: string }>('/api/sessions', 'POST', body),
   hideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'POST'),
   unhideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'DELETE'),
+  killSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'DELETE'),
   startSession: (id: string, size: TermSize) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
   fitPane: (id: string, paneId: string, size: TermSize) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', size),

@@ -17,9 +17,10 @@ import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
 import type { TermSize } from './tmux.ts';
-import { capturePaneNow, newSession, resizeWindow, sendRaw } from './tmux.ts';
+import { capturePaneNow, hasSession, killSession, newSession, resizeWindow, sendRaw, typeLine } from './tmux.ts';
 import { TermStreams } from './termstream.ts';
-import type { TermEvent } from '../shared/types.ts';
+import type { AgentKind, TermEvent } from '../shared/types.ts';
+import { AGENT_COMMANDS } from '../shared/types.ts';
 import { saveUpload } from './upload.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -158,11 +159,15 @@ async function main() {
         },
       };
   const inputLog = path.join(ROOT, '.nightshift/input.log');
-  const createSession = async (name: string, repoPath: string, size: TermSize): Promise<string | null> => {
+  const createSession = async (name: string, repoPath: string, size: TermSize, agent?: AgentKind): Promise<string | null> => {
     if (!SESSION_RE.test(name)) return '세션 이름이 올바르지 않습니다';
     const cwd = expandPath(repoPath, ROOT);
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return `디렉터리가 없습니다: ${cwd}`;
-    return newSession(name, cwd, size);
+    const existed = await hasSession(name);
+    const error = await newSession(name, cwd, size);
+    // 에이전트는 새로 만든 세션에만 띄운다 (이미 있던 세션에 글자를 치지 않는다)
+    if (error || !agent || existed) return error;
+    return typeLine(name, AGENT_COMMANDS[agent]);
   };
   const cloneRepoTo = async (url: string, repoPath: string): Promise<string | null> => {
     const dir = expandPath(repoPath, ROOT);
@@ -170,7 +175,7 @@ async function main() {
     // clone 도 등록된 명령과 같은 시간 제한을 쓴다 (hot reload 를 따라가게 매번 읽는다)
     return cloneRepo(url, dir, monitor.config.commandTimeoutSec * 1000);
   };
-const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, sendRaw, stream: (session: string, pane: string, sink: (e: TermEvent) => void) => streams.subscribe(session, pane, sink), log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
+const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, sendRaw, stream: (session: string, pane: string, sink: (e: TermEvent) => void) => streams.subscribe(session, pane, sink), log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, killSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
   const app = createApp({ config, monitor, runner, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 

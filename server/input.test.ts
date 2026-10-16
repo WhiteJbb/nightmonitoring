@@ -128,7 +128,7 @@ describe('terminal API', () => {
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
     const sinks: ((e: TermEvent) => void)[] = [];
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string, size: unknown, agent?: string) => Promise<string | null>>(async () => null), killSession: vi.fn<(name: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
     const server = createApp({ config, monitor, runner, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -300,9 +300,9 @@ describe('session API', () => {
     };
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
+    const createSession = vi.fn<(name: string, repoPath: string, size?: unknown, agent?: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
     const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, killSession: vi.fn(async () => null), cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {
@@ -325,12 +325,26 @@ describe('session API', () => {
   it('creates a session and registers it as a project in one step', async () => {
     const { post, createSession, monitor, file } = await start();
     expect(await post('/sessions', { name: 'New Agent', repoPath: '~/code/new', tmuxSession: 'new-agent', allowInput: true, testCommand: 'id' })).toEqual([200, { id: 'new-agent' }]);
-    expect(createSession).toHaveBeenCalledExactlyOnceWith('new-agent', '~/code/new', { cols: 120, rows: 40 });
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('new-agent', '~/code/new', { cols: 120, rows: 40 }, undefined);
     expect(monitor.snapshot.projects.map((p) => p.id)).toEqual(['old', 'nosession', 'new-agent']);
     const added = loadConfig(file, '/base').config.projects[2]!;
     expect(added).toMatchObject({ name: 'New Agent', tmuxSession: 'new-agent', allowInput: true, testCommand: null });
     // 기존 프로젝트의 명령은 그대로
     expect(loadConfig(file, '/base').config.projects[0]!.testCommand).toBe('npm test');
+  });
+
+  it('ending a session needs the same permission as input', async () => {
+    const { post } = await start();
+    expect((await post('/projects/nope/session', undefined, 'DELETE'))[0]).toBe(404);
+    expect((await post('/projects/old/session', undefined, 'DELETE'))[0]).toBe(403); // 입력이 꺼진 프로젝트
+  });
+
+  it('starts only a known agent in the new session', async () => {
+    const { post, createSession } = await start();
+    expect((await post('/sessions', { name: 'A', repoPath: '/r', tmuxSession: 'a1', agent: 'rm -rf /' }))[0]).toBe(400);
+    expect(createSession).not.toHaveBeenCalled();
+    expect((await post('/sessions', { name: 'A', repoPath: '/r', tmuxSession: 'a1', agent: 'claude' }))[0]).toBe(200);
+    expect(createSession).toHaveBeenCalledWith('a1', '/r', { cols: 120, rows: 40 }, 'claude');
   });
 
   it('rejects incomplete, duplicate and invalid requests without registering anything', async () => {

@@ -1,6 +1,7 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import type { ConfigView, EditableProject, RawInputRequest, Snapshot, TermEvent } from '../shared/types.ts';
+import type { AgentKind, ConfigView, EditableProject, RawInputRequest, Snapshot, TermEvent } from '../shared/types.ts';
+import { AGENT_COMMANDS } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
@@ -84,7 +85,9 @@ export interface AppDeps {
     stream: (session: string, paneId: string, sink: (e: TermEvent) => void) => () => void;
     log: (projectId: string, input: ParsedInput) => void;
     /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
-    createSession: (name: string, repoPath: string, size: TermSize) => Promise<string | null>;
+    createSession: (name: string, repoPath: string, size: TermSize, agent?: AgentKind) => Promise<string | null>;
+    /** 세션을 끝낸다. 실패하면 오류 메시지 */
+    killSession: (name: string) => Promise<string | null>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
     /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
@@ -291,6 +294,19 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     res.json({ ok: true });
   });
 
+  // 세션 끝내기: 입력과 같은 조건(입력 허용 프로젝트, loopback·Tailscale). 안에서 돌던 프로그램도 같이 끝난다
+  api.delete('/projects/:id/session', async (req, res) => {
+    const project = monitor.config.projects.find((p) => p.id === req.params.id);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
+    const error = await terminal.killSession(project.tmuxSession);
+    if (error) return void res.status(400).json({ error });
+    await monitor.tick();
+    res.json({ ok: true });
+  });
+
   const editableProjects = (view: ConfigView): EditableProject[] =>
     view.projects.map(({ id, name, repoPath, tmuxSession, logFile, allowInput }) => ({ id, name, repoPath, tmuxSession, logFile, allowInput }));
 
@@ -300,7 +316,8 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
-    const { name, repoPath, tmuxSession, allowInput, gitUrl, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
+    const { name, repoPath, tmuxSession, allowInput, gitUrl, agent, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
+    if (agent !== undefined && agent !== null && !(typeof agent === 'string' && agent in AGENT_COMMANDS)) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
     }
@@ -316,7 +333,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
       if (cloneError) return void res.status(400).json({ error: `git clone 실패: ${cloneError}` });
     }
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
-    const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows));
+    const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows), typeof agent === 'string' ? (agent as AgentKind) : undefined);
     if (error) return void res.status(400).json({ error });
     // clone 하는 동안 설정이 바뀌었을 수 있으니 쓰기 직전에 다시 읽는다.
     const latest = configEditor.view();
