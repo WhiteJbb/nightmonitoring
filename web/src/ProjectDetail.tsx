@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
@@ -129,7 +129,47 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
   const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  // 이미지는 서버에 파일로 저장하고 그 경로를 입력 칸에 넣는다. Claude Code·Codex 는 프롬프트 안의 이미지 경로를 첨부로 읽는다.
+  const attach = (file: File | undefined) => {
+    if (!file || !file.type.startsWith('image/')) return;
+    setUploading(true);
+    setError(null);
+    const reader = new FileReader();
+    reader.onload = () => {
+      api
+        .upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' })
+        .then(
+          ({ path }) => {
+            setText((cur) => `${cur.trimEnd()}${cur.trim() ? ' ' : ''}${path} `);
+            inputRef.current?.focus();
+          },
+          (e: unknown) => setError(errorMessage(e)),
+        )
+        .finally(() => setUploading(false));
+    };
+    reader.onerror = () => {
+      setError('이미지를 읽지 못했습니다');
+      setUploading(false);
+    };
+    reader.readAsDataURL(file);
+  };
+  const imageOf = (files: FileList | undefined) => (files ? [...files].find((f) => f.type.startsWith('image/')) : undefined);
+  const onPaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    const file = imageOf(e.clipboardData?.files);
+    if (!file) return; // 글은 평소대로 붙는다
+    e.preventDefault();
+    attach(file);
+  };
+  const onDrop = (e: DragEvent<HTMLTextAreaElement>) => {
+    const file = imageOf(e.dataTransfer?.files);
+    if (!file) return;
+    e.preventDefault();
+    attach(file);
+  };
 
   // 입력칸은 잠그지 않는다(포커스 유지). 보내는 중의 전송 시도만 무시한다
   const send = (body: InputRequest) => {
@@ -194,6 +234,9 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          onDrop={onDrop}
+          onDragOver={(e) => e.preventDefault()}
         />
         <button type="button" className="primary" disabled={busy} onClick={() => sendText(true)}>
           보내기
@@ -201,6 +244,20 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
         <button type="button" disabled={busy || text === ''} onClick={() => sendText(false)}>
           Enter 없이 입력
         </button>
+        <button type="button" disabled={uploading} title="이미지를 골라 파일로 저장하고 경로를 입력에 넣습니다 (붙여넣기·끌어다 놓기도 됩니다)" onClick={() => fileRef.current?.click()}>
+          {uploading ? '올리는 중…' : '이미지'}
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          hidden
+          aria-label="이미지 파일"
+          onChange={(e) => {
+            attach(e.target.files?.[0]);
+            e.target.value = '';
+          }}
+        />
       </div>
       <div className={moreKeys ? 'keys open' : 'keys'} role="group" aria-label="특수 키">
         {KEYS.map(([key, label, title]) => (
@@ -225,7 +282,7 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           {error}
         </p>
       )}
-      <p className="hint">입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다.</p>
+      <p className="hint">입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다. 이미지를 붙여넣거나 끌어다 놓으면 파일로 저장돼 경로가 들어갑니다.</p>
     </div>
   );
 }

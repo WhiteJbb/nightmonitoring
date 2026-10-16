@@ -219,7 +219,7 @@ test('input bar is hidden and the config hint is shown when allowInput is false'
 test('Enter sends the text with enter:true, clears the input, keeps focus and polls right away', async () => {
   serve(() => json(200, { lines: ['live'] }));
   await renderTab(project(ONE));
-  expect(screen.getByText('입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다.')).toBeTruthy();
+  expect(screen.getByText(/^입력은 선택한 pane 에 그대로 전달됩니다/)).toBeTruthy();
   expect(gets()).toHaveLength(1);
 
   type('npm test');
@@ -253,6 +253,27 @@ test('Enter during IME composition does not send', async () => {
   await tick();
   expect(posts()).toEqual([]);
   expect(box().value).toBe('한그');
+});
+
+test('pasting an image uploads it and puts the saved path into the input', async () => {
+  fetchMock.mockImplementation(async (url, init) => {
+    if (init?.method === 'POST' && String(url).endsWith('/upload')) {
+      const body = JSON.parse(init.body as string) as { type: string; data: string };
+      expect(body.type).toBe('image/png');
+      expect(Buffer.from(body.data, 'base64').toString()).toBe('png!');
+      return json(200, { path: '/Users/me/.nightshift/uploads/api-1.png' });
+    }
+    return json(200, { lines: [] });
+  });
+  await renderTab(project(ONE));
+  type('이 화면 봐줘');
+  const file = new File(['png!'], 'shot.png', { type: 'image/png' });
+  fireEvent.paste(box(), { clipboardData: { files: [file], getData: () => '' } });
+  await tick();
+  // FileReader 는 타이머가 아니라 실제 비동기라 몇 번 더 기다린다
+  for (let i = 0; i < 20 && !box().value.includes('uploads'); i++) await tick(10);
+  expect(box().value).toBe('이 화면 봐줘 /Users/me/.nightshift/uploads/api-1.png ');
+  expect(posts().map(([url]) => url)).toEqual(['/api/projects/api/upload']);
 });
 
 test('empty Enter and the 보내기 button send just the Enter key', async () => {

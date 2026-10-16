@@ -289,6 +289,17 @@ export interface InputRequest {
   key?: InputKey;
 }
 
+/**
+ * POST /api/projects/:id/upload — 이미지를 서버에 파일로 저장한다 (입력과 같은 조건에서만 허용).
+ * 응답: 200 {path} — 이 절대 경로를 입력에 넣으면 에이전트가 첨부로 읽는다.
+ */
+export interface UploadRequest {
+  /** image/png · image/jpeg · image/gif · image/webp */
+  type: string;
+  /** base64 (10MB 이하) */
+  data: string;
+}
+
 // ---- tmux 세션 만들기 ----
 
 /**
