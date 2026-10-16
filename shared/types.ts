@@ -62,6 +62,8 @@ export interface SinceBaseline {
   files: FileStat[];
   additions: number;
   deletions: number;
+  /** 실시간 스트림에서 commits·files 를 뺀 것. 전체는 GET /api/projects/:id 로 받는다 */
+  partial?: boolean;
 }
 
 /** 경로가 Git 저장소가 아닐 때의 git.error. 오류 상태로 치지 않는다 (tmux 세션만 보는 프로젝트) */

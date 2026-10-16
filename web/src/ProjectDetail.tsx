@@ -728,7 +728,21 @@ function Stats({ files, additions, deletions, empty }: { files: FileStat[]; addi
 }
 
 export function GitTab({ project: p, now }: Props) {
-  const { git, since } = p;
+  const { git } = p;
+  // 실시간 스냅샷의 기준점 정보는 목록이 빠진 요약이다 (partial). 탭을 열거나 Git 이 바뀌면 전체를 받는다
+  const [full, setFull] = useState<ProjectSnapshot['since']>(null);
+  useEffect(() => {
+    if (!p.since?.partial) return;
+    let live = true;
+    api.project(p.id).then(
+      (x) => live && setFull(x.since),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [p.id, p.lastGitChangeAt, p.since?.partial]);
+  const since = p.since?.partial ? full : p.since;
   return (
     <>
       {git.ok ? (
