@@ -233,7 +233,7 @@ const FORWARD: Record<string, InputKey> = {
 const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' };
 
 /** pane: 입력을 보낼 pane. 고른 pane 이 사라졌으면 null 이고, 다시 고를 때까지 보내지 않는다 */
-function InputBar({ projectId, pane: target }: { projectId: string; pane: TmuxPane | null }) {
+function InputBar({ projectId, pane: target, showTarget }: { projectId: string; pane: TmuxPane | null; showTarget: boolean }) {
   const pane = target?.id ?? '';
   const [text, setText] = useState('');
   const [moreKeys, setMoreKeys] = useState(false);
@@ -342,11 +342,18 @@ function InputBar({ projectId, pane: target }: { projectId: string; pane: TmuxPa
   const blocked = busy || !target || uploading > 0;
   return (
     <div className="input-bar">
+      {/* pane 이 하나뿐이면 보낼 곳이 뻔하니 숨긴다 */}
       {target ? (
-        <p className="input-target">
-          보낼 곳: <span className="mono">{target.window}:{target.windowName} · {target.index}</span> <span className="dim mono">{target.command}</span>
-          {uploading > 0 && <span className="warn"> · 이미지 올리는 중…</span>}
-        </p>
+        (showTarget || uploading > 0) && (
+          <p className="input-target">
+            {showTarget && (
+              <>
+                보낼 곳: <span className="mono">{target.window}:{target.windowName} · {target.index}</span> <span className="dim mono">{target.command}</span>
+              </>
+            )}
+            {uploading > 0 && <span className="warn">{showTarget ? ' · ' : ''}이미지 올리는 중…</span>}
+          </p>
+        )
       ) : (
         <p className="err input-target" role="alert">
           선택한 pane 이 사라졌습니다. 위에서 pane 을 다시 고르면 보낼 수 있습니다.
@@ -586,7 +593,7 @@ export function TerminalTab({ project: p, now }: Props) {
       </div>
       {pane &&
         (p.allowInput ? (
-          <InputBar projectId={p.id} pane={lost ? null : pane} />
+          <InputBar projectId={p.id} pane={lost ? null : pane} showTarget={t.panes.length > 1} />
         ) : (
           <p className="hint">{p.id.startsWith('tmux:') ? '입력을 보내려면 먼저 위의 "프로젝트로 등록"으로 등록한 뒤, 설정에서 "터미널 입력 허용"을 켜세요.' : '입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.'}</p>
         ))}
