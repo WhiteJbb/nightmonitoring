@@ -47,14 +47,11 @@ export interface Config {
   sessionExitIsError: boolean;
   /** 상태가 입력 대기·정지 의심·오류로 바뀔 때 macOS 알림 */
   notifications: boolean;
-  /** Morning Report 자동 생성 시각 "HH:MM" (로컬 시간). null 이면 끔 */
-  autoReportTime: string | null;
   /** 휴대폰 푸시를 보낼 ntfy 주소. null 이면 보내지 않는다 */
   ntfyUrl: string | null;
   /** 어떤 상태로 바뀔 때 휴대폰 푸시를 보낼지 */
   ntfyStates: ProjectState[];
   commandTimeoutSec: number;
-  reportsDir: string;
   /** 설정에 없어도 카드로 뜨는 tmux 세션 중 대시보드에서 숨길 이름 */
   hiddenSessions: string[];
   projects: ProjectConfig[];
@@ -73,11 +70,9 @@ export const DEFAULTS = {
   ignoreSpinnerChanges: true,
   sessionExitIsError: true,
   notifications: true,
-  autoReportTime: null as string | null,
   ntfyUrl: null as string | null,
   ntfyStates: ['waiting', 'stalled', 'error'] as ProjectState[],
   commandTimeoutSec: 600,
-  reportsDir: 'reports',
   hiddenSessions: [] as string[],
 };
 
@@ -171,9 +166,6 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     } else issues.push('allowedHosts: 호스트 이름 문자열의 배열이어야 합니다 (포트·경로 없이)');
   }
 
-  const autoReportTime = optStr(raw, 'autoReportTime', '');
-  if (autoReportTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(autoReportTime)) issues.push('autoReportTime: "HH:MM" 형식이어야 합니다 (예: "07:00")');
-
   const projects: ProjectConfig[] = [];
   const rawProjects = raw.projects ?? [];
   if (!Array.isArray(rawProjects)) issues.push('projects: 배열이어야 합니다');
@@ -243,11 +235,9 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     ignoreSpinnerChanges: bool('ignoreSpinnerChanges', DEFAULTS.ignoreSpinnerChanges),
     sessionExitIsError: bool('sessionExitIsError', DEFAULTS.sessionExitIsError),
     notifications: bool('notifications', DEFAULTS.notifications),
-    autoReportTime,
     ntfyUrl,
     ntfyStates,
     commandTimeoutSec: num(raw, 'commandTimeoutSec', DEFAULTS.commandTimeoutSec, '', 1),
-    reportsDir: expandPath(optStr(raw, 'reportsDir', '') ?? DEFAULTS.reportsDir, baseDir),
     projects,
   };
   if (issues.length) throw new ConfigError(issues);

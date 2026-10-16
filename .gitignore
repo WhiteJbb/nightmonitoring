@@ -2,12 +2,9 @@ node_modules
 dist
 .nightshift
 config/nightshift.json
-reports/*
-!reports/.gitkeep
 .DS_Store
 .playwright-mcp
 context.md
-NIGHT_REPORT.md
 .claude
 *.log
 .agents

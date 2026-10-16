@@ -1,5 +1,5 @@
 // Demo mode: tmux 세션이나 Git 저장소 없이 UI 전체를 확인하기 위한 가짜 Collector.
-// 상태 판정·보고서·UI 는 실제 코드가 그대로 돈다.
+// 상태 판정·UI 는 실제 코드가 그대로 돈다.
 import type { Commit, FileStat, GitInfo, RunResult } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import type { ConfiguredExec } from './exec.ts';

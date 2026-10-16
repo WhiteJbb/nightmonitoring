@@ -8,7 +8,6 @@ import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
-import { listReports, readReport, saveReport } from './report.ts';
 import type { Runner } from './runner.ts';
 import type { TermSize } from './tmux.ts';
 import { clampSize, MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
@@ -74,8 +73,6 @@ export interface AppDeps {
   config: Config;
   monitor: Monitor;
   runner: Runner;
-  /** hot reload 로 바뀔 수 있어 매번 묻는다 */
-  reportsDir: () => string;
   /** 실시간 pane 보기와 키 입력. 없으면(demo) 스냅샷의 출력만 돌려주고 입력은 거부한다 */
   terminal?: {
     capture: (paneId: string, lines: number) => Promise<string[]>;
@@ -105,7 +102,7 @@ export interface AppDeps {
   };
 }
 
-export function createApp({ config, monitor, runner, reportsDir, configEditor, terminal, testPush }: AppDeps) {
+export function createApp({ config, monitor, runner, configEditor, terminal, testPush }: AppDeps) {
   const app = express();
   app.disable('x-powered-by');
   app.use(guard(config));
@@ -357,16 +354,6 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (error) return void res.status(400).json({ error });
     res.json({ ok: true });
   });
-
-  api.get('/reports', async (_req, res) => void res.json(await listReports(reportsDir())));
-
-  api.get('/reports/:name', async (req, res) => {
-    const report = await readReport(reportsDir(), req.params.name);
-    if (!report) return void res.status(404).json({ error: '보고서를 찾을 수 없습니다' });
-    res.json(report);
-  });
-
-  api.post('/reports', async (_req, res) => void res.json(await saveReport(reportsDir(), monitor.snapshot)));
 
   api.use((_req, res) => void res.status(404).json({ error: '없는 API 입니다' }));
   // Express 는 인자 4개인 함수만 오류 핸들러로 인식한다.

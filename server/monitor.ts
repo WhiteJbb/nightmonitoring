@@ -381,7 +381,6 @@ export class Monitor {
       configPath: this.opts.configPath ?? '',
       configMissing: this.opts.configMissing ?? false,
       configError: this.configError,
-      autoReportTime: config.autoReportTime,
       summary: {
         total: projects.length,
         sessionsRunning: projects.filter((p) => p.tmux.exists).length,

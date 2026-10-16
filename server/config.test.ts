@@ -8,12 +8,15 @@ describe('parseConfig', () => {
     expect(c.host).toBe('127.0.0.1');
     expect(c.refreshIntervalSec).toBe(5);
     expect(c.thresholds).toEqual(DEFAULTS.thresholds);
-    expect(c.reportsDir).toBe('/base/reports');
     expect(c.projects).toEqual([]);
     expect(c.allowedHosts).toEqual([]);
     expect(parseConfig({ allowedHosts: ['Mac.Tailnet.ts.net'] }, '/base').allowedHosts).toEqual(['mac.tailnet.ts.net']);
-    expect(c).toMatchObject({ ignoreSpinnerChanges: true, notifications: true, autoReportTime: null });
-    expect(parseConfig({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] }, '/base')).toMatchObject({ autoReportTime: '07:30', errorPatterns: ['/^E\\d+/'] });
+    expect(c).toMatchObject({ ignoreSpinnerChanges: true, notifications: true });
+    expect(parseConfig({ errorPatterns: ['/^E\\d+/'] }, '/base')).toMatchObject({ errorPatterns: ['/^E\\d+/'] });
+    // 없어진 보고서 설정이 남아 있는 예전 파일도 그대로 읽는다
+    const legacy = parseConfig({ autoReportTime: '7am', reportsDir: 42 }, '/base');
+    expect(legacy).not.toHaveProperty('autoReportTime');
+    expect(legacy).not.toHaveProperty('reportsDir');
   });
 
   it('resolves paths and rejects duplicate ids', () => {
@@ -52,7 +55,6 @@ describe('parseConfig', () => {
       errorPatterns: 'error',
       promptPatterns: ['/(/'],
       notifications: 'yes',
-      autoReportTime: '7am',
       allowedHosts: ['https://mac.ts.net/'],
       projects: [{ name: 'a' }, { name: 'b', repoPath: '/b', tmuxSession: 'bad:name' }, { name: 'c', repoPath: '/c', tmuxSession: '-t' }, { name: 'd', repoPath: '/d', tmuxSession: '$1' }],
     };
@@ -61,7 +63,7 @@ describe('parseConfig', () => {
       expect.unreachable();
     } catch (e) {
       expect(e).toBeInstanceOf(ConfigError);
-      expect((e as ConfigError).issues).toHaveLength(11);
+      expect((e as ConfigError).issues).toHaveLength(10);
     }
   });
 });

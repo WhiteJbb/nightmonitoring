@@ -129,7 +129,7 @@ describe('terminal API', () => {
     await monitor.tick();
     const sinks: ((e: TermEvent) => void)[] = [];
     const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
-    const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
+    const server = createApp({ config, monitor, runner, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/projects`;
@@ -311,7 +311,7 @@ describe('session API', () => {
         return readConfigView(file, '/base');
       },
     };
-    const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', configEditor, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
+    const server = createApp({ config, monitor, runner, configEditor, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;

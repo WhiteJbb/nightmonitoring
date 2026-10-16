@@ -10,10 +10,9 @@ import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
-import { alertsFor, autoReportDue, exportAlerts, localDate, MAC_ALERT_STATES, restoreAlerts } from './notify.ts';
+import { alertsFor, exportAlerts, MAC_ALERT_STATES, restoreAlerts } from './notify.ts';
 import { sendNtfy, withRetry } from './push.ts';
 import { reloadConfig } from './reload.ts';
-import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
 import type { TermSize } from './tmux.ts';
@@ -32,7 +31,6 @@ const option = (name: string) => (args.includes(name) ? args[args.indexOf(name) 
 const dev = flag('--dev');
 const demo = flag('--demo') || process.env.NIGHTSHIFT_DEMO === '1';
 const configPath = path.resolve(option('--config') ?? process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath('config'));
-const processStartedAt = new Date();
 
 // 예상하지 못한 비동기 오류 하나로 관제 서버가 죽지 않게 한다.
 process.on('unhandledRejection', (e) => console.error('unhandledRejection:', e));
@@ -77,14 +75,11 @@ async function main() {
     return sendNtfy(url, { title: 'NightShift 시험 알림', message: '이 알림이 보이면 휴대폰 푸시가 연결된 것입니다.', ...clickFor() });
   };
 
-  const reportsDir = () => (demo ? path.join(monitor.config.reportsDir, 'demo') : monitor.config.reportsDir);
-  let lastAutoReportDate = saved?.lastAutoReportDate ?? null;
   // 재시작해도 이미 보낸 알림을 다시 보내지 않게 저장해 둔 기억에서 시작한다
   const alertMemory = restoreAlerts(saved?.alerts);
-  let autoReportBusy = false;
 
   if (!demo) {
-    // 상태 변화 알림과 예약된 Morning Report. 둘 다 실패해도 감시는 계속된다.
+    // 상태 변화 알림. 실패해도 감시는 계속된다.
     monitor.subscribe((snapshot) => {
       const alerts = alertsFor(alertMemory, snapshot);
       for (const a of alerts) {
@@ -95,21 +90,6 @@ async function main() {
           const msg = { title: a.title, message: a.message, state: a.state, ...clickFor(a.projectId) };
           void withRetry(() => sendNtfy(ntfyUrl, msg)).then((error) => error && console.error(`${error} (${a.title})`));
         }
-      }
-
-      const now = new Date();
-      if (!autoReportBusy && autoReportDue(now, monitor.config.autoReportTime, lastAutoReportDate, processStartedAt)) {
-        autoReportBusy = true;
-        // 성공했을 때만 날짜를 기록해, 실패하면 다음 tick 에 다시 시도한다.
-        saveReport(reportsDir(), snapshot, now)
-          .then(
-            (r) => {
-              lastAutoReportDate = localDate(now);
-              console.log(`Morning Report 자동 생성: ${r.name}`);
-            },
-            (e: Error) => console.error(`Morning Report 자동 생성 실패: ${e.message}`),
-          )
-          .finally(() => (autoReportBusy = false));
       }
     });
 
@@ -122,7 +102,7 @@ async function main() {
   if (stateFile) {
     let last = '';
     monitor.subscribe(() => {
-      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate, alerts: exportAlerts(alertMemory) };
+      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), alerts: exportAlerts(alertMemory) };
       const json = JSON.stringify(state);
       if (json === last) return;
       try {
@@ -168,7 +148,7 @@ async function main() {
   };
   const streams = new TermStreams();
 const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, sendRaw, stream: (session: string, pane: string, sink: (e: TermEvent) => void) => streams.subscribe(session, pane, sink), log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
-  const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
+  const app = createApp({ config, monitor, runner, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 
   if (dev) {

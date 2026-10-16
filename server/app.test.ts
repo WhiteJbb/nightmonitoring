@@ -10,7 +10,7 @@ const config = parseConfig({ projects: [{ name: 'app', repoPath: '/repo/app', te
 const exec = vi.fn(async () => ({ code: 0, stdout: '', stderr: '', timedOut: false }));
 const runner = new Runner({ timeoutSec: 1, logDir: null, exec });
 const monitor = new Monitor({ config, collector: demoCollector(), runs: runner.get });
-const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent/reports' }).listen(0, '127.0.0.1');
+const server = createApp({ config, monitor, runner }).listen(0, '127.0.0.1');
 let base = '';
 
 beforeAll(async () => {
@@ -60,7 +60,7 @@ describe('API', () => {
     // 같은 호스트의 다른 포트(다른 개발 서버)도 다른 출처다
     const otherPort = await fetch(`${base}/api/projects/app/run/test`, { method: 'POST', headers: { Origin: base.replace(/:\d+$/, ':8443') } });
     expect(otherPort.status).toBe(403);
-    const same = await fetch(`${base}/api/reports/x`, { headers: { Origin: base } });
+    const same = await fetch(`${base}/api/nope`, { headers: { Origin: base } });
     expect(same.status).toBe(404);
   });
 
@@ -88,7 +88,7 @@ describe('API', () => {
 
   it('sends a test push through the injected sender, and refuses without one', async () => {
     const testPush = vi.fn<() => Promise<string | null>>(async () => null);
-    const withPush = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent/reports', testPush }).listen(0, '127.0.0.1');
+    const withPush = createApp({ config, monitor, runner, testPush }).listen(0, '127.0.0.1');
     await new Promise((resolve) => withPush.once('listening', resolve));
     const url = `http://127.0.0.1:${(withPush.address() as AddressInfo).port}/api/notify/test`;
     expect((await fetch(url, { method: 'POST' })).status).toBe(200);
@@ -101,9 +101,9 @@ describe('API', () => {
     expect((await fetch(`${base}/api/notify/test`, { method: 'POST' })).status).toBe(403);
   });
 
-  it('returns JSON 404 for unknown reports and routes', async () => {
-    expect((await fetch(`${base}/api/reports/..%2F..%2Fpackage.json`)).status).toBe(404);
-    expect((await fetch(`${base}/api/nope`)).status).toBe(404);
-    expect(await (await fetch(`${base}/api/reports`)).json()).toEqual([]);
+  it('returns JSON 404 for unknown routes', async () => {
+    const res = await fetch(`${base}/api/nope`);
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: '없는 API 입니다' });
   });
 });

@@ -268,7 +268,6 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
     configPath: '/c.json',
     configMissing: false,
     configError: null,
-    autoReportTime: '07:00',
     summary: { total: 1, sessionsRunning: 1, running: 0, waiting: 1, idle: 0, stalled: 0, error: 0 },
     projects: [project({ status: { state: 'waiting', reasons: [] } })],
   };
@@ -285,7 +284,6 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
   const meta = container.querySelector('.meta')?.textContent ?? '';
   expect(meta).toContain('2시간 전');
   expect(meta).toContain('갱신 주기 5초');
-  expect(meta).toContain('자동 보고서 07:00');
 
   const confirm = vi.fn(() => false);
   vi.stubGlobal('confirm', confirm);
@@ -326,7 +324,6 @@ const dash = (over: Partial<Snapshot> = {}): Snapshot => ({
   configPath: '/c.json',
   configMissing: false,
   configError: null,
-  autoReportTime: null,
   summary: { total: 1, sessionsRunning: 1, running: 0, waiting: 1, idle: 0, stalled: 0, error: 0 },
   projects: [project({ status: { state: 'waiting', reasons: [] } })],
   ...over,

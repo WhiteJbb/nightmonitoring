@@ -21,11 +21,14 @@ const gitInfo = (head: string): GitInfo => ({ ok: true, branch: 'main', head, cl
 describe('state file', () => {
   it('round-trips and replaces the file atomically', async () => {
     const file = path.join(dir, 'nested/state.json');
-    const state: PersistedState = { version: 2, monitor: { startedAt: 'x', tracked: {} }, runner: { results: {}, history: {} }, lastAutoReportDate: '2026-10-04' };
+    const state: PersistedState = { version: 2, monitor: { startedAt: 'x', tracked: {} }, runner: { results: {}, history: {} } };
     saveState(file, state);
     saveState(file, state);
     expect(loadState(file)).toEqual(state);
     await expect(readFile(`${file}.tmp`)).rejects.toThrow();
+    // 예전 상태 파일에 남은 보고서 날짜는 무시한다
+    await writeFile(file, JSON.stringify({ ...state, lastAutoReportDate: '2026-10-04' }));
+    expect(loadState(file)).toStrictEqual({ ...state, alerts: undefined });
   });
 
   it('starts fresh on a missing, corrupt or unknown file', async () => {

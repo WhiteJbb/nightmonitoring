@@ -12,7 +12,7 @@ import { ConfigError, expandPath, parseConfig, slugify } from './config.ts';
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-const SETTING_KEYS = ['refreshIntervalSec', 'errorPatterns', 'errorIgnorePatterns', 'promptPatterns', 'ignoreSpinnerChanges', 'sessionExitIsError', 'notifications', 'autoReportTime', 'commandTimeoutSec', 'ntfyUrl', 'hiddenSessions'] as const;
+const SETTING_KEYS = ['refreshIntervalSec', 'errorPatterns', 'errorIgnorePatterns', 'promptPatterns', 'ignoreSpinnerChanges', 'sessionExitIsError', 'notifications', 'commandTimeoutSec', 'ntfyUrl', 'hiddenSessions'] as const;
 const THRESHOLD_KEYS = ['idleMinutes', 'stalledMinutes', 'noCommitMinutes'] as const;
 
 const isYaml = (file: string) => /\.ya?ml$/i.test(file);
@@ -48,7 +48,6 @@ const settingsOf = (c: Config): EditableSettings => ({
   ignoreSpinnerChanges: c.ignoreSpinnerChanges,
   sessionExitIsError: c.sessionExitIsError,
   notifications: c.notifications,
-  autoReportTime: c.autoReportTime,
   commandTimeoutSec: c.commandTimeoutSec,
   ntfyUrl: c.ntfyUrl,
   hiddenSessions: c.hiddenSessions,
@@ -66,7 +65,7 @@ export function readOnlyView(config: Config, file: string, reason: string): Conf
     readOnlyReason: reason,
     settings: settingsOf(config),
     projects: config.projects.map((p) => ({ ...p, repoPathLocked: true })),
-    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir, allowedHosts: config.allowedHosts },
+    fileOnly: { host: config.host, port: config.port, allowedHosts: config.allowedHosts },
   };
 }
 
@@ -97,7 +96,7 @@ export function readConfigView(file: string, baseDir: string): ConfigView {
     readOnlyReason: null,
     settings: settingsOf(config),
     projects,
-    fileOnly: { host: config.host, port: config.port, reportsDir: config.reportsDir, allowedHosts: config.allowedHosts },
+    fileOnly: { host: config.host, port: config.port, allowedHosts: config.allowedHosts },
   };
 }
 
