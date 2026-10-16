@@ -31,6 +31,7 @@ const { FakeTerminal } = vi.hoisted(() => {
       this.key = h;
     }
     focus() {}
+    loadAddon() {}
     osc: Record<number, (data: string) => boolean> = {};
     parser = { registerOscHandler: (id: number, h: (data: string) => boolean) => void (this.osc[id] = h) };
     reset() {
@@ -60,6 +61,7 @@ const { FakeTerminal } = vi.hoisted(() => {
 });
 vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }));
 vi.mock('@xterm/xterm/css/xterm.css', () => ({}));
+vi.mock('@xterm/addon-web-links', () => ({ WebLinksAddon: class {} }));
 
 class FakeEventSource {
   static all: FakeEventSource[] = [];
