@@ -1,40 +1,51 @@
 /*
- * NightShift 화면 스타일.
- * 색은 전부 :root 토큰에서 온다 (컴포넌트 규칙에 hex 를 직접 쓰지 않는다).
- * 글자 크기 5단계(12 / 13 코드 / 14 / 16 / 22), 모서리 반경 두 가지(6 / 10).
- * 움직임은 눌림·등장·색 전환만. 자주 하는 동작(탭, 키 입력, 목록 이동)에는 애니메이션이 없다.
+ * NightShift 화면 스타일 — Apple Human Interface Guidelines 의 재질(Liquid Glass) 언어를 웹에 옮긴 것.
+ *
+ * 층이 둘이다.
+ *  - 조작 층(사이드바·툴바·버튼): 유리. 뒤의 내용이 흐릿하게 비친다 (--glass*).
+ *  - 내용 층(줄·타일·안내): 표준 재질. 유리보다 두꺼워 글이 또렷하다 (--material*).
+ * 색은 :root 토큰만 쓴다. 글자 크기는 macOS 글꼴 단계(26/22/15/13/12/11)를 따른다.
+ * 움직임은 눌림·등장·색 전환만. 투명도 줄이기(prefers-reduced-transparency)를 켜면 유리가 불투명해진다.
  */
 :root {
-  --bg: #0a0c0f;
-  --bg-2: #0e1114;
-  --panel: #131619;
-  --panel-2: #1a1e23;
-  --line: #22272d;
-  --line-2: #30373f;
-  --text: #e7ebef;
-  --dim: #8d97a2;
-  --faint: #5c6670;
-  --accent: #7cc0b4;
-  --on-accent: #0a0c0f;
-  --term: #08090b;
-  --green: #79c08f;
-  --amber: #d3b565;
-  --orange: #e0905f;
-  --red: #e27775;
-  --violet: #9d9fe6;
+  --bg: #0b0d12;
+  --text: #f2f4f7;
+  /* Apple 의 secondaryLabel(어두운 모드) 에 해당. 어두운 유리 위에서 4.5:1 이 나온다 */
+  --dim: rgba(235, 235, 245, 0.62);
+  --faint: rgba(235, 235, 245, 0.36);
+  --accent: #0a84ff;
+  --on-accent: #ffffff;
+  --term: #0a0c10;
+  --green: #30d158;
+  --amber: #ffd60a;
+  --orange: #ff9f0a;
+  --red: #ff453a;
+  --violet: #bf5af2;
 
-  --fs-xs: 12px;
-  --fs-code: 13px;
-  --fs-sm: 14px;
-  --fs-md: 16px;
+  --glass: rgba(24, 27, 34, 0.55);
+  --glass-2: rgba(40, 44, 54, 0.6);
+  --material: rgba(255, 255, 255, 0.05);
+  --material-2: rgba(255, 255, 255, 0.09);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-2: rgba(255, 255, 255, 0.16);
+  --edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  --blur: blur(22px) saturate(160%);
+
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-code: 12.5px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
   --fs-xl: 22px;
-  --r: 6px;
-  --r-lg: 10px;
-  --side: 232px;
-  /* 초반이 빠른 곡선: 누른 즉시 반응하는 느낌 */
+  --fs-xxl: 26px;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --side: 240px;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+  --sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
   color-scheme: dark;
 }
 * {
@@ -45,20 +56,31 @@ html {
 }
 body {
   margin: 0;
-  background: var(--bg);
   color: var(--text);
-  font: var(--fs-sm) / 1.5 var(--sans);
-  /* 5초마다 바뀌는 시각·경과 시간이 옆 글자를 밀지 않게 */
+  font: var(--fs-md) / 1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
   font-variant-numeric: tabular-nums;
   overflow-wrap: break-word;
   -webkit-tap-highlight-color: transparent;
+}
+/* 유리가 비출 배경: 어두운 바탕 위에 색 번짐 두 개. 스크롤해도 고정이다 */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background:
+    radial-gradient(720px 520px at 12% -10%, rgba(10, 132, 255, 0.22), transparent 70%),
+    radial-gradient(640px 480px at 92% 8%, rgba(94, 92, 230, 0.18), transparent 70%),
+    radial-gradient(900px 600px at 60% 110%, rgba(48, 209, 88, 0.1), transparent 70%),
+    var(--bg);
 }
 a {
   color: var(--accent);
   text-decoration: none;
 }
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 3px solid color-mix(in srgb, var(--accent) 60%, transparent);
   outline-offset: 2px;
 }
 h1,
@@ -77,22 +99,24 @@ ul {
   list-style: none;
 }
 h1 {
-  font-size: var(--fs-xl);
-  font-weight: 650;
+  font-size: var(--fs-xxl);
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.2;
 }
 h3 {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
   margin: 28px 0 10px;
 }
 h4 {
   font-size: var(--fs-xs);
-  font-weight: 500;
-  color: var(--dim);
-  margin: 14px 0 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--faint);
+  margin: 14px 0 6px;
 }
 code,
 pre,
@@ -106,9 +130,9 @@ pre,
 }
 code {
   color: var(--text);
-  background: var(--panel-2);
-  padding: 1px 5px;
-  border-radius: 4px;
+  background: var(--material-2);
+  padding: 1px 6px;
+  border-radius: 6px;
   overflow-wrap: anywhere;
 }
 
@@ -144,20 +168,22 @@ code {
 }
 .hint {
   color: var(--dim);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   margin: 4px 0 8px;
 }
 
-/* ── 버튼 ── */
+/* ── 버튼: 알약 모양 유리. 기본 동작만 강조색으로 물들인다 ── */
 button {
   font: inherit;
   font-weight: 500;
   line-height: 1.4;
   color: var(--text);
-  background: var(--panel-2);
+  background: var(--material-2);
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 5px 12px;
+  border-radius: 999px;
+  padding: 5px 13px;
+  min-height: 28px;
+  box-shadow: var(--edge);
   cursor: pointer;
   transition:
     transform 140ms var(--ease-out),
@@ -165,7 +191,6 @@ button {
     border-color 150ms ease,
     color 150ms ease;
 }
-/* 눌렀다는 반응. 살짝만 줄인다 */
 button:active:not(:disabled) {
   transform: scale(0.97);
 }
@@ -176,11 +201,13 @@ button:disabled {
 button.primary {
   color: var(--on-accent);
   background: var(--accent);
-  border-color: var(--accent);
+  border-color: transparent;
+  box-shadow:
+    var(--edge),
+    0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 button[aria-pressed='true'] {
-  color: var(--text);
-  background: var(--line);
+  background: rgba(255, 255, 255, 0.16);
   border-color: var(--line-2);
 }
 button.quiet,
@@ -188,34 +215,33 @@ button.quiet,
 .meta button,
 .with-action button,
 .panes button {
-  font-size: var(--fs-xs);
-  font-weight: 400;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   color: var(--dim);
-  padding: 2px 9px;
+  padding: 2px 10px;
+  min-height: 24px;
 }
 .more-rows {
   margin-top: 8px;
 }
 
-/* 호버는 마우스가 있을 때만. 터치 화면에서는 탭한 뒤 호버 색이 남는다 */
 @media (hover: hover) and (pointer: fine) {
   a:hover {
     text-decoration: underline;
   }
   button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.14);
     border-color: var(--line-2);
-    background: var(--line);
   }
   button.primary:hover:not(:disabled) {
-    background: color-mix(in srgb, var(--accent) 88%, white);
-    border-color: transparent;
+    background: color-mix(in srgb, var(--accent) 85%, white);
   }
   button.danger:hover:not(:disabled),
   .keys button.caution:hover:not(:disabled) {
     color: var(--red);
-    border-color: var(--red);
+    border-color: color-mix(in srgb, var(--red) 50%, transparent);
   }
-  .row:hover,
+  a.row:hover,
   .side-item:hover,
   .wordmark:hover,
   .side nav a:hover,
@@ -223,24 +249,24 @@ button.quiet,
   .crumb a:hover {
     text-decoration: none;
   }
-  .row:hover {
-    background: var(--panel-2);
+  a.row:hover {
+    background: var(--material-2);
     border-color: var(--line-2);
   }
-  .side-item:hover,
-  .side nav a:hover {
+  .side-item:hover:not([aria-current='page']),
+  .side nav a:hover:not([aria-current='page']) {
     color: var(--text);
-    background: var(--panel-2);
+    background: rgba(255, 255, 255, 0.08);
   }
-  .tabs button:hover:not(:disabled) {
+  .tabs button:hover:not([aria-selected='true']) {
     color: var(--text);
   }
   button.stat:hover {
-    border-color: var(--state);
+    border-color: color-mix(in srgb, var(--state) 60%, transparent);
   }
 }
 
-/* ── 뼈대: 왼쪽 사이드바 + 본문 ── */
+/* ── 뼈대: 유리 사이드바 + 본문 ── */
 .shell {
   display: grid;
   grid-template-columns: var(--side) minmax(0, 1fr);
@@ -253,8 +279,10 @@ button.quiet,
   display: flex;
   flex-direction: column;
   gap: 18px;
-  padding: 16px 12px;
-  background: var(--bg-2);
+  padding: 18px 12px 14px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
   border-right: 1px solid var(--line);
   overflow: auto;
 }
@@ -263,15 +291,16 @@ button.quiet,
   align-items: center;
   gap: 9px;
   padding: 2px 8px;
-  font-size: var(--fs-md);
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 .wordmark svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   color: var(--accent);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--accent) 60%, transparent));
 }
 .demo-badge {
   margin-left: 6px;
@@ -282,15 +311,17 @@ button.quiet,
   display: grid;
   gap: 2px;
 }
+/* 사이드바 줄: macOS 처럼 고른 줄은 강조색으로 꽉 찬다 */
 .side nav a,
 .side-item {
   display: flex;
   align-items: center;
   gap: 9px;
   min-width: 0;
-  padding: 6px 8px;
-  border-radius: var(--r);
-  color: var(--dim);
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: var(--r-sm);
+  color: var(--text);
   font-weight: 500;
   transition:
     color 150ms ease,
@@ -298,13 +329,18 @@ button.quiet,
 }
 .side nav a[aria-current='page'],
 .side-item[aria-current='page'] {
-  color: var(--text);
-  background: var(--panel-2);
+  color: var(--on-accent);
+  background: var(--accent);
+  box-shadow: var(--edge);
 }
 .side nav svg {
   width: 15px;
   height: 15px;
   flex: none;
+  color: var(--accent);
+}
+.side nav a[aria-current='page'] svg {
+  color: var(--on-accent);
 }
 .side-list {
   display: grid;
@@ -312,17 +348,18 @@ button.quiet,
   align-content: start;
 }
 .side-list h4 {
-  margin: 0 0 4px 8px;
+  margin: 0 0 4px 9px;
 }
 .side-item {
   font-weight: 400;
 }
 .side-item .dot {
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 8px;
+  height: 8px;
   border-radius: 50%;
   background: var(--state);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--state) 70%, transparent);
 }
 .side-item .clip {
   flex: 1;
@@ -336,11 +373,14 @@ button.quiet,
   font-size: var(--fs-xs);
   color: var(--faint);
 }
+.side-item[aria-current='page'] .end {
+  color: rgba(255, 255, 255, 0.75);
+}
 .side-foot {
   margin-top: auto;
   display: grid;
   gap: 2px;
-  padding: 0 8px;
+  padding: 0 9px;
   font-size: var(--fs-xs);
   color: var(--dim);
 }
@@ -350,15 +390,15 @@ button.quiet,
   gap: 6px;
   color: var(--dim);
 }
-/* 연결 상태 점은 깜빡이지 않는다. 늘 보이는 요소의 무한 애니메이션은 주의만 뺏는다 */
 .conn .dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--faint);
 }
 .conn-live .dot {
   background: var(--green);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--green) 70%, transparent);
 }
 .conn-down {
   color: var(--red);
@@ -368,7 +408,7 @@ button.quiet,
 }
 main {
   min-width: 0;
-  padding: 24px 28px 48px;
+  padding: 28px 32px 56px;
 }
 .page {
   max-width: 1180px;
@@ -381,10 +421,10 @@ main {
   align-items: flex-end;
   justify-content: space-between;
   gap: 8px 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 .page-head .meta {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
 }
 .page-actions {
   display: flex;
@@ -397,7 +437,7 @@ main {
   align-items: center;
   gap: 4px 14px;
   color: var(--dim);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
 }
 
 /* ── 상태 ── */
@@ -416,7 +456,7 @@ main {
 .state-error {
   --state: var(--red);
 }
-/* 상태는 어디서나 "점 + 글자" 한 가지 방식으로만 표시한다 */
+/* 상태는 어디서나 "점 + 글자" 한 가지 방식. 색만으로 뜻을 전하지 않는다 */
 .badge {
   flex: none;
   display: inline-flex;
@@ -424,9 +464,9 @@ main {
   gap: 6px;
   padding: 2px 9px 2px 8px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--state) 12%, transparent);
+  background: color-mix(in srgb, var(--state) 16%, transparent);
   font-size: var(--fs-xs);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--state);
   white-space: nowrap;
 }
@@ -439,36 +479,52 @@ main {
 }
 .reasons {
   color: var(--dim);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   margin: 2px 0 0;
 }
 
-/* ── 요약 타일: 숫자가 먼저 읽힌다. 상태 타일은 눌러서 그 상태의 줄만 본다 ── */
+/* ── 표준 재질: 내용 층의 타일·줄·안내 상자 ── */
+.stat,
+a.row,
+.notice,
+.project-edit,
+.new-session,
+.cmdline,
+.term-frame {
+  background: var(--material);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow:
+    var(--edge),
+    var(--shadow);
+}
+
+/* ── 요약 타일 ── */
 .overview {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
+  gap: 10px;
+  margin-bottom: 22px;
 }
 .stat {
   display: inline-flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
-  min-width: 112px;
-  padding: 10px 14px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--panel);
+  gap: 3px;
+  min-width: 120px;
+  padding: 12px 16px;
   font: inherit;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
+  font-weight: 500;
   color: var(--dim);
   text-align: left;
   cursor: default;
 }
 .stat .num {
-  font-size: var(--fs-xl);
-  font-weight: 650;
+  font-size: var(--fs-xxl);
+  font-weight: 700;
   letter-spacing: -0.02em;
   line-height: 1.1;
   color: var(--text);
@@ -476,6 +532,7 @@ main {
 button.stat {
   cursor: pointer;
   color: var(--state);
+  min-height: 0;
   transition:
     border-color 150ms ease,
     background-color 150ms ease,
@@ -485,52 +542,47 @@ button.stat .num {
   color: var(--state);
 }
 button.stat[aria-pressed='true'] {
-  border-color: var(--state);
-  background: color-mix(in srgb, var(--state) 12%, var(--panel));
+  border-color: color-mix(in srgb, var(--state) 70%, transparent);
+  background: color-mix(in srgb, var(--state) 16%, var(--material));
 }
 
 /* ── 프로젝트 줄 목록 ── */
 .board {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
-.row {
+a.row {
   position: relative;
   display: grid;
   grid-template-columns: minmax(200px, 1.3fr) minmax(150px, 0.9fr) minmax(200px, 1.4fr) minmax(130px, 0.7fr);
   gap: 8px 20px;
   align-items: start;
   min-width: 0;
-  padding: 14px 18px 14px 22px;
+  padding: 15px 18px 15px 22px;
   color: inherit;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  overflow: hidden;
   transition:
     transform 140ms var(--ease-out),
     background-color 150ms ease,
     border-color 150ms ease;
 }
-/* 큰 요소라 아주 조금만 줄인다 */
-.row:active {
+a.row:active {
   transform: scale(0.995);
 }
-/* 왼쪽 가장자리의 상태 색: 글을 읽기 전에 훑어서 안다 */
-.row::before {
+/* 왼쪽 가장자리의 상태 색 */
+a.row::before {
   content: '';
   position: absolute;
-  left: -1px;
-  top: 14px;
-  bottom: 14px;
+  left: 0;
+  top: 0;
+  bottom: 0;
   width: 3px;
-  border-radius: 0 3px 3px 0;
   background: var(--state);
 }
-/* 문제 있는 줄은 테두리에도 상태 색이 배어 먼저 눈에 들어온다 */
-.row.state-error,
-.row.state-stalled,
-.row.state-waiting {
-  border-color: color-mix(in srgb, var(--state) 32%, var(--line));
+a.row.state-error,
+a.row.state-stalled,
+a.row.state-waiting {
+  border-color: color-mix(in srgb, var(--state) 35%, var(--line));
 }
 .row-main {
   min-width: 0;
@@ -541,8 +593,8 @@ button.stat[aria-pressed='true'] {
   align-items: center;
   gap: 4px 10px;
 }
-.row h2 {
-  font-size: var(--fs-md);
+a.row h2 {
+  font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
   min-width: 0;
@@ -562,13 +614,14 @@ button.stat[aria-pressed='true'] {
   display: grid;
   gap: 2px;
   min-width: 0;
-  font-size: var(--fs-sm);
 }
 .row-col .lbl {
   font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--faint);
 }
-/* 브랜치 이름이 길면 변경 수가 다음 줄로 내려간다. 이름을 자르는 것보다 낫다 */
 .row-col .val {
   display: flex;
   flex-wrap: wrap;
@@ -577,10 +630,15 @@ button.stat[aria-pressed='true'] {
   min-width: 0;
 }
 .row-col .clip {
+  flex: 1 1 60px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 브랜치 이름은 자르지 않는다. 길면 변경 수가 다음 줄로 내려간다 */
+.row-col .val:has(.branch) .clip {
+  flex: 0 1 auto;
 }
 .row-col .sub {
   flex: none;
@@ -596,7 +654,8 @@ button.stat[aria-pressed='true'] {
   gap: 6px;
 }
 .discovered button {
-  padding: 1px 8px;
+  padding: 1px 9px;
+  min-height: 22px;
   font-size: var(--fs-xs);
 }
 .board-empty {
@@ -606,7 +665,7 @@ button.stat[aria-pressed='true'] {
 /* ── 상세 ── */
 .crumb {
   margin-bottom: 10px;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
 }
 .crumb a {
   color: var(--dim);
@@ -618,38 +677,43 @@ button.stat[aria-pressed='true'] {
   gap: 4px 12px;
   margin-bottom: 4px;
 }
-/* 탭 전환은 자주 하는 동작이라 애니메이션을 넣지 않는다 */
+/* 탭은 iOS 의 분할 컨트롤 모양: 유리 알약 안에서 고른 칸만 밝다. 전환 애니메이션은 없다 */
 .tabs {
-  display: flex;
-  flex-wrap: wrap;
+  display: inline-flex;
   gap: 2px;
   margin: 18px 0 16px;
-  border-bottom: 1px solid var(--line);
+  padding: 3px;
+  background: var(--material);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: var(--edge);
 }
 .tabs button {
   background: none;
   border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
+  box-shadow: none;
+  border-radius: 999px;
   color: var(--dim);
-  padding: 6px 14px;
-  margin-bottom: -1px;
+  padding: 4px 16px;
+  min-height: 26px;
 }
 .tabs button:active:not(:disabled) {
   transform: none;
 }
 .tabs button[aria-selected='true'] {
   color: var(--text);
-  border-bottom-color: var(--accent);
+  background: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    var(--edge),
+    0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .cmdline {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: var(--panel);
-  border: 1px solid var(--line);
   border-radius: var(--r);
-  padding: 5px 5px 5px 12px;
+  box-shadow: var(--edge);
+  padding: 6px 6px 6px 14px;
 }
 .cmdline code {
   flex: 1;
@@ -668,23 +732,23 @@ button.stat[aria-pressed='true'] {
 }
 .kv dt {
   color: var(--dim);
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
 }
 .kv.truncate dd:not(.wrap) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* 세션 정보는 표 대신 한 줄: 터미널이 위로 올라오고 눈이 덜 움직인다 */
 .kv.inline {
   display: flex;
   flex-wrap: wrap;
   gap: 4px 6px;
-  margin: 10px 0 12px;
+  margin: 12px 0 12px;
 }
 .kv.inline dd {
   margin-right: 14px;
 }
+/* 터미널 출력은 불투명하다. 코드 위에 유리를 깔면 읽기 어렵다 */
 pre {
   max-width: 100%;
   overflow: auto;
@@ -694,20 +758,22 @@ pre {
   padding: 10px 12px;
   line-height: 1.45;
 }
-/* 터미널은 도구 줄과 출력이 한 틀이다 */
 .term-frame {
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--term);
   overflow: hidden;
+  background: var(--term);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
+/* 터미널의 도구 줄은 유리 툴바 */
 .term-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-  padding: 6px 10px;
-  background: var(--panel);
+  padding: 7px 10px;
+  background: var(--glass-2);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
   border-bottom: 1px solid var(--line);
 }
 .term-bar .panes {
@@ -727,13 +793,11 @@ pre {
 .terminal {
   height: min(62vh, 680px);
 }
-/* 긴 줄을 화면 폭에 맞춰 접는다. 표·상자 그림은 흐트러지지만 글은 가로 스크롤 없이 읽힌다 */
 .terminal.wrap-lines {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   overflow-x: hidden;
 }
-/* 세션 정보: 넓은 화면에서는 늘 보이고 토글은 숨긴다 */
 .info-toggle {
   display: none;
 }
@@ -773,7 +837,7 @@ pre {
   display: flex;
   align-items: baseline;
   gap: 10px;
-  padding: 5px 0;
+  padding: 6px 0;
   border-bottom: 1px solid var(--line);
 }
 .rows li.total {
@@ -782,7 +846,7 @@ pre {
 }
 .rows .subject {
   font-family: var(--sans);
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
 }
 .hash {
   color: var(--dim);
@@ -809,21 +873,18 @@ pre {
 }
 .history th {
   text-align: left;
-  font: 400 var(--fs-xs) var(--sans);
+  font: 500 var(--fs-xs) var(--sans);
   color: var(--dim);
 }
 .history th,
 .history td {
-  padding: 5px 6px 5px 0;
+  padding: 6px 6px 6px 0;
   border-bottom: 1px solid var(--line);
 }
 
 /* ── 안내 상자 ── */
 .notice {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 14px 16px;
+  padding: 14px 18px;
   transition:
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
@@ -835,15 +896,15 @@ pre {
   margin-top: 8px;
 }
 .notice.error {
-  background: color-mix(in srgb, var(--red) 8%, var(--panel));
-  border-color: color-mix(in srgb, var(--red) 30%, var(--line));
+  background: color-mix(in srgb, var(--red) 10%, var(--material));
+  border-color: color-mix(in srgb, var(--red) 35%, var(--line));
 }
 .notice.error strong {
   color: var(--red);
 }
 .notice.waiting {
-  background: color-mix(in srgb, var(--violet) 8%, var(--panel));
-  border-color: color-mix(in srgb, var(--violet) 30%, var(--line));
+  background: color-mix(in srgb, var(--violet) 10%, var(--material));
+  border-color: color-mix(in srgb, var(--violet) 35%, var(--line));
   margin-bottom: 12px;
 }
 .notice.waiting strong {
@@ -852,7 +913,6 @@ pre {
 .notice.banner {
   margin-bottom: 16px;
 }
-/* 가끔 나타나는 요소만 살짝 올라오며 등장한다 */
 @starting-style {
   .notice.error,
   .notice.waiting,
@@ -862,7 +922,6 @@ pre {
     transform: translateY(-4px);
   }
 }
-/* 글자가 바뀌는 순간 두 상태가 겹쳐 보이지 않게 살짝 흐리게 이어 준다 ("복사" → "복사됨") */
 .swap {
   display: inline-block;
   transition:
@@ -902,11 +961,16 @@ pre {
   font: var(--fs-code) var(--mono);
   background: none;
   border-color: transparent;
+  box-shadow: none;
+  border-radius: var(--r-sm);
   padding: 6px 10px;
 }
 .report-list li button[aria-current='true'] {
-  background: var(--panel-2);
-  border-color: var(--line);
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.report-list li button[aria-current='true'] .dim {
+  color: rgba(255, 255, 255, 0.75);
 }
 .report-body h3 {
   margin-top: 0;
@@ -916,11 +980,13 @@ pre {
   margin-bottom: 8px;
 }
 .md h3 {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   margin-top: 28px;
 }
 .md h4 {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
+  text-transform: none;
+  letter-spacing: 0;
   color: var(--text);
   margin: 16px 0 4px;
 }
@@ -950,7 +1016,7 @@ pre {
 }
 .md blockquote {
   padding: 2px 10px;
-  border-left: 2px solid var(--line);
+  border-left: 2px solid var(--line-2);
   color: var(--dim);
 }
 
@@ -958,7 +1024,6 @@ pre {
 form.settings {
   max-width: 980px;
 }
-/* 설정은 절 사이에 가는 선을 두어 어디서 어디까지인지 보이게 한다 */
 .settings > h3 {
   margin-top: 32px;
   padding-top: 22px;
@@ -974,7 +1039,6 @@ form.settings {
   grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 12px 16px;
 }
-/* 숫자 칸은 한 줄에 나란히, 켜고 끄는 항목은 아래에 한 줄씩 */
 .settings-grid.nums {
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   align-items: start;
@@ -988,8 +1052,8 @@ form.settings {
 .field label > span {
   display: block;
   color: var(--dim);
-  font-size: var(--fs-xs);
-  margin-bottom: 3px;
+  font-size: var(--fs-sm);
+  margin-bottom: 4px;
 }
 .field label.check {
   display: flex;
@@ -1033,6 +1097,7 @@ form.settings {
   width: auto;
   margin: 0;
 }
+/* 입력 칸은 움푹 들어간 유리 */
 .settings input:not([type='checkbox']),
 .settings textarea,
 .input-row textarea {
@@ -1040,17 +1105,23 @@ form.settings {
   width: 100%;
   font: inherit;
   color: var(--text);
-  background: var(--term);
+  background: rgba(0, 0, 0, 0.28);
   border: 1px solid var(--line);
-  border-radius: var(--r);
-  padding: 6px 10px;
-  transition: border-color 150ms ease;
+  border-radius: 10px;
+  padding: 7px 11px;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.3);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease;
 }
 .settings input:not([type='checkbox']):focus-visible,
 .settings textarea:focus-visible,
 .input-row textarea:focus-visible {
   outline: none;
   border-color: var(--accent);
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.3),
+    0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 .settings input[type='url'] {
   max-width: 520px;
@@ -1081,19 +1152,14 @@ form.settings {
 .project-edit {
   min-width: 0;
   margin: 0 0 12px;
-  padding: 14px 16px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  padding: 14px 18px;
 }
-/* legend 는 기본적으로 상자 윗선에 걸쳐 그려진다. float 로 상자 안에 넣되,
-   뒤따르는 요소에 clear 를 주지 않으면 grid 가 옆으로 밀려 좁은 기둥이 된다 */
 .project-edit legend {
   float: left;
   width: 100%;
   padding: 0;
   margin-bottom: 10px;
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   font-weight: 600;
 }
 .project-edit legend + * {
@@ -1102,18 +1168,25 @@ form.settings {
 .project-edit .kv {
   margin: 12px 0;
 }
+/* 저장 줄은 바닥에 떠 있는 유리 툴바 */
 .settings-actions {
   position: sticky;
-  bottom: 0;
+  bottom: 12px;
   z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 8px 12px;
   margin-top: 20px;
-  padding: 12px 0;
-  background: var(--bg);
-  border-top: 1px solid var(--line);
+  padding: 10px 14px;
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow:
+    var(--edge),
+    var(--shadow);
 }
 .settings-actions .notice {
   flex-basis: 100%;
@@ -1150,9 +1223,9 @@ form.settings {
 }
 .keys button {
   font: var(--fs-xs) var(--mono);
-  padding: 3px 9px;
+  padding: 3px 10px;
+  min-height: 24px;
 }
-/* 마우스가 있으면 모든 키가 보이고 "더보기"는 필요 없다 */
 .keys .more {
   display: none;
   font-family: var(--sans);
@@ -1166,19 +1239,18 @@ form.settings {
 .new-session-toggle {
   display: block;
   width: 100%;
-  margin: 8px 0 0;
+  margin: 10px 0 0;
   padding: 12px;
+  min-height: 44px;
   color: var(--dim);
   background: none;
+  box-shadow: none;
   border: 1px dashed var(--line-2);
   border-radius: var(--r-lg);
 }
 .new-session {
-  margin: 8px 0 0;
-  padding: 14px 16px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  background: var(--panel);
+  margin: 10px 0 0;
+  padding: 16px 18px;
   transition:
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
@@ -1195,40 +1267,45 @@ form.settings {
   margin-top: 10px;
 }
 
-/* ── 좁은 화면: 사이드바가 위쪽 띠가 되고, 줄은 세로로 쌓인다 ── */
+/* ── 좁은 화면: 사이드바가 떠 있는 유리 띠가 되고, 줄은 세로로 쌓인다 ── */
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
   }
   .side {
     position: sticky;
+    top: 8px;
     height: auto;
+    margin: 8px 10px 0;
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 10px;
-    padding: 8px 12px;
-    border-right: none;
-    border-bottom: 1px solid var(--line);
-    background: color-mix(in srgb, var(--bg) 88%, transparent);
-    backdrop-filter: blur(8px);
+    padding: 6px 10px;
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+    box-shadow:
+      var(--edge),
+      var(--shadow);
     z-index: 2;
     overflow: visible;
   }
   .side nav {
     display: flex;
     gap: 2px;
-    padding: 2px;
-    background: var(--panel);
-    border: 1px solid var(--line);
+    padding: 3px;
+    background: rgba(0, 0, 0, 0.25);
     border-radius: 999px;
   }
   .side nav a {
+    min-height: 28px;
     padding: 3px 12px;
     border-radius: 999px;
+    color: var(--dim);
   }
   .side nav a[aria-current='page'] {
-    box-shadow: inset 0 0 0 1px var(--line-2);
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.16);
   }
   .side nav svg,
   .side-list {
@@ -1243,18 +1320,18 @@ form.settings {
   main {
     padding: 16px 12px 32px;
   }
-  .row {
+  a.row {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
-    padding: 12px 14px 12px 16px;
+    padding: 12px 14px 12px 18px;
   }
   .row-col {
-    grid-template-columns: 64px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr);
     align-items: baseline;
   }
   .stat {
-    min-width: 96px;
-    padding: 8px 12px;
+    min-width: 100px;
+    padding: 10px 14px;
   }
   .reports {
     grid-template-columns: minmax(0, 1fr);
@@ -1267,7 +1344,6 @@ form.settings {
   .info-toggle {
     display: inline-block;
   }
-  /* 터미널이 화면 대부분을 쓰게 하고, 글자를 조금 줄여 한 줄에 더 들어가게 한다 */
   .terminal {
     height: 62svh;
     font-size: 12px;
@@ -1289,40 +1365,42 @@ form.settings {
   }
 }
 
-/* ── 터치 화면: 손가락으로 누를 수 있는 크기, iOS 가 확대하지 않는 글자 크기 ── */
+/* ── 터치 화면: 44pt 이상, iOS 가 확대하지 않는 글자 크기 ── */
 @media (pointer: coarse) {
   button {
-    min-height: 40px;
-    padding-inline: 14px;
+    min-height: 44px;
+    padding-inline: 16px;
   }
   .keys button,
   .panes button,
   .meta button,
   .with-action button,
-  .discovered button {
+  .discovered button,
+  .tabs button,
+  .more-rows {
     min-width: 44px;
     min-height: 40px;
-    font-size: var(--fs-sm);
+    font-size: var(--fs-md);
   }
   .keys,
   .panes {
     gap: 8px;
   }
-  /* 작은 화면에서는 자주 쓰는 키만 보이고 나머지는 접는다 */
   .keys:not(.open) .extra {
     display: none;
   }
   .keys .more {
     display: inline-block;
   }
-  .tabs button {
-    min-height: 44px;
+  .side nav a,
+  .side-item {
+    min-height: 40px;
   }
   .settings input:not([type='checkbox']),
   .settings textarea,
   .input-row textarea {
     font-size: 16px;
-    padding: 9px 12px;
+    padding: 10px 12px;
   }
   .settings input[type='checkbox'] {
     width: 20px;
@@ -1330,10 +1408,38 @@ form.settings {
   }
 }
 
+/* 투명도 줄이기: 유리를 불투명한 판으로 바꾼다 (HIG: Reduce Transparency) */
+@media (prefers-reduced-transparency: reduce) {
+  .side,
+  .term-bar,
+  .settings-actions,
+  .stat,
+  a.row,
+  .notice,
+  .project-edit,
+  .new-session,
+  .cmdline {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background: #171a21;
+  }
+  body::before {
+    background: var(--bg);
+  }
+}
+/* 대비 높이기: 테두리와 보조 글자를 더 또렷하게 */
+@media (prefers-contrast: more) {
+  :root {
+    --line: rgba(255, 255, 255, 0.24);
+    --line-2: rgba(255, 255, 255, 0.36);
+    --dim: rgba(235, 235, 245, 0.8);
+    --faint: rgba(235, 235, 245, 0.6);
+  }
+}
 /* 움직임 줄이기: 위치 이동은 없애고 색 전환만 남긴다 */
 @media (prefers-reduced-motion: reduce) {
   button:active:not(:disabled),
-  .row:active {
+  a.row:active {
     transform: none;
   }
   .notice,
