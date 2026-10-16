@@ -39,7 +39,9 @@ export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailsca
  * - Tailscale 바인딩이면 그 주소, MagicDNS 이름(*.ts.net 또는 점 없는 짧은 이름), allowedHosts 만 받는다.
  *   tailnet 의 브라우저도 rebinding 에 걸릴 수 있다. 점 없는 이름은 공개 DNS 로 만들 수 없으므로 안전하다.
  *   그 밖의 주소로 바꾼 경우는 사용자가 감수한 것으로 본다.
- * - 변경 요청은 Origin 이 자기 자신(또는 allowedHosts)일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
+ * - 변경 요청은 Origin 이 정확히 이 서버일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
+ *   직접 접속이면 http://<Host 헤더> 이고 그 포트가 이 서버가 받은 포트여야 한다. 프록시를 거치면 https://<allowedHosts 이름> (443) 만 받는다.
+ *   이름만 보면 같은 기기의 다른 포트(다른 개발 서버)에서 온 요청도 통과하므로 scheme·포트까지 비교한다.
  */
 export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
   const tailscale = isTailscaleAddress(config.host);
@@ -55,8 +57,11 @@ export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allow
     if (checkHost && !hostOk(host)) return void res.status(403).json({ error: '허용되지 않은 Host' });
     const origin = req.headers.origin;
     if (req.method !== 'GET' && req.method !== 'HEAD' && origin !== undefined) {
-      const o = URL.parse(origin);
-      if (!o || (o.host !== host && !allowed.has(o.hostname.toLowerCase()))) return void res.status(403).json({ error: '허용되지 않은 Origin' });
+      const o = URL.parse(origin)?.origin;
+      const direct = URL.parse(`http://${host}`);
+      const viaSelf = direct !== null && Number(direct.port || 80) === req.socket?.localPort && o === direct.origin;
+      const viaProxy = o?.startsWith('https://') && allowed.has(o.slice('https://'.length));
+      if (!viaSelf && !viaProxy) return void res.status(403).json({ error: '허용되지 않은 Origin' });
     }
     next();
   };

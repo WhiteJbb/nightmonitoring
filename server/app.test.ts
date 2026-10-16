@@ -40,6 +40,9 @@ describe('API', () => {
   it('rejects cross-origin writes but allows same-origin', async () => {
     const cross = await fetch(`${base}/api/projects/app/run/test`, { method: 'POST', headers: { Origin: 'https://evil.example' } });
     expect(cross.status).toBe(403);
+    // 같은 호스트의 다른 포트(다른 개발 서버)도 다른 출처다
+    const otherPort = await fetch(`${base}/api/projects/app/run/test`, { method: 'POST', headers: { Origin: base.replace(/:\d+$/, ':8443') } });
+    expect(otherPort.status).toBe(403);
     const same = await fetch(`${base}/api/reports/x`, { headers: { Origin: base } });
     expect(same.status).toBe(404);
   });
