@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { FileText, GearSix, MoonStars, SquaresFour, Sun } from '@phosphor-icons/react';
+import { FileText, GearSix, GitBranch, GitCommit, MoonStars, SquaresFour, Sun, TerminalWindow } from '@phosphor-icons/react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
@@ -225,6 +225,8 @@ export function ConfigErrorBanner({ message }: { message: string }) {
   );
 }
 
+const URGENCY: Record<ProjectSnapshot['status']['state'], number> = { error: 0, waiting: 1, stalled: 2, running: 3, idle: 4 };
+
 export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   const s = snapshot.summary;
   // 상태 타일을 누르면 그 상태의 줄만 남는다. 다시 누르거나 "전체 보기"를 누르면 전체.
@@ -262,7 +264,8 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   ];
   const active = states.filter(([, value, state]) => value > 0 || state === filter);
   const filterLabel = states.find(([, , state]) => state === filter)?.[0];
-  const shown = filter ? snapshot.projects.filter((p) => p.status.state === filter) : snapshot.projects;
+  // 봐야 할 것부터: 오류·입력 대기·정지 의심 → 작업 중 → 유휴. 같은 상태끼리는 설정 순서 그대로
+  const shown = (filter ? snapshot.projects.filter((p) => p.status.state === filter) : snapshot.projects).toSorted((a, b) => URGENCY[a.status.state] - URGENCY[b.status.state]);
   return (
     <>
       <div className="page-head">
@@ -286,12 +289,6 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
           </div>
         </div>
       </div>
-      {/* 새 세션은 대시보드의 주 동작이라 맨 위에 둔다 */}
-      {!snapshot.demo && (
-        <div className="dash-new">
-          <NewSession defaultDir={commonParentDir(snapshot.projects.map((p) => p.repoPath))} />
-        </div>
-      )}
       <div className="overview">
         <span className="stat">
           프로젝트 <span className="num">{s.total}</span>
@@ -309,6 +306,12 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
           <button type="button" className="show-all" onClick={() => setFilter(null)}>
             전체 보기
           </button>
+        )}
+        {/* 새 세션은 대시보드의 주 동작이라 요약 줄 오른쪽 끝에 둔다 */}
+        {!snapshot.demo && (
+          <div className="dash-new">
+            <NewSession defaultDir={commonParentDir(snapshot.projects.map((p) => p.repoPath))} />
+          </div>
         )}
       </div>
       {snapshot.projects.length === 0 ? (
@@ -376,6 +379,14 @@ function DiscoveredActions({ p, onHidden }: { p: ProjectSnapshot; onHidden?: (se
   );
 }
 
+/** 카드 안 줄의 이름표: 눈에는 아이콘만, 낭독기에는 글자 */
+const Lbl = ({ icon, text }: { icon: React.ReactNode; text: string }) => (
+  <span className="lbl" title={text}>
+    <span aria-hidden="true">{icon}</span>
+    <span className="sr-only">{text}</span>
+  </span>
+);
+
 /**
  * 대시보드의 프로젝트 한 줄: 이름·상태 | 브랜치·변경 | 마지막 커밋 | 세션.
  * 이름 링크가 ::after 로 줄 전체를 덮어 어디를 눌러도 상세 화면으로 간다. 버튼은 링크 밖의 형제로 그 위에 뜬다.
@@ -388,7 +399,7 @@ export function ProjectCard({ p, now, onHidden }: { p: ProjectSnapshot; now: str
       <div className="row-main">
         <div className="row-title">
           <h2>
-            <a className="card-link" href={`#/project/${encodeURIComponent(p.id)}`}>
+            <a className="card-link" href={`#/project/${encodeURIComponent(p.id)}`} title={p.repoPath}>
               {p.name}
             </a>
           </h2>
@@ -396,12 +407,9 @@ export function ProjectCard({ p, now, onHidden }: { p: ProjectSnapshot; now: str
           {p.id.startsWith('tmux:') && <DiscoveredActions p={p} onHidden={onHidden} />}
         </div>
         <Reasons reasons={status.reasons} />
-        <div className="row-path" title={p.repoPath}>
-          {p.repoPath}
-        </div>
       </div>
       <div className="row-col">
-        <span className="lbl">브랜치 · 변경</span>
+        <Lbl icon={<GitBranch size={14} />} text="브랜치 · 변경" />
         {git.ok ? (
           <span className="val">
             <span className="mono clip branch" title={`브랜치: ${git.branch}`}>
@@ -424,7 +432,7 @@ export function ProjectCard({ p, now, onHidden }: { p: ProjectSnapshot; now: str
         )}
       </div>
       <div className="row-col">
-        <span className="lbl">마지막 커밋</span>
+        <Lbl icon={<GitCommit size={14} />} text="마지막 커밋" />
         <span className="val">
           <span className="clip" title={last?.subject}>
             {last ? last.subject : <span className="dim">커밋 없음</span>}
@@ -433,7 +441,7 @@ export function ProjectCard({ p, now, onHidden }: { p: ProjectSnapshot; now: str
         </span>
       </div>
       <div className="row-col">
-        <span className="lbl">tmux 세션</span>
+        <Lbl icon={<TerminalWindow size={14} />} text="tmux 세션" />
         {!tmux.configured ? (
           <span className="val dim">지정 안 됨</span>
         ) : (

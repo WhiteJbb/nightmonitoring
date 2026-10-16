@@ -624,16 +624,17 @@ main {
 .overview {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 28px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 22px;
 }
+/* 요약은 작은 칩 한 줄: "정상 실행 2" */
 .stat {
   display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  min-width: 150px;
-  padding: 20px 28px 18px;
+  align-items: baseline;
+  gap: 10px;
+  padding: 10px 20px;
+  border-radius: var(--r-pill);
   font: inherit;
   font-size: var(--fs-sm);
   color: var(--dim);
@@ -641,7 +642,7 @@ main {
   cursor: default;
 }
 .stat .num {
-  font-size: 30px;
+  font-size: 22px;
   font-weight: 300;
   letter-spacing: -0.02em;
   line-height: 1;
@@ -666,9 +667,12 @@ button.stat[aria-pressed='true'] {
   align-self: center;
 }
 
-/* ── 새 tmux 세션: 대시보드 맨 위의 주 동작 ── */
+/* ── 새 tmux 세션: 요약 줄 오른쪽 끝의 주 동작. 펼치면 한 줄을 다 쓴다 ── */
 .dash-new {
-  margin-bottom: 20px;
+  margin-left: auto;
+}
+.dash-new:has(.new-session) {
+  flex-basis: 100%;
 }
 .dash-new .new-session-toggle {
   display: inline-flex;
@@ -704,20 +708,20 @@ button.stat[aria-pressed='true'] {
     0 8px 40px rgba(0, 0, 0, 0.35);
 }
 
-/* ── 프로젝트 줄 목록: 보드 폭에 맞춰 칸이 4 → 2 → 1 로 접힌다 ── */
+/* ── 프로젝트 카드 격자: 한 화면에 모두 들어오게 작은 카드를 폭에 맞춰 늘어놓는다 ── */
 .board {
   display: grid;
-  gap: 12px;
-  container-type: inline-size;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 14px;
 }
 .card {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(200px, 1.3fr) minmax(150px, 0.9fr) minmax(200px, 1.4fr) minmax(130px, 0.7fr);
-  gap: 8px 24px;
-  align-items: start;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-width: 0;
-  padding: 22px 32px;
+  padding: 20px 24px;
+  border-radius: var(--r-box);
   color: inherit;
   transition:
     transform 180ms var(--ease-out),
@@ -726,19 +730,6 @@ button.stat[aria-pressed='true'] {
 }
 .card:active {
   transform: scale(0.995);
-}
-@container (max-width: 860px) {
-  .card {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .row-main {
-    grid-column: 1 / -1;
-  }
-}
-@container (max-width: 520px) {
-  .card {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 /* 이름 링크가 줄 전체를 덮는다. 등록·숨김 버튼만 그 위로 올라온다 */
 .card-link {
@@ -764,6 +755,7 @@ button.stat[aria-pressed='true'] {
 }
 .row-main {
   min-width: 0;
+  margin-bottom: 4px;
 }
 .row-title {
   display: flex;
@@ -788,16 +780,22 @@ button.stat[aria-pressed='true'] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 카드 안 한 줄: [아이콘] 값 · 보조 */
 .row-col {
-  display: grid;
-  gap: 4px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
   min-width: 0;
+  font-size: var(--fs-sm);
 }
 .row-col .lbl {
-  text-transform: none;
-  letter-spacing: 0.04em;
+  flex: none;
+  display: inline-flex;
+  align-self: center;
+  color: var(--faint);
 }
 .row-col .val {
+  flex: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -1652,10 +1650,7 @@ form.settings {
   }
   /* 타일은 줄을 꽉 채운다. 마지막 줄의 타일이 넓어져도 가장자리가 들쭉날쭉하지 않다 */
   .stat {
-    flex: 1 1 100px;
-    min-width: 0;
-    padding: 14px 20px;
-    border-radius: var(--r-box);
+    padding: 8px 16px;
   }
   .notice,
   .project-edit,
@@ -1713,6 +1708,10 @@ form.settings {
     display: none;
   }
   .input-help {
+    display: none;
+  }
+  /* 드물게 쓰는 "모니터링 새로 시작"은 컴퓨터에서만. 휴대폰에선 카드가 먼저 보이게 */
+  .page-head .meta button {
     display: none;
   }
   .input-row textarea {
