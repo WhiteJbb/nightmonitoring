@@ -482,7 +482,7 @@ test('special-key buttons send { pane, key } to the selected pane; Ctrl+C asks f
   const group = screen.getByRole('group', { name: '특수 키' });
   const keys = group.querySelectorAll('button:not(.more)');
   expect([...keys].map((b) => b.textContent)).toEqual(['Enter', 'Esc', 'Tab', '⇧Tab', '↑', '↓', '←', '→', 'PgUp', 'PgDn', '⌫', 'Ctrl+C', 'Ctrl+D', 'Ctrl+U', 'Ctrl+L']);
-  expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Esc', '↑', '↓', 'PgUp', 'PgDn']);
+  expect([...keys].filter((b) => !b.classList.contains('extra')).map((b) => b.textContent)).toEqual(['Esc', 'Tab', '↑', '↓']);
   const more = screen.getByRole('button', { name: '더보기' });
   expect(more.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(more);

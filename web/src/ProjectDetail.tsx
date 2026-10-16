@@ -195,7 +195,7 @@ function LogErrorsAck({ project: p, onShow }: { project: ProjectSnapshot; onShow
 
 // [tmux 키, 버튼 글자, 설명]
 // 터치 화면에서는 이 키들만 늘 보이고 나머지는 "더보기" 뒤로 접힌다.
-const PRIMARY_KEYS: InputKey[] = ['PPage', 'NPage', 'Up', 'Down', 'Escape'];
+const PRIMARY_KEYS: InputKey[] = ['Escape', 'Tab', 'Up', 'Down'];
 // 마우스 환경인지. 터치 화면에서는 입력 칸에 포커스를 주면 키보드가 올라와 화면을 가린다
 const finePointer = () => typeof window.matchMedia !== 'function' || window.matchMedia('(pointer: fine)').matches;
 const KEYS: [InputKey, string, string][] = [
