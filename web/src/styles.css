@@ -3,15 +3,16 @@
  * 글자 크기 4단계(12 / 14 / 16 / 20, 코드만 13), 모서리 반경 하나.
  */
 :root {
-  --bg: #0b0d0f;
-  --panel: #121518;
-  --panel-2: #191d21;
-  --border: #22282d;
-  --text: #dfe5e8;
-  --dim: #808b93;
+  --bg: #0c0e11;
+  --panel: #13161a;
+  --panel-2: #1a1e24;
+  --border: #242a31;
+  --border-2: #333a44;
+  --text: #e5e9ee;
+  --dim: #8f99a4;
   --accent: #7cc0b4;
-  --on-accent: #0b0d0f;
-  --term: #07090a;
+  --on-accent: #0c0e11;
+  --term: #090b0d;
   --green: #79c08f;
   --amber: #d3b565;
   --orange: #d98d5f;
@@ -24,10 +25,13 @@
   --fs-lg: 20px;
   --fs-code: 13px;
   --r: 6px;
+  --r-lg: 10px;
   /* 기본 ease-out 보다 초반이 빠른 곡선: 누른 즉시 반응하는 느낌 */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  --sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Segoe UI', sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --sans:
+    -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Segoe UI",
+    sans-serif;
   color-scheme: dark;
 }
 * {
@@ -76,9 +80,25 @@ h1 {
   letter-spacing: -0.01em;
 }
 h3 {
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   font-weight: 600;
-  margin: 28px 0 8px;
+  letter-spacing: -0.01em;
+  margin: 28px 0 10px;
+}
+/* 설정은 읽는 글이라 너무 넓게 펼치지 않는다 */
+form.settings {
+  max-width: 980px;
+}
+/* 설정은 절 사이에 가는 선을 두어 어디서 어디까지인지 보이게 한다 */
+.settings > h3 {
+  margin-top: 32px;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+.settings > h3:first-of-type {
+  margin-top: 20px;
+  padding-top: 0;
+  border-top: none;
 }
 h4 {
   font-size: var(--fs-xs);
@@ -134,11 +154,13 @@ code {
 /* ── 버튼 ── */
 button {
   font: inherit;
+  font-weight: 500;
   color: var(--text);
   background: var(--panel-2);
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 5px 12px;
+  line-height: 1.4;
   cursor: pointer;
   transition:
     transform 140ms var(--ease-out),
@@ -160,7 +182,7 @@ button.primary {
   border-color: var(--accent);
   font-weight: 500;
 }
-button[aria-pressed='true'] {
+button[aria-pressed="true"] {
   color: var(--text);
   background: var(--border);
   border-color: var(--dim);
@@ -172,7 +194,14 @@ button[aria-pressed='true'] {
     text-decoration: underline;
   }
   button:hover:not(:disabled) {
-    border-color: var(--dim);
+    border-color: var(--border-2);
+    background: var(--border);
+  }
+  button.primary:hover:not(:disabled) {
+    background: color-mix(in srgb, var(--accent) 88%, white);
+  }
+  .stat[aria-pressed]:hover {
+    border-color: var(--state);
   }
   button.primary:hover:not(:disabled) {
     border-color: var(--text);
@@ -184,7 +213,8 @@ button[aria-pressed='true'] {
   }
   .card:hover {
     text-decoration: none;
-    border-color: var(--dim);
+    border-color: var(--border-2);
+    background: var(--panel-2);
   }
   .wordmark:hover {
     text-decoration: none;
@@ -206,16 +236,25 @@ button[aria-pressed='true'] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px 16px;
-  padding: 10px 16px;
-  background: var(--bg);
+  gap: 6px 14px;
+  padding: 8px 16px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--border);
 }
 .wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: var(--fs-md);
   font-weight: 650;
   color: var(--text);
-  letter-spacing: -0.01em;
+  letter-spacing: -0.015em;
+}
+.wordmark svg {
+  width: 18px;
+  height: 18px;
+  color: var(--accent);
 }
 .demo-badge {
   font: 600 var(--fs-xs) var(--sans);
@@ -224,16 +263,24 @@ button[aria-pressed='true'] {
 .topbar nav {
   display: flex;
   gap: 2px;
+  padding: 2px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 999px;
 }
 .topbar nav a {
   color: var(--dim);
-  padding: 4px 10px;
-  border-radius: var(--r);
-  transition: color 150ms ease;
+  font-weight: 500;
+  padding: 3px 12px;
+  border-radius: 999px;
+  transition:
+    color 150ms ease,
+    background-color 150ms ease;
 }
-.topbar nav a[aria-current='page'] {
+.topbar nav a[aria-current="page"] {
   color: var(--text);
   background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--border-2);
 }
 .topbar-status {
   margin-left: auto;
@@ -270,7 +317,7 @@ button[aria-pressed='true'] {
 main {
   max-width: 1400px;
   margin: 0 auto;
-  padding: 20px 16px 32px;
+  padding: 20px 16px 40px;
 }
 
 /* ── 상태 ── */
@@ -295,13 +342,16 @@ main {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  padding: 2px 9px 2px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--state) 12%, transparent);
   font-size: var(--fs-xs);
   font-weight: 500;
   color: var(--state);
   white-space: nowrap;
 }
 .badge::before {
-  content: '';
+  content: "";
   width: 7px;
   height: 7px;
   border-radius: 50%;
@@ -313,38 +363,67 @@ main {
   margin: 2px 0 0;
 }
 
-/* ── 요약: 한 줄 ── */
+/* ── 요약: 알약 한 줄. 상태 알약은 눌러서 그 상태의 카드만 본다 ── */
+.dash-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-bottom: 8px;
+}
 .summary {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px 20px;
-  margin-bottom: 6px;
+  align-items: center;
+  gap: 6px;
 }
 .stat {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
-}
-.stat dt {
+  gap: 7px;
+  padding: 3px 11px 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  font: inherit;
   color: var(--dim);
-  font-size: var(--fs-xs);
+  cursor: default;
 }
-.stat dd {
+.stat .num {
   font-weight: 600;
+  color: var(--text);
 }
-.stat[class*='state-'] dt {
+button.stat {
+  cursor: pointer;
   color: var(--state);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    transform 140ms var(--ease-out);
 }
-.stat[class*='state-'] dt::before {
-  content: '';
-  display: inline-block;
+button.stat::before {
+  content: "";
+  align-self: center;
   width: 7px;
   height: 7px;
-  margin-right: 6px;
   border-radius: 50%;
   background: var(--state);
-  vertical-align: 1px;
+}
+button.stat[aria-pressed="true"] {
+  border-color: var(--state);
+  background: color-mix(in srgb, var(--state) 14%, var(--panel));
+}
+.dash-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+/* 가끔 쓰는 동작이라 조용하게 둔다 */
+.dash-actions button {
+  font-size: var(--fs-xs);
+  color: var(--dim);
+  padding: 3px 10px;
 }
 
 /* ── 카드 ── */
@@ -353,26 +432,45 @@ main {
   grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
   gap: 12px;
 }
+.cards-empty {
+  margin-top: 12px;
+}
 @media (max-width: 480px) {
   .cards {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 .card {
+  position: relative;
   display: block;
   min-width: 0;
   color: inherit;
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 14px;
-  transition: border-color 150ms ease;
-}
-/* 큰 요소라 아주 조금만 줄인다 */
-.card {
+  border-radius: var(--r-lg);
+  padding: 14px 16px 14px 18px;
+  /* 큰 요소라 아주 조금만 줄인다 */
   transition:
     transform 140ms var(--ease-out),
-    border-color 150ms ease;
+    border-color 150ms ease,
+    background-color 150ms ease;
+}
+/* 왼쪽 가장자리의 상태 색: 글을 읽기 전에 훑어서 안다 */
+.card::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 14px;
+  bottom: 14px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--state);
+}
+/* 문제 있는 카드는 테두리에도 상태 색이 배어 눈에 먼저 들어온다 */
+.card.state-error,
+.card.state-stalled,
+.card.state-waiting {
+  border-color: color-mix(in srgb, var(--state) 30%, var(--border));
 }
 .card:active {
   transform: scale(0.99);
@@ -389,6 +487,10 @@ main {
   flex-wrap: wrap;
   gap: 4px 12px;
   margin-bottom: 4px;
+}
+.detail-head h1 {
+  font-size: 22px;
+  letter-spacing: -0.02em;
 }
 .discovered {
   display: inline-flex;
@@ -471,8 +573,15 @@ main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 세션 정보는 표 대신 한 줄에 늘어놓는다: 터미널이 위로 올라오고 눈이 덜 움직인다 */
 .kv.inline {
-  margin: 8px 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin: 10px 0 12px;
+}
+.kv.inline dd {
+  margin-right: 14px;
 }
 
 /* ── 상세 ── */
@@ -503,17 +612,18 @@ main {
 .tabs button:active:not(:disabled) {
   transform: none;
 }
-.tabs button[aria-selected='true'] {
+.tabs button[aria-selected="true"] {
   color: var(--text);
-  border-bottom-color: var(--text);
+  border-bottom-color: var(--accent);
 }
 .cmdline {
   display: flex;
   align-items: center;
   gap: 8px;
   background: var(--panel);
+  border: 1px solid var(--border);
   border-radius: var(--r);
-  padding: 6px 6px 6px 12px;
+  padding: 5px 5px 5px 12px;
 }
 .cmdline code {
   flex: 1;
@@ -538,6 +648,16 @@ pre {
   padding: 10px 12px;
   line-height: 1.45;
 }
+.term-frame {
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--term);
+  overflow: hidden;
+}
+.term-frame .terminal {
+  border: none;
+  border-radius: 0;
+}
 .terminal {
   height: min(60vh, 640px);
 }
@@ -560,7 +680,7 @@ pre {
   }
   /* 터미널이 화면 대부분을 쓰게 하고, 글자를 조금 줄여 한 줄에 더 들어가게 한다 */
   .terminal {
-    height: 64svh;
+    height: 62svh;
     font-size: 12px;
     padding: 8px 10px;
   }
@@ -627,14 +747,16 @@ pre {
 /* ── 안내 / 상태 ── */
 .notice {
   background: var(--panel);
-  border-radius: var(--r);
-  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
   transition:
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
 }
 .notice.error {
-  background: color-mix(in srgb, var(--red) 10%, var(--panel));
+  background: color-mix(in srgb, var(--red) 8%, var(--panel));
+  border-color: color-mix(in srgb, var(--red) 30%, var(--border));
 }
 .notice.error strong {
   color: var(--red);
@@ -646,7 +768,8 @@ pre {
   margin-top: 8px;
 }
 .notice.waiting {
-  background: color-mix(in srgb, var(--violet) 10%, var(--panel));
+  background: color-mix(in srgb, var(--violet) 8%, var(--panel));
+  border-color: color-mix(in srgb, var(--violet) 30%, var(--border));
   margin-bottom: 12px;
 }
 .notice.waiting strong {
@@ -660,7 +783,7 @@ pre {
   .notice.error,
   .notice.waiting,
   .new-session,
-  [role='status'] {
+  [role="status"] {
     opacity: 0;
     transform: translateY(-4px);
   }
@@ -678,12 +801,12 @@ pre {
     filter: blur(2px);
   }
 }
-[role='status'] {
+[role="status"] {
   transition:
     opacity 180ms var(--ease-out),
     transform 180ms var(--ease-out);
 }
-.conn[role='status'] {
+.conn[role="status"] {
   transition: none;
 }
 
@@ -711,8 +834,9 @@ pre {
   background: none;
   border-color: transparent;
 }
-.report-list li button[aria-current='true'] {
+.report-list li button[aria-current="true"] {
   background: var(--panel-2);
+  border-color: var(--border);
 }
 .report-body h3 {
   margin-top: 0;
@@ -725,8 +849,8 @@ pre {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 16px;
-  margin: 0 0 20px;
+  gap: 4px 14px;
+  margin: 0 0 16px;
   color: var(--dim);
   font-size: var(--fs-xs);
 }
@@ -857,7 +981,7 @@ pre {
   gap: 8px 12px;
   margin-top: 8px;
 }
-.settings input[type='url'] {
+.settings input[type="url"] {
   max-width: 520px;
   font-size: var(--fs-code);
 }
@@ -887,12 +1011,12 @@ pre {
   flex: 1 1 240px;
   margin: 0;
 }
-.toggle-row input[type='time'] {
+.toggle-row input[type="time"] {
   flex: none;
   width: auto;
   margin: 0;
 }
-.settings input:not([type='checkbox']),
+.settings input:not([type="checkbox"]),
 .settings textarea,
 .input-row textarea {
   display: block;
@@ -905,19 +1029,19 @@ pre {
   padding: 6px 10px;
   transition: border-color 150ms ease;
 }
-.settings input:not([type='checkbox']):focus-visible,
+.settings input:not([type="checkbox"]):focus-visible,
 .settings textarea:focus-visible,
 .input-row textarea:focus-visible {
   outline: none;
   border-color: var(--accent);
 }
-.settings input[type='number'],
-.settings input[type='time'] {
+.settings input[type="number"],
+.settings input[type="time"] {
   max-width: 160px;
   font-family: var(--mono);
   font-size: var(--fs-code);
 }
-.settings input[type='time'] {
+.settings input[type="time"] {
   margin-top: 4px;
 }
 .settings textarea {
@@ -929,17 +1053,17 @@ pre {
   opacity: 0.55;
   cursor: not-allowed;
 }
-.settings input[type='checkbox'] {
+.settings input[type="checkbox"] {
   margin: 0;
   accent-color: var(--accent);
 }
 .project-edit {
   min-width: 0;
   margin: 0 0 12px;
-  padding: 14px;
+  padding: 14px 16px;
   background: var(--panel);
-  border: none;
-  border-radius: var(--r);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
 }
 /* legend 는 기본적으로 상자 윗선에 걸쳐 그려진다. float 로 상자 안에 넣되,
    뒤따르는 요소에 clear 를 주지 않으면 grid 가 옆으로 밀려 좁은 기둥이 된다 */
@@ -960,6 +1084,7 @@ pre {
 .settings-actions {
   position: sticky;
   bottom: 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -984,7 +1109,9 @@ pre {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 12px;
-  margin-bottom: 6px;
+  padding: 6px 10px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
 }
 .term-bar .panes {
   margin-bottom: 0;
@@ -997,7 +1124,7 @@ pre {
   font-size: var(--fs-xs);
 }
 .input-bar {
-  margin-top: 8px;
+  margin-top: 10px;
 }
 .input-row,
 .keys {
@@ -1036,12 +1163,13 @@ pre {
 /* ── tmux 세션 만들기 ── */
 .new-session-toggle {
   display: block;
-  margin: 0 0 20px;
+  margin: 0 0 16px;
 }
 .new-session {
   margin: 0 0 20px;
-  padding: 14px;
-  border-radius: var(--r);
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
   background: var(--panel);
   transition:
     opacity 180ms var(--ease-out),
@@ -1093,13 +1221,13 @@ pre {
   .tabs button {
     min-height: 44px;
   }
-  .settings input:not([type='checkbox']),
+  .settings input:not([type="checkbox"]),
   .settings textarea,
   .input-row textarea {
     font-size: 16px;
     padding: 9px 12px;
   }
-  .settings input[type='checkbox'] {
+  .settings input[type="checkbox"] {
     width: 20px;
     height: 20px;
   }
@@ -1113,14 +1241,14 @@ pre {
   }
   .notice,
   .new-session,
-  [role='status'] {
+  [role="status"] {
     transition: opacity 150ms ease;
   }
   @starting-style {
     .notice.error,
     .notice.waiting,
     .new-session,
-    [role='status'] {
+    [role="status"] {
       transform: none;
     }
   }
