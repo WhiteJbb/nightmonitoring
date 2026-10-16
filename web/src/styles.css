@@ -531,13 +531,6 @@ main {
   top: 20px;
   right: 24px;
 }
-.hud-edge {
-  position: absolute;
-  top: 50%;
-  right: 16px;
-  translate: 0 -50%;
-  writing-mode: vertical-rl;
-}
 
 /* ── 페이지 머리 ── */
 .page-head {

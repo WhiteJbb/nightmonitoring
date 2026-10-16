@@ -147,7 +147,6 @@ export function App() {
       </div>
       <div className="hud" aria-hidden="true">
         <span className="hud-tag">NIGHTSHIFT // v{__APP_VERSION__}</span>
-        <span className="hud-edge">SYS.MONITOR // {conn === 'live' ? 'ON-LINE' : conn === 'down' ? 'LINK LOST' : 'SYNC'}</span>
       </div>
       <aside className="side">
         <a className="wordmark" href="#/">
