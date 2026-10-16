@@ -1,11 +1,20 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
-import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
-import { StartSession } from './NewSession.tsx';
-import { fitSize } from './termsize.ts';
-import { parseAnsi } from './ansi.ts';
-import { api, errorMessage } from './api.ts';
-import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
+import type {
+  Commit,
+  FileStat,
+  InputKey,
+  InputRequest,
+  ProjectSnapshot,
+  ProjectState,
+  RunKind,
+  RunSummary,
+} from "../../shared/types.ts";
+import { StartSession } from "./NewSession.tsx";
+import { fitSize } from "./termsize.ts";
+import { parseAnsi } from "./ansi.ts";
+import { api, errorMessage } from "./api.ts";
+import { dateTime, duration, relTime, STATE_LABEL } from "./format.ts";
 
 export function Badge({ state }: { state: ProjectState }) {
   return <span className={`badge state-${state}`}>{STATE_LABEL[state]}</span>;
@@ -23,9 +32,9 @@ export function Reasons({ reasons }: { reasons: string[] }) {
 }
 
 const TABS = [
-  ['terminal', '터미널'],
-  ['git', 'Git'],
-  ['runs', '테스트·빌드'],
+  ["terminal", "터미널"],
+  ["git", "Git"],
+  ["runs", "테스트·빌드"],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -37,7 +46,7 @@ interface Props {
 }
 
 export function ProjectDetail({ project: p, now, refreshSec }: Props) {
-  const [tab, setTab] = useState<Tab>('terminal');
+  const [tab, setTab] = useState<Tab>("terminal");
   return (
     <>
       <p className="crumb">
@@ -52,15 +61,23 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
 
       <div className="tabs" role="tablist">
         {TABS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+          <button
+            key={id}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            onClick={() => setTab(id)}
+          >
             {label}
           </button>
         ))}
       </div>
       <div role="tabpanel">
-        {tab === 'terminal' && <TerminalTab project={p} now={now} refreshSec={refreshSec} />}
-        {tab === 'git' && <GitTab project={p} now={now} />}
-        {tab === 'runs' && (
+        {tab === "terminal" && (
+          <TerminalTab project={p} now={now} refreshSec={refreshSec} />
+        )}
+        {tab === "git" && <GitTab project={p} now={now} />}
+        {tab === "runs" && (
           <>
             <p className="hint">명령은 설정 파일에서만 바꿀 수 있습니다.</p>
             <RunPanel project={p} kind="test" title="테스트" />
@@ -78,10 +95,14 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
  * 가로줄은 짧게 자르고 긴 공백은 줄인다. (색 시퀀스는 건드리지 않는다)
  */
 export function compactForWrap(text: string): string {
-  return text.replace(/([─━═_-])\1{23,}/g, (run) => run.slice(0, 24)).replace(/ {8,}/g, '  ');
+  return text
+    .replace(/([─━═_-])\1{23,}/g, (run) => run.slice(0, 24))
+    .replace(/ {8,}/g, "  ");
 }
 
-const narrowScreen = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
+const narrowScreen = () =>
+  typeof window.matchMedia === "function" &&
+  window.matchMedia("(max-width: 720px)").matches;
 
 // 터미널 탭이 한 번에 가져오는 줄 수와, 더 보기로 늘릴 수 있는 한도 (서버 한도와 같다)
 const LIVE_LINES = 500;
@@ -91,41 +112,51 @@ const POLL_BACKOFF_MS = 3000;
 
 // [tmux 키, 버튼 글자, 설명]
 // 터치 화면에서는 이 키들만 늘 보이고 나머지는 "더보기" 뒤로 접힌다.
-const PRIMARY_KEYS: InputKey[] = ['PPage', 'NPage', 'Up', 'Down', 'Escape'];
+const PRIMARY_KEYS: InputKey[] = ["PPage", "NPage", "Up", "Down", "Escape"];
 // 마우스 환경인지. 터치 화면에서는 입력 칸에 포커스를 주면 키보드가 올라와 화면을 가린다
-const finePointer = () => typeof window.matchMedia !== 'function' || window.matchMedia('(pointer: fine)').matches;
+const finePointer = () =>
+  typeof window.matchMedia !== "function" ||
+  window.matchMedia("(pointer: fine)").matches;
 const KEYS: [InputKey, string, string][] = [
-  ['Enter', 'Enter', 'Enter 보내기'],
-  ['Escape', 'Esc', 'Esc 보내기'],
-  ['Tab', 'Tab', 'Tab 보내기'],
-  ['BTab', '⇧Tab', 'Shift+Tab 보내기'],
-  ['Up', '↑', '위 화살표 보내기'],
-  ['Down', '↓', '아래 화살표 보내기'],
-  ['Left', '←', '왼쪽 화살표 보내기'],
-  ['Right', '→', '오른쪽 화살표 보내기'],
+  ["Enter", "Enter", "Enter 보내기"],
+  ["Escape", "Esc", "Esc 보내기"],
+  ["Tab", "Tab", "Tab 보내기"],
+  ["BTab", "⇧Tab", "Shift+Tab 보내기"],
+  ["Up", "↑", "위 화살표 보내기"],
+  ["Down", "↓", "아래 화살표 보내기"],
+  ["Left", "←", "왼쪽 화살표 보내기"],
+  ["Right", "→", "오른쪽 화살표 보내기"],
   // 전체 화면으로 도는 프로그램(Claude Code, less 등)은 스크롤백이 tmux 에 없어서, 프로그램 안에서 직접 넘겨야 한다
-  ['PPage', 'PgUp', 'Page Up 보내기 (프로그램 안에서 위로)'],
-  ['NPage', 'PgDn', 'Page Down 보내기 (프로그램 안에서 아래로)'],
-  ['BSpace', '⌫', 'Backspace 보내기 (한 글자 지우기)'],
-  ['C-c', 'Ctrl+C', 'Ctrl+C 보내기 (중단)'],
-  ['C-d', 'Ctrl+D', 'Ctrl+D 보내기 (EOF·종료)'],
-  ['C-u', 'Ctrl+U', 'Ctrl+U 보내기 (줄 지우기)'],
-  ['C-l', 'Ctrl+L', 'Ctrl+L 보내기 (화면 지우기)'],
+  ["PPage", "PgUp", "Page Up 보내기 (프로그램 안에서 위로)"],
+  ["NPage", "PgDn", "Page Down 보내기 (프로그램 안에서 아래로)"],
+  ["BSpace", "⌫", "Backspace 보내기 (한 글자 지우기)"],
+  ["C-c", "Ctrl+C", "Ctrl+C 보내기 (중단)"],
+  ["C-d", "Ctrl+D", "Ctrl+D 보내기 (EOF·종료)"],
+  ["C-u", "Ctrl+U", "Ctrl+U 보내기 (줄 지우기)"],
+  ["C-l", "Ctrl+L", "Ctrl+L 보내기 (화면 지우기)"],
 ];
-const CAUTION: InputKey[] = ['C-c', 'C-d'];
+const CAUTION: InputKey[] = ["C-c", "C-d"];
 
 // 입력칸이 비어 있을 때 그대로 pane 으로 넘기는 키
 const FORWARD: Record<string, InputKey> = {
-  ArrowUp: 'Up',
-  ArrowDown: 'Down',
-  ArrowLeft: 'Left',
-  ArrowRight: 'Right',
-  Escape: 'Escape',
-  Backspace: 'BSpace',
+  ArrowUp: "Up",
+  ArrowDown: "Down",
+  ArrowLeft: "Left",
+  ArrowRight: "Right",
+  Escape: "Escape",
+  Backspace: "BSpace",
 };
 
-function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string; onSent: () => void }) {
-  const [text, setText] = useState('');
+function InputBar({
+  projectId,
+  pane,
+  onSent,
+}: {
+  projectId: string;
+  pane: string;
+  onSent: () => void;
+}) {
+  const [text, setText] = useState("");
   const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -139,7 +170,7 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
     if (busy) return;
     setBusy(true);
     const sent = body.text;
-    if (sent !== undefined) setText('');
+    if (sent !== undefined) setText("");
     api
       .sendInput(projectId, body)
       .then(
@@ -150,14 +181,14 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
         (e: unknown) => {
           setError(errorMessage(e));
           // 보내지 못한 글은 되돌려 놓는다 (그사이 새로 친 것이 있으면 그대로 둔다)
-          if (sent !== undefined) setText((cur) => (cur === '' ? sent : cur));
+          if (sent !== undefined) setText((cur) => (cur === "" ? sent : cur));
         },
       )
       .finally(() => setBusy(false));
   };
   const sendText = (enter: boolean) => {
-    if (text !== '') send(enter ? { pane, text, enter: true } : { pane, text });
-    else if (enter) send({ pane, key: 'Enter' });
+    if (text !== "") send(enter ? { pane, text, enter: true } : { pane, text });
+    else if (enter) send({ pane, key: "Enter" });
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -165,14 +196,14 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     const forward = FORWARD[e.key];
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       if (e.shiftKey) return; // Shift+Enter 는 줄바꿈
       e.preventDefault();
       sendText(true);
-    } else if (e.key === 'Tab') {
+    } else if (e.key === "Tab") {
       e.preventDefault();
-      if (text === '') send({ pane, key: e.shiftKey ? 'BTab' : 'Tab' });
-    } else if (text === '' && forward) {
+      if (text === "") send({ pane, key: e.shiftKey ? "BTab" : "Tab" });
+    } else if (text === "" && forward) {
       e.preventDefault();
       send({ pane, key: forward });
     }
@@ -190,24 +221,44 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           autoCapitalize="off"
           spellCheck={false}
           maxLength={20000}
-          rows={Math.min(8, text.split('\n').length)}
+          rows={Math.min(8, text.split("\n").length)}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={onKeyDown}
         />
-        <button type="button" className="primary" disabled={busy} onClick={() => sendText(true)}>
+        <button
+          type="button"
+          className="primary"
+          disabled={busy}
+          onClick={() => sendText(true)}
+        >
           보내기
         </button>
-        <button type="button" disabled={busy || text === ''} onClick={() => sendText(false)}>
+        <button
+          type="button"
+          disabled={busy || text === ""}
+          onClick={() => sendText(false)}
+        >
           Enter 없이 입력
         </button>
       </div>
-      <div className={moreKeys ? 'keys open' : 'keys'} role="group" aria-label="특수 키">
+      <div
+        className={moreKeys ? "keys open" : "keys"}
+        role="group"
+        aria-label="특수 키"
+      >
         {KEYS.map(([key, label, title]) => (
           <button
             key={key}
             type="button"
-            className={[CAUTION.includes(key) ? 'caution' : '', PRIMARY_KEYS.includes(key) ? '' : 'extra'].join(' ').trim() || undefined}
+            className={
+              [
+                CAUTION.includes(key) ? "caution" : "",
+                PRIMARY_KEYS.includes(key) ? "" : "extra",
+              ]
+                .join(" ")
+                .trim() || undefined
+            }
             title={title}
             aria-label={title}
             disabled={busy}
@@ -216,8 +267,13 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
             {label}
           </button>
         ))}
-        <button type="button" className="more" aria-expanded={moreKeys} onClick={() => setMoreKeys(!moreKeys)}>
-          {moreKeys ? '접기' : '더보기'}
+        <button
+          type="button"
+          className="more"
+          aria-expanded={moreKeys}
+          onClick={() => setMoreKeys(!moreKeys)}
+        >
+          {moreKeys ? "접기" : "더보기"}
         </button>
       </div>
       {error && (
@@ -225,7 +281,9 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           {error}
         </p>
       )}
-      <p className="hint">입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다.</p>
+      <p className="hint">
+        입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다.
+      </p>
     </div>
   );
 }
@@ -237,9 +295,14 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [paneId, setPaneId] = useState<string | null>(null);
   // 고른 pane 이 사라지면 활성 pane 으로 돌아간다. pane 정보가 없으면 output(색 없음)을 그대로 쓴다
-  const pane = t.panes.find((x) => x.id === paneId) ?? t.panes.find((x) => x.active) ?? t.panes[0];
+  const pane =
+    t.panes.find((x) => x.id === paneId) ??
+    t.panes.find((x) => x.active) ??
+    t.panes[0];
   // 실시간으로 읽어 온 출력. 실패하면 null 로 돌려 스냅샷의 줄로 되돌아간다
-  const [live, setLive] = useState<{ pane: string; lines: string[] } | null>(null);
+  const [live, setLive] = useState<{ pane: string; lines: string[] } | null>(
+    null,
+  );
   const pollNow = useRef(() => {});
   // 올려 볼 수 있는 줄 수. "이전 출력 더 보기"로 늘린다
   const [lines, setLines] = useState(LIVE_LINES);
@@ -252,8 +315,11 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
   const isLive = live !== null && live.pane === pane?.id;
-  const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
-  const parsed = useMemo(() => parseAnsi((wrap ? compactForWrap(text) : text).split('\n')), [text, wrap]);
+  const text = (isLive ? live.lines : pane ? pane.lines : t.output).join("\n");
+  const parsed = useMemo(
+    () => parseAnsi((wrap ? compactForWrap(text) : text).split("\n")),
+    [text, wrap],
+  );
 
   // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
   useLayoutEffect(() => {
@@ -276,7 +342,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const poll = async () => {
       clearTimeout(timer);
-      if (stopped || document.visibilityState !== 'visible') return;
+      if (stopped || document.visibilityState !== "visible") return;
       if (!first && !stick.current) {
         timer = setTimeout(wake, POLL_MS);
         return;
@@ -290,7 +356,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       let delay = POLL_MS;
       try {
         const res = await api.paneLive(p.id, liveId, lines);
-        if (!Array.isArray(res.lines)) throw new Error('bad response');
+        if (!Array.isArray(res.lines)) throw new Error("bad response");
         if (!stopped) setLive({ pane: liveId, lines: res.lines });
       } catch {
         delay = POLL_BACKOFF_MS;
@@ -309,12 +375,12 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
       first = true;
       wake();
     };
-    document.addEventListener('visibilitychange', wake);
+    document.addEventListener("visibilitychange", wake);
     wake();
     return () => {
       stopped = true;
       clearTimeout(timer);
-      document.removeEventListener('visibilitychange', wake);
+      document.removeEventListener("visibilitychange", wake);
       pollNow.current = () => {};
       setLive(null);
     };
@@ -324,7 +390,10 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
     return (
       <div className="notice">
         <strong>tmux 세션이 등록되지 않았습니다.</strong>
-        <p>설정 파일에서 이 프로젝트의 tmux 세션 이름을 지정하면 터미널 출력을 볼 수 있습니다.</p>
+        <p>
+          설정 파일에서 이 프로젝트의 tmux 세션 이름을 지정하면 터미널 출력을 볼
+          수 있습니다.
+        </p>
       </div>
     );
   }
@@ -342,21 +411,27 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
   }
 
   // pane 이 터미널 영역보다 넓은지 (가로 스크롤이 생기는지). 줄바꿈 보기에서는 접혀 보이므로 묻지 않는다
-  const tooWide = !wrap && pane?.cols !== undefined && pane.cols > fitSize(preRef.current).cols;
+  const tooWide =
+    !wrap &&
+    pane?.cols !== undefined &&
+    pane.cols > fitSize(preRef.current).cols;
   const fit = () => {
     if (!pane) return;
     setFitting(true);
     setFitError(null);
     api
       .fitPane(p.id, pane.id, fitSize(preRef.current))
-      .then(() => pollNow.current(), (e: unknown) => setFitError(errorMessage(e)))
+      .then(
+        () => pollNow.current(),
+        (e: unknown) => setFitError(errorMessage(e)),
+      )
       .finally(() => setFitting(false));
   };
 
   const copy = (cmd: string) => {
     navigator.clipboard.writeText(cmd).then(
-      () => setCopyMsg('복사됨'),
-      () => setCopyMsg('복사 실패'),
+      () => setCopyMsg("복사됨"),
+      () => setCopyMsg("복사 실패"),
     );
     setTimeout(() => setCopyMsg(null), 1500);
   };
@@ -370,128 +445,169 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
         </div>
       )}
       {/* 좁은 화면에서는 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게 */}
-      <div className={showInfo ? 'term-info open' : 'term-info'}>
-      {t.attachCommand && (
-        <div className="cmdline">
-          <code>{t.attachCommand}</code>
-          <button type="button" onClick={() => copy(t.attachCommand!)}>
-            {/* 알림 영역은 그대로 두고 안쪽 글자만 바꿔 그린다: 낭독기가 변화를 읽고, 등장 전환도 걸린다 */}
-            <span aria-live="polite">
-              <span key={copyMsg ?? '복사'} className="swap">
-                {copyMsg ?? '복사'}
+      <div className={showInfo ? "term-info open" : "term-info"}>
+        {t.attachCommand && (
+          <div className="cmdline">
+            <code>{t.attachCommand}</code>
+            <button type="button" onClick={() => copy(t.attachCommand!)}>
+              {/* 알림 영역은 그대로 두고 안쪽 글자만 바꿔 그린다: 낭독기가 변화를 읽고, 등장 전환도 걸린다 */}
+              <span aria-live="polite">
+                <span key={copyMsg ?? "복사"} className="swap">
+                  {copyMsg ?? "복사"}
+                </span>
               </span>
+            </button>
+          </div>
+        )}
+        <dl className="kv inline">
+          <dt>세션</dt>
+          <dd>{p.tmuxSession}</dd>
+          <dt>생성 시각</dt>
+          <dd>{dateTime(t.createdAt)}</dd>
+          <dt>attached</dt>
+          <dd>{t.attached ? "예" : "아니오"}</dd>
+          <dt>마지막 출력 변경</dt>
+          <dd>
+            {relTime(t.lastOutputChangeAt ?? t.lastActivityAt, now)}
+            <span className="dim">
+              {" "}
+              ({dateTime(t.lastOutputChangeAt ?? t.lastActivityAt)})
             </span>
-          </button>
-        </div>
-      )}
-      <dl className="kv inline">
-        <dt>세션</dt>
-        <dd>{p.tmuxSession}</dd>
-        <dt>생성 시각</dt>
-        <dd>{dateTime(t.createdAt)}</dd>
-        <dt>attached</dt>
-        <dd>{t.attached ? '예' : '아니오'}</dd>
-        <dt>마지막 출력 변경</dt>
-        <dd>
-          {relTime(t.lastOutputChangeAt ?? t.lastActivityAt, now)}
-          <span className="dim"> ({dateTime(t.lastOutputChangeAt ?? t.lastActivityAt)})</span>
-        </dd>
-      </dl>
+          </dd>
+        </dl>
       </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
-      {pane && (
-        <div className="term-bar">
-          {t.panes.length > 1 && (
-            <div className="panes" role="group" aria-label="pane 선택">
-              {t.panes.map((x) => (
-                <button
-                  key={x.id}
-                  type="button"
-                  aria-pressed={x.id === pane.id}
-                  onClick={() => {
-                    stick.current = true;
-                    setScrolledUp(false);
-                    setLines(LIVE_LINES);
-                    setPaneId(x.id);
-                  }}
-                >
-                  {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
-            세션 정보
-          </button>
-          <button type="button" className="more-rows" aria-pressed={wrap} title="긴 줄을 화면 폭에 맞춰 접습니다" onClick={() => setWrap(!wrap)}>
-            줄바꿈
-          </button>
-          {isLive && lines < MAX_LIVE_LINES && (
-            <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
-              이전 출력 더 보기
+      <div className="term-frame">
+        {pane && (
+          <div className="term-bar">
+            {t.panes.length > 1 && (
+              <div className="panes" role="group" aria-label="pane 선택">
+                {t.panes.map((x) => (
+                  <button
+                    key={x.id}
+                    type="button"
+                    aria-pressed={x.id === pane.id}
+                    onClick={() => {
+                      stick.current = true;
+                      setScrolledUp(false);
+                      setLines(LIVE_LINES);
+                      setPaneId(x.id);
+                    }}
+                  >
+                    {x.window}:{x.windowName} · {x.index}{" "}
+                    <span className="dim">{x.command}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              className="more-rows info-toggle"
+              aria-expanded={showInfo}
+              onClick={() => setShowInfo(!showInfo)}
+            >
+              세션 정보
             </button>
-          )}
-          {/* 붙어 있는 터미널이 없는 세션만: 화면보다 넓으면 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
-          {p.allowInput && !t.attached && tooWide && (
-            <button type="button" className="more-rows" disabled={fitting} onClick={fit} title="tmux 화면을 이 터미널 영역 크기로 바꿉니다">
-              화면에 맞추기
-            </button>
-          )}
-          {fitError && (
-            <span className="err" role="alert">
-              {fitError}
-            </span>
-          )}
-          {scrolledUp && (
             <button
               type="button"
               className="more-rows"
-              onClick={() => {
-                stick.current = true;
-                setScrolledUp(false);
-                const el = preRef.current;
-                if (el) el.scrollTop = el.scrollHeight;
-                pollNow.current();
-              }}
+              aria-pressed={wrap}
+              title="긴 줄을 화면 폭에 맞춰 접습니다"
+              onClick={() => setWrap(!wrap)}
             >
-              맨 아래로
+              줄바꿈
             </button>
-          )}
-          <span className={isLive && !scrolledUp ? 'conn conn-live' : 'conn'}>
-            <span className="dot" />
-            {!isLive ? (refreshSec === undefined ? '스냅샷' : `${refreshSec}초 갱신`) : scrolledUp ? '올려 보는 중 · 갱신 멈춤' : '실시간'}
-          </span>
-        </div>
-      )}
-      <pre
-        ref={preRef}
-        className={wrap ? 'terminal wrap-lines' : 'terminal'}
-        tabIndex={0}
-        aria-label="최근 터미널 출력"
-        onScroll={(e) => {
-          const el = e.currentTarget;
-          stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-          setScrolledUp(!stick.current);
-        }}
-      >
-        {text
-          ? parsed.map((spans, i) => (
-              <span key={i}>
-                {spans.map((s, j) => (
-                  <span key={j} style={s.style}>
-                    {s.text}
-                  </span>
-                ))}
-                {i < parsed.length - 1 && '\n'}
+            {isLive && lines < MAX_LIVE_LINES && (
+              <button
+                type="button"
+                className="more-rows"
+                onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}
+              >
+                이전 출력 더 보기
+              </button>
+            )}
+            {/* 붙어 있는 터미널이 없는 세션만: 화면보다 넓으면 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
+            {p.allowInput && !t.attached && tooWide && (
+              <button
+                type="button"
+                className="more-rows"
+                disabled={fitting}
+                onClick={fit}
+                title="tmux 화면을 이 터미널 영역 크기로 바꿉니다"
+              >
+                화면에 맞추기
+              </button>
+            )}
+            {fitError && (
+              <span className="err" role="alert">
+                {fitError}
               </span>
-            ))
-          : '(출력 없음)'}
-      </pre>
+            )}
+            {scrolledUp && (
+              <button
+                type="button"
+                className="more-rows"
+                onClick={() => {
+                  stick.current = true;
+                  setScrolledUp(false);
+                  const el = preRef.current;
+                  if (el) el.scrollTop = el.scrollHeight;
+                  pollNow.current();
+                }}
+              >
+                맨 아래로
+              </button>
+            )}
+            <span className={isLive && !scrolledUp ? "conn conn-live" : "conn"}>
+              <span className="dot" />
+              {!isLive
+                ? refreshSec === undefined
+                  ? "스냅샷"
+                  : `${refreshSec}초 갱신`
+                : scrolledUp
+                  ? "올려 보는 중 · 갱신 멈춤"
+                  : "실시간"}
+            </span>
+          </div>
+        )}
+        <pre
+          ref={preRef}
+          className={wrap ? "terminal wrap-lines" : "terminal"}
+          tabIndex={0}
+          aria-label="최근 터미널 출력"
+          onScroll={(e) => {
+            const el = e.currentTarget;
+            stick.current =
+              el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+            setScrolledUp(!stick.current);
+          }}
+        >
+          {text
+            ? parsed.map((spans, i) => (
+                <span key={i}>
+                  {spans.map((s, j) => (
+                    <span key={j} style={s.style}>
+                      {s.text}
+                    </span>
+                  ))}
+                  {i < parsed.length - 1 && "\n"}
+                </span>
+              ))
+            : "(출력 없음)"}
+        </pre>
+      </div>
       {p.allowInput ? (
-        pane && <InputBar projectId={p.id} pane={pane.id} onSent={() => pollNow.current()} />
+        pane && (
+          <InputBar
+            projectId={p.id}
+            pane={pane.id}
+            onSent={() => pollNow.current()}
+          />
+        )
       ) : (
         <p className="hint">
-          입력을 보내려면 <a href="#/settings">설정</a>에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.
+          입력을 보내려면 <a href="#/settings">설정</a>에서 이 프로젝트의
+          "터미널 입력 허용"을 켜세요.
         </p>
       )}
     </>
@@ -501,7 +617,15 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
 const COMMITS_SHOWN = 10;
 
 /** 긴 목록은 처음 10개만 보여 주고 나머지는 펼쳐서 본다 (오늘 커밋이 수십 개면 탭이 끝없이 길어진다). */
-function Commits({ commits, now, empty }: { commits: Commit[]; now: string; empty: string }) {
+function Commits({
+  commits,
+  now,
+  empty,
+}: {
+  commits: Commit[];
+  now: string;
+  empty: string;
+}) {
   const [all, setAll] = useState(false);
   if (commits.length === 0) return <p className="dim">{empty}</p>;
   const hidden = commits.length - COMMITS_SHOWN;
@@ -519,8 +643,13 @@ function Commits({ commits, now, empty }: { commits: Commit[]; now: string; empt
         ))}
       </ul>
       {hidden > 0 && (
-        <button type="button" className="more-rows" aria-expanded={all} onClick={() => setAll(!all)}>
-          {all ? '접기' : `${hidden}개 더 보기`}
+        <button
+          type="button"
+          className="more-rows"
+          aria-expanded={all}
+          onClick={() => setAll(!all)}
+        >
+          {all ? "접기" : `${hidden}개 더 보기`}
         </button>
       )}
     </>
@@ -536,7 +665,17 @@ function FilePath({ file }: { file: { path: string; from?: string } }) {
   );
 }
 
-function Stats({ files, additions, deletions, empty }: { files: FileStat[]; additions: number; deletions: number; empty: string }) {
+function Stats({
+  files,
+  additions,
+  deletions,
+  empty,
+}: {
+  files: FileStat[];
+  additions: number;
+  deletions: number;
+  empty: string;
+}) {
   if (files.length === 0) return <p className="dim">{empty}</p>;
   return (
     <ul className="rows">
@@ -578,9 +717,11 @@ export function GitTab({ project: p, now }: Props) {
             <dt>브랜치</dt>
             <dd>{git.branch}</dd>
             <dt>HEAD</dt>
-            <dd>{git.head?.slice(0, 7) ?? '—'}</dd>
+            <dd>{git.head?.slice(0, 7) ?? "—"}</dd>
             <dt>작업 트리</dt>
-            <dd className={git.clean ? 'ok' : 'warn'}>{git.clean ? '변경 없음 (clean)' : '변경 있음 (dirty)'}</dd>
+            <dd className={git.clean ? "ok" : "warn"}>
+              {git.clean ? "변경 없음 (clean)" : "변경 있음 (dirty)"}
+            </dd>
             <dt>마지막 Git 변경</dt>
             <dd>{relTime(p.lastGitChangeAt, now)}</dd>
           </dl>
@@ -603,23 +744,36 @@ export function GitTab({ project: p, now }: Props) {
 
           <section>
             <h3>Diff stat (HEAD 대비)</h3>
-            <Stats files={git.diffStat} additions={git.additions} deletions={git.deletions} empty="diff 가 없습니다." />
+            <Stats
+              files={git.diffStat}
+              additions={git.additions}
+              deletions={git.deletions}
+              empty="diff 가 없습니다."
+            />
           </section>
 
           <section>
             <h3>최근 커밋</h3>
-            <Commits commits={git.recentCommits.slice(0, 10)} now={now} empty="커밋이 없습니다." />
+            <Commits
+              commits={git.recentCommits.slice(0, 10)}
+              now={now}
+              empty="커밋이 없습니다."
+            />
           </section>
 
           <section>
             <h3>오늘 커밋 ({git.todayCommits.length})</h3>
-            <Commits commits={git.todayCommits} now={now} empty="오늘 커밋이 없습니다." />
+            <Commits
+              commits={git.todayCommits}
+              now={now}
+              empty="오늘 커밋이 없습니다."
+            />
           </section>
         </>
       ) : (
         <div className="notice error">
           <strong>Git 정보를 읽을 수 없습니다.</strong>
-          <p className="mono wrap">{git.error ?? '알 수 없는 오류'}</p>
+          <p className="mono wrap">{git.error ?? "알 수 없는 오류"}</p>
         </div>
       )}
 
@@ -632,10 +786,14 @@ export function GitTab({ project: p, now }: Props) {
             <dt>기준 브랜치</dt>
             <dd>{since.baseline.branch}</dd>
             <dt>기준 HEAD</dt>
-            <dd>{since.baseline.head?.slice(0, 7) ?? '—'}</dd>
+            <dd>{since.baseline.head?.slice(0, 7) ?? "—"}</dd>
           </dl>
           <h4>커밋 ({since.commits.length})</h4>
-          <Commits commits={since.commits} now={now} empty="기준점 이후 커밋이 없습니다." />
+          <Commits
+            commits={since.commits}
+            now={now}
+            empty="기준점 이후 커밋이 없습니다."
+          />
           <h4>변경 파일</h4>
           <Stats
             files={since.files}
@@ -660,7 +818,7 @@ export function GitTab({ project: p, now }: Props) {
             </p>
           )}
           {p.logFile && <p className="mono dim wrap">{p.logFile}</p>}
-          <pre className="output err-output">{p.logErrors.join('\n')}</pre>
+          <pre className="output err-output">{p.logErrors.join("\n")}</pre>
         </section>
       )}
     </>
@@ -670,11 +828,23 @@ export function GitTab({ project: p, now }: Props) {
 function Verdict({ run }: { run: RunSummary }) {
   if (run.canceled) return <span className="dim">취소됨</span>;
   if (run.timedOut) return <span className="err">시간 초과</span>;
-  return run.exitCode === 0 ? <span className="ok">성공</span> : <span className="err">실패</span>;
+  return run.exitCode === 0 ? (
+    <span className="ok">성공</span>
+  ) : (
+    <span className="err">실패</span>
+  );
 }
 
-export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot; kind: RunKind; title: string }) {
-  const command = kind === 'test' ? p.testCommand : p.buildCommand;
+export function RunPanel({
+  project: p,
+  kind,
+  title,
+}: {
+  project: ProjectSnapshot;
+  kind: RunKind;
+  title: string;
+}) {
+  const command = kind === "test" ? p.testCommand : p.buildCommand;
   const run = p.runs[kind];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -694,17 +864,33 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
     <section className="run">
       <h3>{title}</h3>
       <div className="cmdline">
-        {command ? <code>{command}</code> : <span className="dim grow">명령이 설정되지 않았습니다</span>}
-        <button type="button" onClick={() => request(api.run, '실행')} disabled={!command || busy || running}>
-          {running ? '실행 중…' : '실행'}
+        {command ? (
+          <code>{command}</code>
+        ) : (
+          <span className="dim grow">명령이 설정되지 않았습니다</span>
+        )}
+        <button
+          type="button"
+          onClick={() => request(api.run, "실행")}
+          disabled={!command || busy || running}
+        >
+          {running ? "실행 중…" : "실행"}
         </button>
         {running && (
-          <button type="button" onClick={() => request(api.cancelRun, '취소')} disabled={busy}>
+          <button
+            type="button"
+            onClick={() => request(api.cancelRun, "취소")}
+            disabled={busy}
+          >
             취소
           </button>
         )}
       </div>
-      {!command && <p className="hint">설정 파일에 이 프로젝트의 {title} 명령을 등록하면 실행할 수 있습니다.</p>}
+      {!command && (
+        <p className="hint">
+          설정 파일에 이 프로젝트의 {title} 명령을 등록하면 실행할 수 있습니다.
+        </p>
+      )}
       {error && (
         <p className="err" role="alert">
           {error}
@@ -716,9 +902,15 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
         <>
           <dl className="kv inline">
             <dt>결과</dt>
-            <dd>{run.running ? <span className="warn">실행 중…</span> : <Verdict run={run} />}</dd>
+            <dd>
+              {run.running ? (
+                <span className="warn">실행 중…</span>
+              ) : (
+                <Verdict run={run} />
+              )}
+            </dd>
             <dt>종료 코드</dt>
-            <dd>{run.exitCode ?? '—'}</dd>
+            <dd>{run.exitCode ?? "—"}</dd>
             <dt>소요 시간</dt>
             <dd>{duration(run.durationMs)}</dd>
             <dt>시작 시각</dt>
@@ -728,11 +920,11 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
           </dl>
           <h4>stdout</h4>
           <pre className="output" tabIndex={0}>
-            {run.stdout || '(비어 있음)'}
+            {run.stdout || "(비어 있음)"}
           </pre>
           <h4>stderr</h4>
           <pre className="output err-output" tabIndex={0}>
-            {run.stderr || '(비어 있음)'}
+            {run.stderr || "(비어 있음)"}
           </pre>
         </>
       )}
@@ -755,7 +947,7 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
                   <td>
                     <Verdict run={h} />
                   </td>
-                  <td>{h.exitCode ?? '—'}</td>
+                  <td>{h.exitCode ?? "—"}</td>
                   <td>{duration(h.durationMs)}</td>
                 </tr>
               ))}

@@ -235,7 +235,14 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
   };
   const { container } = render(<Dashboard snapshot={snapshot} />);
   // 요약 줄에는 0 인 상태가 나오지 않는다
-  expect([...container.querySelectorAll('.stat')].map((d) => d.textContent)).toEqual(['프로젝트1', '실행 중인 세션1', '입력 대기1']);
+  expect([...container.querySelectorAll('.stat')].map((d) => d.textContent)).toEqual(['프로젝트 1', '실행 중인 세션 1', '입력 대기1']);
+  // 상태 알약을 누르면 그 상태의 카드만 남고, 다시 누르면 전체로 돌아온다
+  const pill = screen.getByRole('button', { name: '입력 대기1' });
+  fireEvent.click(pill);
+  expect(pill.getAttribute('aria-pressed')).toBe('true');
+  expect(container.querySelectorAll('.card')).toHaveLength(1);
+  fireEvent.click(pill);
+  expect(pill.getAttribute('aria-pressed')).toBe('false');
   const meta = container.querySelector('.meta')?.textContent ?? '';
   expect(meta).toContain('2시간 전');
   expect(meta).toContain('갱신 주기 5초');
