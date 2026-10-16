@@ -138,6 +138,10 @@ describe('Monitor session state', () => {
     state.log = { errors: ['Error: again'], size: 50 };
     await m.tick();
     expect(m.snapshot.projects[0]!.logErrors).toEqual(['Error: again']);
+    // 스캔 창에서 밀려나 더는 안 보여도 확인 처리 전까지는 남는다
+    state.log = { errors: [], size: 200_000 };
+    await m.tick();
+    expect(m.snapshot.projects[0]!.logErrors).toEqual(['Error: again']);
     expect(m.ackErrors('nope')).toBe(false);
   });
 
