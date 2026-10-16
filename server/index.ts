@@ -201,6 +201,14 @@ const terminal = demo ? undefined : { send: sendInput, sendRaw, stream: (session
     console.error(e.code === 'EADDRINUSE' ? `포트 ${config.port} 가 이미 사용 중입니다. config 의 port 를 바꾸세요.` : e);
     process.exit(1);
   });
+  // Tailscale 주소에 바인딩하고 https 이름(allowedHosts 의 *.ts.net)을 적었으면 127.0.0.1 에서도 받는다:
+  // 맥용 Tailscale 앱의 serve 는 로컬 주소로만 중계할 수 있다 (tailscale serve --https=443 http://127.0.0.1:포트)
+  if (isTailscaleAddress(config.host) && httpsName) {
+    http
+      .createServer(app)
+      .on('error', (e) => console.error(`127.0.0.1:${config.port} 에서 받지 못했습니다 (https 중계용): ${e.message}`))
+      .listen(config.port, '127.0.0.1', () => console.log(`https 중계용: http://127.0.0.1:${config.port} → https://${httpsName}`));
+  }
   server.listen(config.port, config.host, () => {
     console.log(`NightShift${demo ? ' (demo)' : ''}: http://${config.host}:${config.port}`);
     if (missing && !demo) console.log(`config 파일이 없습니다: ${configPath}\n  config/nightshift.example.json 을 복사해 프로젝트를 등록하세요.`);
