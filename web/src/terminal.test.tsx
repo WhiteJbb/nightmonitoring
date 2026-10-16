@@ -239,6 +239,20 @@ test('OSC 52 from the program copies to the clipboard and says so', async () => 
   expect(screen.getByText('복사됨')).toBeTruthy();
 });
 
+test('a failed raw send drops what was queued behind it and says so', async () => {
+  let fail: ((e: Error) => void) | null = null;
+  fetchMock.mockImplementationOnce(() => new Promise<Response>((_, reject) => (fail = reject)));
+  await renderTab(project(ONE));
+  await init();
+  act(() => xterm().type('rm -rf build'));
+  act(() => xterm().type('\r'));
+  await tick();
+  await act(async () => fail!(new Error('network')));
+  await tick();
+  expect(posts()).toHaveLength(1); // 뒤에 쌓인 Enter 는 보내지 않는다
+  expect(screen.getByText(/입력을 보내지 못했습니다/)).toBeTruthy();
+});
+
 test('mouse moves without a button are not sent; wheel reports are', async () => {
   await renderTab(project(ONE));
   await init();

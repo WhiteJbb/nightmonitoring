@@ -26,7 +26,7 @@ const TOUCH_SPEED = 1.5;
  * 클립보드에 쓴다. 이 서버는 보통 http(비보안 출처)로 열려 navigator.clipboard 가 없으니
  * 숨긴 입력칸을 골라 execCommand('copy') 로 쓴다 (클릭 직후라 브라우저가 허용한다).
  */
-function copyText(text: string): boolean {
+export function copyText(text: string): boolean {
   if (window.isSecureContext && navigator.clipboard) {
     void navigator.clipboard.writeText(text).catch(() => {});
     return true;
@@ -148,7 +148,11 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       try {
         for (let i = 0; i < bytes.length && !closed; i += RAW_CHUNK) await api.sendRaw(projectId, { pane, data: encode(bytes.subarray(i, i + RAW_CHUNK)) });
       } catch (e) {
-        cb.current.onStatus(errorMessage(e));
+        // 일부가 갔을 수도 있다. 뒤에 쌓인 입력(Enter 등)까지 이어 보내면 반쪽 명령이 실행될 수 있으니 버리고 알린다
+        queue = '';
+        cb.current.onNotice?.(`입력을 보내지 못했습니다 (${errorMessage(e)}). 화면을 확인한 뒤 다시 입력하세요`);
+        sending = false;
+        return;
       }
       sending = false;
       void flush();

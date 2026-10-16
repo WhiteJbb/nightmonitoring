@@ -54,7 +54,8 @@ const COOLDOWN_STATES: ProjectState[] = ['stalled', 'error'];
 export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot): Alert[] {
   const alerts: Alert[] = [];
   for (const p of snapshot.projects) {
-    const { state } = p.status;
+    // 오래된 오류(지난 테스트 실패 등)가 남아 있어도 에이전트가 묻고 있으면 그게 지금 알릴 일이다
+    const state: ProjectState = p.tmux.exists && p.tmux.waitingPrompt ? 'waiting' : p.status.state;
     const outputAt = p.tmux.lastOutputChangeAt;
     const gitAt = p.lastGitChangeAt;
     const m = memory.get(p.id);
@@ -69,7 +70,7 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
     // 에이전트가 할 일을 마친 유휴는 "작업 끝남" 으로 알린다
     const label = state === 'idle' && p.tmux.agent === 'ready' ? '작업 끝남' : ALERT_STATES[state];
     if (m.state !== state && label) {
-      const alert = { title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label, projectId: p.id, state };
+      const alert = { title: `NightShift · ${p.name}: ${label}`, message: state === 'waiting' && p.tmux.waitingPrompt ? `입력 대기: ${p.tmux.waitingPrompt}` : p.status.reasons.join(', ') || label, projectId: p.id, state };
       // 유휴는 정지 의심으로 가는 길목이라 반복 판단에 끼우지 않는다 (기본으로는 보내지도 않는다).
       if (state === 'idle') alerts.push(alert);
       else {

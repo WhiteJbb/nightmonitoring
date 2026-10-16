@@ -1667,8 +1667,9 @@ fieldset.checks legend {
   .panes {
     gap: 8px;
   }
+  /* 휴대폰: 덜 쓰는 키와 "입력만 하기"는 "더보기"를 펼쳤을 때만 */
   .keys:not(.open) .extra,
-  .input-row .type-only {
+  .input-bar:not(:has(.keys.open)) .type-only {
     display: none;
   }
   .keys .more {
