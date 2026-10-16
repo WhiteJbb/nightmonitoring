@@ -55,7 +55,7 @@ export const MAX_PENDING_RETRIES = 20;
 let pendingRetries = 0;
 
 /** send 가 실패하면 RETRY_DELAYS_MS 간격으로 다시 시도한다. 끝내 실패하면 마지막 오류 메시지. */
-export async function withRetry(send: () => Promise<string | null>, wait = (ms: number) => sleep(ms, undefined, { ref: false })): Promise<string | null> {
+export async function withRetry(send: () => Promise<string | null>, wait: (ms: number) => Promise<unknown> = (ms) => sleep(ms, undefined, { ref: false })): Promise<string | null> {
   let error = await send();
   for (const ms of RETRY_DELAYS_MS) {
     if (!error || pendingRetries >= MAX_PENDING_RETRIES) break;
