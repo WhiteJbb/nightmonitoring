@@ -1,5 +1,5 @@
 // 웹에서 올린 이미지를 파일로 저장한다. 경로를 프롬프트에 넣으면 Claude Code·Codex 가 첨부로 읽는다.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 export const IMAGE_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
@@ -18,10 +18,17 @@ export function parseUpload(body: unknown): { ext: string; data: Buffer } | stri
   return { ext, data: buf };
 }
 
-// ponytail: 올린 파일은 지우지 않는다. 쌓이면 .nightshift/uploads 를 비우면 된다.
-/** dir 아래에 `<프로젝트>-<시각>.<ext>` 로 저장하고 절대 경로를 돌려준다. */
-export async function saveUpload(dir: string, projectId: string, ext: string, data: Buffer): Promise<string> {
+/** 올린 이미지는 에이전트가 읽고 나면 쓸 일이 없다. 이보다 오래된 것은 새로 올릴 때 지운다 */
+export const UPLOAD_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** dir 아래에 `<프로젝트>-<시각>.<ext>` 로 저장하고 절대 경로를 돌려준다. 오래된 파일은 이때 정리한다. */
+export async function saveUpload(dir: string, projectId: string, ext: string, data: Buffer, now = Date.now()): Promise<string> {
   await mkdir(dir, { recursive: true });
+  for (const name of await readdir(dir)) {
+    const f = path.join(dir, name);
+    const st = await stat(f).catch(() => null);
+    if (st?.isFile() && now - st.mtimeMs > UPLOAD_KEEP_MS) await rm(f, { force: true });
+  }
   const file = path.join(dir, `${projectId.replace(/[^\w.-]+/g, '_')}-${Date.now()}.${ext}`);
   await writeFile(file, data);
   return file;
