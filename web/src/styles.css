@@ -8,7 +8,7 @@
  * 움직임은 눌림·등장·색 전환만. 투명도 줄이기(prefers-reduced-transparency)를 켜면 유리가 불투명해진다.
  */
 :root {
-  --bg: #0b0d12;
+  --bg: #0f0f11;
   --text: #f2f4f7;
   /* Apple 의 secondaryLabel(어두운 모드) 에 해당. 어두운 유리 위에서 4.5:1 이 나온다 */
   --dim: rgba(235, 235, 245, 0.62);
@@ -22,8 +22,8 @@
   --red: #ff453a;
   --violet: #bf5af2;
 
-  --glass: rgba(24, 27, 34, 0.55);
-  --glass-2: rgba(40, 44, 54, 0.6);
+  --glass: rgba(28, 28, 31, 0.55);
+  --glass-2: rgba(44, 44, 48, 0.6);
   --material: rgba(255, 255, 255, 0.05);
   --material-2: rgba(255, 255, 255, 0.09);
   --line: rgba(255, 255, 255, 0.09);
@@ -63,16 +63,16 @@ body {
   overflow-wrap: break-word;
   -webkit-tap-highlight-color: transparent;
 }
-/* 유리가 비출 배경: 어두운 바탕 위에 색 번짐 두 개. 스크롤해도 고정이다 */
+/* 유리가 비출 배경: 무채색 바탕 위에 밝기만 다른 번짐. 색은 상태 표시와 강조색에만 쓴다. 스크롤해도 고정이다 */
 body::before {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   background:
-    radial-gradient(720px 520px at 12% -10%, rgba(10, 132, 255, 0.22), transparent 70%),
-    radial-gradient(640px 480px at 92% 8%, rgba(94, 92, 230, 0.18), transparent 70%),
-    radial-gradient(900px 600px at 60% 110%, rgba(48, 209, 88, 0.1), transparent 70%),
+    radial-gradient(720px 520px at 12% -10%, rgba(255, 255, 255, 0.07), transparent 70%),
+    radial-gradient(640px 480px at 92% 8%, rgba(255, 255, 255, 0.05), transparent 70%),
+    radial-gradient(900px 600px at 60% 110%, rgba(255, 255, 255, 0.04), transparent 70%),
     var(--bg);
 }
 a {
@@ -1421,7 +1421,7 @@ form.settings {
   .cmdline {
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
-    background: #171a21;
+    background: #1a1a1d;
   }
   body::before {
     background: var(--bg);
