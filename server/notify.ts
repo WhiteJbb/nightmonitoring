@@ -66,7 +66,8 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
     if (m.lastGitAt !== undefined && gitAt !== m.lastGitAt) m.activity += REALERT_ACTIVITY;
     m.lastOutputAt = outputAt;
     m.lastGitAt = gitAt;
-    const label = ALERT_STATES[state];
+    // 에이전트가 할 일을 마친 유휴는 "작업 끝남" 으로 알린다
+    const label = state === 'idle' && p.tmux.agent === 'ready' ? '작업 끝남' : ALERT_STATES[state];
     if (m.state !== state && label) {
       const alert = { title: `NightShift · ${p.name}: ${label}`, message: p.status.reasons.join(', ') || label, projectId: p.id, state };
       // 유휴는 정지 의심으로 가는 길목이라 반복 판단에 끼우지 않는다 (기본으로는 보내지도 않는다).

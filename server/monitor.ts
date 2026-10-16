@@ -91,10 +91,14 @@ interface Tracked {
   settle: number;
   /** 작업 중 표시를 띄운 적이 있는 에이전트 세션 */
   agent: boolean;
+  /** 작업 중 표시가 연달아 보이지 않은 tick 수 (도구 호출 사이의 잠깐 빈 틈을 "끝남"으로 보지 않게) */
+  quietTicks: number;
 }
 
 /** 크기 변경 뒤 화면을 다시 그리는 데 걸리는 tick 수 (그동안의 출력 변화는 활동이 아니다) */
 export const RESIZE_SETTLE_TICKS = 2;
+/** 작업 중 표시가 이만큼 연달아 안 보여야 "작업을 마침"으로 본다 */
+export const READY_TICKS = 2;
 
 type Collected = Pick<ProjectSnapshot, 'repoPath' | 'git' | 'since' | 'lastGitChangeAt' | 'tmux' | 'logErrors'>;
 
@@ -329,7 +333,8 @@ export class Monitor {
       const busy = plain.some((lines) => isBusy(lines, this.opts.config.busyPatterns));
       // 작업 중 표시를 한 번 봤거나, pane 에서 Claude Code·Codex 가 돌고 있으면 에이전트 세션이다
       if (busy || raw.panes.some((x) => /claude|codex/i.test(x.command))) tr.agent = true;
-      if (tr.agent) agent = busy ? 'busy' : 'ready';
+      tr.quietTicks = busy ? 0 : tr.quietTicks + 1;
+      if (tr.agent) agent = tr.quietTicks >= READY_TICKS ? 'ready' : 'busy';
       if (tr.settle > 0) tr.settle -= 1;
       tr.output = text;
       // tmux 의 활동 시각은 스피너 출력에도 갱신되므로 최초 관측의 초기값으로만 쓰고,
@@ -420,7 +425,7 @@ const tailRun = (r: RunResult | null): RunResult | null => {
   if (!r || (r.stdout.length <= SNAPSHOT_OUTPUT_CHARS && r.stderr.length <= SNAPSHOT_OUTPUT_CHARS)) return r;
   return { ...r, stdout: r.stdout.slice(-SNAPSHOT_OUTPUT_CHARS), stderr: r.stderr.slice(-SNAPSHOT_OUTPUT_CHARS), truncated: true };
 };
-const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0, agent: false });
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0, agent: false, quietTicks: READY_TICKS });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,

@@ -145,6 +145,17 @@ describe('alerts', () => {
     expect(titles(snap({ a: 'stalled' }, { a: 't8', 'a.git': 'g1' }, T0 + 2 * H + REALERT_COOLDOWN_MS))).toEqual(['NightShift · A: 정지 의심']);
   });
 
+  it('an agent that finished its work is announced as 작업 끝남', () => {
+    const memory = new Map();
+    const withAgent = (state: string, agent: string) => {
+      const s = snap({ a: state });
+      (s.projects[0]!.tmux as { agent?: string }).agent = agent;
+      return s;
+    };
+    alertsFor(memory, withAgent('running', 'busy'));
+    expect(alertsFor(memory, withAgent('idle', 'ready')).map((x) => [x.title, x.state])).toEqual([['NightShift · A: 작업 끝남', 'idle']]);
+  });
+
   it('remembers sent alerts across a restart', () => {
     const before = new Map();
     alertsFor(before, snap({ a: 'running' }, { a: 't0' }));
