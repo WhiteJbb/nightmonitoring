@@ -133,18 +133,19 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
 | GET | `/api/snapshot` | 현재 스냅샷 |
-| GET | `/api/events` | SSE, 폴링마다·실행 상태 변경 시 스냅샷 푸시 |
+| GET | `/api/events` | SSE, 폴링마다·실행 상태 변경 시 스냅샷 푸시 (pane 화면 사본·기준점 이후 목록을 뺀 요약) |
+| GET | `/api/projects/:id` | 한 프로젝트의 전체 상태 (Git 탭이 기준점 이후 목록을 받을 때) |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
 | GET | `/api/projects/:id/run/:kind` | 마지막 실행의 전체 출력 |
-| GET | `/api/projects/:id/panes/:paneId` | 지금 이 순간의 pane 출력 (`?lines=` 로 스크롤백) |
 | GET | `/api/projects/:id/term/:paneId` | SSE, pane 출력 바이트 스트림 (xterm.js) |
 | POST | `/api/projects/:id/input` | pane 에 글자 또는 허용된 특수 키 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/raw` | 터미널 에뮬레이터의 바이트를 그대로 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/upload` | 이미지 저장 후 경로 반환. 200 / 400 / 403 / 404 |
-| POST | `/api/sessions` | 새 tmux 세션(셸)을 만들고 프로젝트로 등록. 200 `{id}` / 400 / 403 / 409 |
+| POST | `/api/sessions` | 새 tmux 세션을 만들고(고르면 `agent`: claude·codex 를 띄움) 프로젝트로 등록. 200 `{id}` / 400 / 403 / 409 |
 | POST | `/api/projects/:id/panes/:paneId/fit` | 터미널이 붙어 있지 않은 세션의 화면 크기를 보는 화면에 맞춤. 200 / 403 / 404 / 409 |
 | POST | `/api/projects/:id/session` | 등록된 프로젝트의 꺼진 세션을 같은 이름으로 다시 만들기 |
+| DELETE | `/api/projects/:id/session` | 세션 끝내기 (입력과 같은 조건). 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/ack-errors` | 로그 오류 확인 처리 |
 | POST | `/api/session/reset` | 새 모니터링 세션 (기준점 초기화) |
 | POST | `/api/notify/test` | 저장된 ntfy 주소로 시험 알림 전송 |

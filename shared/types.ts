@@ -263,14 +263,6 @@ export interface ConfigUpdate {
 
 // ---- 실시간 터미널 보기와 입력 ----
 
-/**
- * GET /api/projects/:id/panes/:paneId?lines=N — 지금 이 순간의 pane 출력 (TmuxPane.lines 와 같은 형식).
- * lines 는 가져올 줄 수(100~5000, 기본 100). 스크롤백을 올려 볼 때 늘린다.
- */
-export interface PaneLive {
-  lines: string[];
-}
-
 /** 글자가 아닌 키. 이 목록에 있는 것만 보낼 수 있다. */
 export type InputKey = 'Enter' | 'Escape' | 'Tab' | 'BTab' | 'Up' | 'Down' | 'Left' | 'Right' | 'PPage' | 'NPage' | 'BSpace' | 'C-c' | 'C-d' | 'C-u' | 'C-l';
 
