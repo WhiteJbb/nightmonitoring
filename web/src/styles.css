@@ -795,7 +795,7 @@ button.stat[aria-pressed='true'] {
 }
 .row-col .lbl {
   text-transform: none;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.04em;
 }
 .row-col .val {
   display: flex;
