@@ -315,8 +315,8 @@ describe('session API', () => {
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api`;
-    const post = async (p: string, body?: unknown) => {
-      const res = await fetch(`${base}${p}`, { method: 'POST', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
+    const post = async (p: string, body?: unknown, method = 'POST') => {
+      const res = await fetch(`${base}${p}`, { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) });
       return [res.status, await res.json()] as const;
     };
     return { post, createSession, cloneRepo, monitor, file };
@@ -364,6 +364,9 @@ describe('session API', () => {
     expect(loadConfig(file, '/base').config.hiddenSessions).toEqual(['scratch']);
     expect((await post('/sessions/old/hide'))[0]).toBe(409);
     expect((await post('/sessions/bad%20name/hide'))[0]).toBe(400);
+    // DELETE 는 숨김을 되돌린다
+    expect(await post('/sessions/scratch/hide', undefined, 'DELETE')).toEqual([200, { ok: true }]);
+    expect(loadConfig(file, '/base').config.hiddenSessions).toEqual([]);
   });
 
   it('restarts the session of a registered project', async () => {
