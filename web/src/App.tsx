@@ -242,12 +242,9 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
               설정 파일이 없습니다: <code>{snapshot.configPath}</code>
             </p>
           )}
+          <p>돌고 있는 tmux 세션은 여기에 자동으로 나타납니다. "등록"을 누르면 프로젝트가 되고 설정 파일이 만들어집니다.</p>
           <p>
-            <code>config/nightshift.example.json</code> 을 <code>{snapshot.configPath}</code> 로 복사한 뒤
-            프로젝트를 등록하고 서버를 다시 시작하세요.
-          </p>
-          <p>
-            먼저 둘러보려면 <code>npm run demo</code> 로 데모 모드를 실행할 수 있습니다.
+            아직 세션이 없으면 위의 "+ tmux 세션 만들기"로 시작하세요. 먼저 둘러보려면 <code>npm run demo</code> 로 데모 모드를 실행할 수 있습니다.
           </p>
         </div>
       ) : (

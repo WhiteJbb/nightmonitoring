@@ -32,7 +32,8 @@ export function run(bin: Bin, args: string[], timeoutMs = 10_000): Promise<ExecR
         maxBuffer: MAX_OUTPUT,
         encoding: 'utf8',
         // 감시가 에이전트의 git 작업과 index.lock 을 다투지 않게 한다.
-        env: { ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
+        // launchd 등 셸 밖에서 띄우면 LANG 이 없고, 그러면 tmux 가 출력의 탭을 '_' 로 바꿔 파싱이 깨진다.
+        env: { LANG: 'en_US.UTF-8', ...process.env, GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0' },
       },
       (err, stdout, stderr) => {
         if (!err) return resolve({ code: 0, stdout, stderr, timedOut: false });

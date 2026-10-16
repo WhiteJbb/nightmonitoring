@@ -20,30 +20,31 @@ tmux에서 밤새 돌아가는 AI 코딩 에이전트와 Git 저장소의 진행
 - Node.js **22.18 이상** (서버를 TypeScript 그대로 실행합니다)
 - `git`, `tmux` (demo mode에는 필요 없음)
 
-## 설치
+## 빠른 시작
 
 ```bash
 git clone <this-repo> nightshift
 cd nightshift
 npm install
-```
-
-## 실행
-
-```bash
-# 1) config 준비
-cp config/nightshift.example.json config/nightshift.json
-#    config/nightshift.json 을 열어 projects 를 내 저장소로 수정
-
-# 2) 개발 모드 (프론트엔드 HMR 포함, 빌드 불필요)
-npm run dev
-
-# 또는 프로덕션 모드
 npm run build
 npm start
 ```
 
-브라우저에서 <http://127.0.0.1:4477> 을 엽니다.
+브라우저에서 <http://127.0.0.1:4477> 을 엽니다. 설정 파일은 아직 필요 없습니다.
+
+1. 돌고 있는 tmux 세션이 **미등록** 카드로 보입니다. **등록**을 누르면 프로젝트가 되고, 그때 `config/nightshift.json`이 만들어집니다.
+2. 아직 세션이 없으면 **+ tmux 세션 만들기**로 새 세션을 띄우고(Git 주소를 주면 복제까지), `tmux attach`로 들어가 에이전트를 시작하세요.
+3. 임계값·알림·휴대폰 푸시는 상단 **설정**에서 바꿉니다.
+
+설정 파일을 직접 쓰고 싶으면 `cp config/nightshift.example.json config/nightshift.json` 뒤 [config 작성](#config-작성)을 보세요. 서버를 켜 둔 채 저장해도 바로 반영됩니다.
+
+## 실행
+
+```bash
+npm run build && npm start   # 프로덕션 모드
+npm run dev                  # 개발 모드 (프론트엔드 HMR 포함, 빌드 불필요)
+```
+
 
 | 옵션 | 설명 |
 | --- | --- |
@@ -56,6 +57,44 @@ npm start
 - config 파일이 없으면 빈 대시보드로 시작하고, 시작할 때 형식이 잘못되었으면 문제 목록을 출력하고 종료합니다.
 - **config를 저장하면 1~2초 안에 자동으로 반영됩니다** (재시작 불필요). 다시 읽다 실패하면 이전 설정으로 계속 동작하고 화면 위쪽에 오류가 표시됩니다. `host`·`port`만은 재시작해야 바뀝니다.
 - **모니터링 세션은 재시작해도 이어집니다.** 기준점(최초 브랜치·커밋), 실행 결과·이력이 `.nightshift/state.json`에 저장됩니다. 새 밤을 시작하려면 대시보드의 "모니터링 새로 시작" 버튼을 누르거나 `--fresh`로 실행하세요.
+
+### 백그라운드로 실행 (로그인하면 자동 시작)
+
+터미널을 닫아도 돌게 하려면 launchd에 등록합니다. `~/Library/LaunchAgents/com.nightshift.plist`를 만들고 경로 두 곳(`node`, NightShift 디렉터리)을 내 환경에 맞게 고칩니다. `node` 경로는 `which node`로 확인합니다.
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.nightshift</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>server/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/me/nightshift</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd 는 셸의 PATH 를 모르므로 Homebrew 의 git·tmux 위치를 알려 준다 -->
+    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/me/nightshift/.nightshift/server.log</string>
+  <key>StandardErrorPath</key><string>/Users/me/nightshift/.nightshift/server.log</string>
+</dict>
+</plist>
+```
+
+```bash
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nightshift.plist   # 등록하고 바로 시작
+launchctl kickstart -k gui/$(id -u)/com.nightshift                             # 재시작 (코드를 바꿔 npm run build 한 뒤)
+launchctl bootout gui/$(id -u)/com.nightshift                                  # 중지하고 등록 해제
+tail -f .nightshift/server.log                                                 # 로그
+```
+
+서버가 죽으면 launchd가 다시 띄우고(`KeepAlive`), 모니터링 세션은 `.nightshift/state.json`에서 이어집니다. 같은 사용자로 로그인해 있는 동안만 돌고, tmux 세션도 그 사용자의 것을 봅니다.
 
 ## Demo mode
 
@@ -300,6 +339,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | 카드가 "저장소 경로가 존재하지 않습니다" | `repoPath` 오타, `~` 경로 확인 |
 | 카드가 "Git 저장소가 아닙니다" | 오류로 치지는 않음. Git 정보도 보려면 해당 경로에서 `git status`가 되는지 확인 |
 | "tmux 세션이 종료되었거나 없습니다" | `tmux ls`의 세션 이름과 `tmuxSession`이 정확히 같은지 확인. 세션 없는 프로젝트를 오류로 보고 싶지 않으면 `sessionExitIsError: false` |
+| launchd로 띄웠더니 tmux 세션이 안 보임 | plist의 `PATH`에 `tmux`가 있는 디렉터리(Homebrew는 `/opt/homebrew/bin`)가 있는지 확인. `.nightshift/server.log` 확인 |
 | 터미널 출력이 비어 있음 | 세션의 활성 pane이 비어 있는지 확인 (`tmux capture-pane -p -t =세션이름:`) |
 | 로그 때문에 계속 오류로 표시됨 | Git 탭에서 "확인 처리", 또는 `errorIgnorePatterns`에 제외할 문구 추가, `errorPatterns`를 정규식으로 좁히기 |
 | 입력 대기가 잘못 뜨거나 안 뜸 | `promptPatterns`를 에이전트의 프롬프트 문구에 맞게 수정 |
