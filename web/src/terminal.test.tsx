@@ -31,6 +31,8 @@ const { FakeTerminal } = vi.hoisted(() => {
       this.key = h;
     }
     focus() {}
+    osc: Record<number, (data: string) => boolean> = {};
+    parser = { registerOscHandler: (id: number, h: (data: string) => boolean) => void (this.osc[id] = h) };
     reset() {
       this.resets++;
     }
@@ -217,6 +219,22 @@ test('Shift+Enter in the terminal sends ESC+CR (a newline in Claude Code), plain
   expect(handled).toBe(false);
   expect(posts()).toEqual([['/api/projects/api/raw', { pane: '%12', data: b64('\x1b\r') }]]);
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'Enter' }))).toBe(true);
+});
+
+test('OSC 52 from the program copies to the clipboard and says so', async () => {
+  const exec = vi.fn(() => true);
+  Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+  await renderTab(project(ONE));
+  await init();
+  let copied = '';
+  exec.mockImplementation(() => {
+    copied = (document.body.lastElementChild as HTMLTextAreaElement).value;
+    return true;
+  });
+  act(() => void xterm().osc[52]!(`c;${btoa(String.fromCharCode(...new TextEncoder().encode('복사할 글')))}`));
+  expect(exec).toHaveBeenCalledWith('copy');
+  expect(copied).toBe('복사할 글');
+  expect(screen.getByText('복사됨')).toBeTruthy();
 });
 
 test('mouse moves without a button are not sent; wheel reports are', async () => {

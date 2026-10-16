@@ -456,6 +456,14 @@ export function TerminalTab({ project: p, now }: Props) {
   const [attempt, setAttempt] = useState(0);
   // 전체 화면: 터미널이 창을 다 채우고, 붙은 터미널이 없으면 tmux 크기도 그 화면에 맞춘다
   const [full, setFull] = useState(false);
+  // 터미널에서 복사·이미지 붙여넣기의 결과를 잠깐 보여 준다
+  const [notice, setNotice] = useState<string | null>(null);
+  const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showNotice = (msg: string) => {
+    setNotice(msg);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(null), 2500);
+  };
   const [answering, setAnswering] = useState<string | null>(null);
   const [answerError, setAnswerError] = useState<string | null>(null);
   const autoFitted = useRef<string | null>(null);
@@ -613,6 +621,11 @@ export function TerminalTab({ project: p, now }: Props) {
                 {fitError}
               </span>
             )}
+            {notice && (
+              <span className="dim" role="status">
+                {notice}
+              </span>
+            )}
             <span className={live ? 'conn conn-live' : status === 'down' ? 'conn conn-down' : 'conn'} role="status">
               <span className="dot" />
               {statusLabel}
@@ -639,7 +652,7 @@ export function TerminalTab({ project: p, now }: Props) {
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}
