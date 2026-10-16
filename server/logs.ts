@@ -34,6 +34,22 @@ const VOLATILE_RE = /[\d\u2800-\u28ff✢✳✶✻✽✺·∗*|/\\—-]/g;
 export const stripVolatile = (s: string): string => s.replace(VOLATILE_RE, '');
 
 const PROMPT_SCAN_LINES = 15;
+const CHOICE_RE = /^[\s│┃║▌]*(?:[❯›>]\s*)?([1-9])[.)]\s+(.+?)[\s│┃║]*$/;
+/** 프롬프트 줄부터 아래로 "1. Yes" 같은 번호 선택지를 모은다 (같은 번호는 처음 것만). */
+export function promptChoices(lines: string[], prompt: string): { key: string; label: string }[] {
+  const at = lines.map((l) => l.trim()).lastIndexOf(prompt);
+  if (at < 0) return [];
+  const seen = new Set<string>();
+  const options: { key: string; label: string }[] = [];
+  for (const line of lines.slice(at)) {
+    const m = CHOICE_RE.exec(line);
+    if (m && !seen.has(m[1]!)) {
+      seen.add(m[1]!);
+      options.push({ key: m[1]!, label: m[2]! });
+    }
+  }
+  return options;
+}
 // 줄 앞뒤의 공백·상자 테두리, 끝의 문장 부호
 const EDGE_RE = /^[\s│┃║▌]+|[\s│┃║▌]+$/g;
 const TAIL_PUNCT_RE = /[\s:?.!>]+$/;

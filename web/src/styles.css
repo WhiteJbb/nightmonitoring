@@ -1122,6 +1122,12 @@ pre {
   background: color-mix(in srgb, var(--violet) 10%, var(--s2));
   margin-bottom: 12px;
 }
+.notice.waiting .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
 .notice.waiting strong {
   color: var(--violet);
 }

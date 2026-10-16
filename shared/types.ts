@@ -104,6 +104,8 @@ export interface TmuxInfo {
   panes: TmuxPane[];
   /** 입력 대기 프롬프트로 판정된 줄. 없으면 null */
   waitingPrompt: string | null;
+  /** 프롬프트 아래의 번호 선택지 ("❯ 1. Yes", "2. No") 와 그 pane. 화면에서 버튼으로 바로 답한다 */
+  waitingChoices?: { pane: string; options: { key: string; label: string }[] };
   /** 예: tmux attach -t session-name */
   attachCommand: string | null;
   error?: string;

@@ -3,7 +3,7 @@ import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
 import type { LogPos, LogScan } from './logs.ts';
-import { findPrompt, scanLog, stripAnsi, stripVolatile } from './logs.ts';
+import { findPrompt, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import type { MonitorState } from './state.ts';
 import { judge } from './status.ts';
 import { capturePane, listPanes, listSessions } from './tmux.ts';
@@ -298,12 +298,19 @@ export class Monitor {
 
     let lastOutputChangeAt: string | null = null;
     let waitingPrompt: string | null = null;
+    let waitingChoices: TmuxInfo['waitingChoices'];
     if (raw.exists) {
       // 어느 pane 이든 출력이 바뀌면 활동이다. pane 정보가 없으면 활성 pane 출력만 본다.
       const plain = raw.panes.length ? raw.panes.map((pane) => pane.lines.map(stripAnsi)) : [raw.output];
       const joined = plain.map((lines) => lines.join('\n')).join('\f');
       const text = this.opts.config.ignoreSpinnerChanges ? stripVolatile(joined) : joined;
-      for (const lines of plain) waitingPrompt ??= findPrompt(lines, this.opts.config.promptPatterns);
+      plain.forEach((lines, i) => {
+        if (waitingPrompt !== null) return;
+        waitingPrompt = findPrompt(lines, this.opts.config.promptPatterns);
+        const pane = raw.panes[i];
+        const options = waitingPrompt !== null && pane ? promptChoices(lines, waitingPrompt) : [];
+        if (pane && options.length) waitingChoices = { pane: pane.id, options };
+      });
       if (tr.output !== null && text !== tr.output) tr.outputChangedAt = nowIso;
       tr.output = text;
       // tmux 의 활동 시각은 스피너 출력에도 갱신되므로 최초 관측의 초기값으로만 쓰고,
@@ -320,7 +327,7 @@ export class Monitor {
       git,
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
-      tmux: { ...raw, lastOutputChangeAt, waitingPrompt },
+      tmux: { ...raw, lastOutputChangeAt, waitingPrompt, ...(waitingChoices ? { waitingChoices } : {}) },
       logErrors,
     };
   }
