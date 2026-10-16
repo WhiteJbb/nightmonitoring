@@ -21,7 +21,6 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
       ignoreSpinnerChanges: true,
       sessionExitIsError: false,
       notifications: false,
-      autoReportTime: '07:30',
       commandTimeoutSec: 600,
       ntfyUrl: null,
     },
@@ -49,7 +48,7 @@ function view(over: Partial<ConfigView> = {}): ConfigView {
         allowInput: false,
       },
     ],
-    fileOnly: { host: '127.0.0.1', port: 4517, reportsDir: '/home/me/reports', allowedHosts: [] },
+    fileOnly: { host: '127.0.0.1', port: 4517, allowedHosts: ['mac.example.ts.net'] },
     ...over,
   };
 }
@@ -94,13 +93,12 @@ test('renders loaded values', async () => {
   expect(fetchMock).toHaveBeenCalledWith('/api/config', { method: 'GET' });
   expect(screen.getByText('/home/me/nightshift.json · json')).toBeTruthy();
   expect(screen.getByText('4517')).toBeTruthy();
-  expect(screen.getByText('/home/me/reports')).toBeTruthy();
+  expect(screen.getByText('mac.example.ts.net')).toBeTruthy();
   expect(input('갱신 주기(초)').value).toBe('5');
   expect(input('정지 의심 — Git(분)').value).toBe('45');
   expect(input('오류 패턴').value).toBe('error\n/panic:/i');
   expect((input('숫자·스피너만 바뀌는 출력 무시') as HTMLInputElement).checked).toBe(true);
   expect((input('macOS 알림') as HTMLInputElement).checked).toBe(false);
-  expect(input('자동 생성 시각').value).toBe('07:30');
   expect(input('이름', project('api-server')).value).toBe('api-server');
   expect(input('tmux 세션', project('web-app')).value).toBe('');
   // 바뀐 것이 없으면 저장할 수 없다
@@ -169,7 +167,6 @@ test('saving sends the edited ConfigUpdate and shows the confirmation', async ()
   change(input('갱신 주기(초)'), '10');
   change(input('오류 패턴'), 'error\n\n   \nfatal\n');
   fireEvent.click(input('macOS 알림'));
-  fireEvent.click(input('Morning Report 자동 생성'));
   change(input('tmux 세션', project('api-server')), '  ');
 
   const saved = view({ settings: { ...v.settings, refreshIntervalSec: 10 } });
@@ -181,7 +178,6 @@ test('saving sends the edited ConfigUpdate and shows the confirmation', async ()
       refreshIntervalSec: 10,
       errorPatterns: ['error', 'fatal'],
       notifications: true,
-      autoReportTime: null,
     },
     projects: [
       { id: 'api', name: 'api-server', repoPath: '~/code/api', tmuxSession: null, logFile: 'app.log', allowInput: false },

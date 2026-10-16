@@ -188,25 +188,13 @@ export interface Snapshot {
   configMissing: boolean;
   /** 실행 중 config 를 다시 읽다가 실패했을 때의 메시지 (이전 설정으로 계속 동작 중) */
   configError: string | null;
-  /** Morning Report 자동 생성 시각 "HH:MM". 꺼져 있으면 null */
-  autoReportTime: string | null;
   summary: Summary;
   projects: ProjectSnapshot[];
 }
 
-export interface ReportMeta {
-  name: string;
-  modifiedAt: string;
-}
-
-export interface Report {
-  name: string;
-  content: string;
-}
-
 // ---- 설정 편집 (GET/PUT /api/config) ----
 
-/** UI 에서 바꿀 수 있는 전역 설정. host·port·reportsDir 는 파일에서만 바꾼다. */
+/** UI 에서 바꿀 수 있는 전역 설정. host·port·allowedHosts 는 파일에서만 바꾼다. */
 export interface EditableSettings {
   refreshIntervalSec: number;
   thresholds: { idleMinutes: number; stalledMinutes: number; noCommitMinutes: number };
@@ -217,8 +205,6 @@ export interface EditableSettings {
   ignoreSpinnerChanges: boolean;
   sessionExitIsError: boolean;
   notifications: boolean;
-  /** "HH:MM" 또는 null(끔) */
-  autoReportTime: string | null;
   commandTimeoutSec: number;
   /** 휴대폰 푸시를 보낼 ntfy 주소 (예: "https://ntfy.sh/내-주제"). null 이면 보내지 않는다 */
   ntfyUrl: string | null;
@@ -262,7 +248,7 @@ export interface ConfigView {
   settings: EditableSettings;
   projects: ConfigProjectView[];
   /** 파일에서만 바꿀 수 있는 값 (읽기 전용 표시용) */
-  fileOnly: { host: string; port: number; reportsDir: string; allowedHosts: string[] };
+  fileOnly: { host: string; port: number; allowedHosts: string[] };
 }
 
 /** PUT /api/config 본문. projects 는 전체 목록이며, 빠진 기존 프로젝트는 삭제된다. */

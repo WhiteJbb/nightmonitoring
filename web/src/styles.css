@@ -361,8 +361,7 @@ button.quiet,
     color: var(--text);
     background: var(--s2);
   }
-  .tabs button:hover:not([aria-selected='true']),
-  .report-list li button:hover:not([aria-current='true']) {
+  .tabs button:hover:not([aria-selected='true']) {
     color: var(--text);
     transform: none;
   }
@@ -1062,10 +1061,6 @@ pre {
 .err-output {
   color: color-mix(in srgb, var(--red) 70%, #fff);
 }
-.report-content {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
 
 /* ── 줄 목록 (커밋, 파일, 이력) ── */
 .rows li {
@@ -1180,96 +1175,6 @@ pre {
   transition: none;
 }
 
-/* ── 보고서 ── */
-.reports {
-  display: grid;
-  grid-template-columns: minmax(0, 280px) minmax(0, 1fr);
-  gap: 24px;
-  margin-top: 16px;
-}
-.report-list li + li {
-  margin-top: 3px;
-}
-.report-list li button {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 0;
-  width: 100%;
-  text-align: left;
-  font: var(--fs-code) var(--mono);
-  color: var(--dim);
-  background: none;
-  padding: 8px 16px;
-}
-.report-list li button[aria-current='true'] {
-  color: var(--text);
-  background: var(--s3);
-}
-/* 고르기 상자는 좁은 화면에서만 (아래 900px 규칙) */
-.report-list select {
-  display: none;
-  width: 100%;
-  font: var(--fs-code) var(--mono);
-  color: var(--text);
-  background: var(--s2);
-  border: none;
-  border-radius: var(--r-pill);
-  padding: 9px 16px;
-}
-.report-body h3 {
-  margin-top: 0;
-  scroll-margin-top: 16px;
-}
-.report-body h3:focus {
-  outline: none;
-}
-.md h2 {
-  font-size: var(--fs-xl);
-  font-weight: 500;
-  margin-bottom: 8px;
-}
-.md h3 {
-  font-size: 17px;
-  margin-top: 28px;
-}
-.md h4 {
-  font: 500 var(--fs-md) var(--sans);
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--text);
-  margin: 16px 0 4px;
-}
-.md ul {
-  margin: 4px 0;
-  padding-left: 18px;
-  list-style: disc;
-}
-.md li {
-  overflow-wrap: anywhere;
-}
-.md li.task {
-  list-style: none;
-  margin-left: -18px;
-}
-.md li.task input {
-  margin: 0 4px 0 0;
-  vertical-align: -2px;
-}
-.md p,
-.md pre,
-.md blockquote {
-  margin: 8px 0;
-}
-.md pre {
-  max-height: 320px;
-}
-.md blockquote {
-  padding: 2px 12px;
-  border-left: 2px solid var(--s4);
-  color: var(--dim);
-}
-
 /* ── 입력 칸 (설정, 세션 만들기, 터미널 입력): 테두리 없는 면 채움, 알약 ── */
 form.settings {
   max-width: 980px;
@@ -1342,11 +1247,6 @@ form.settings {
   flex: 1 1 240px;
   margin: 0;
 }
-.toggle-row input[type='time'] {
-  flex: none;
-  width: auto;
-  margin: 0;
-}
 .settings input:not([type='checkbox']),
 .settings textarea,
 .input-row textarea {
@@ -1380,14 +1280,10 @@ form.settings {
   max-width: 520px;
   font-size: var(--fs-code);
 }
-.settings input[type='number'],
-.settings input[type='time'] {
+.settings input[type='number'] {
   max-width: 160px;
   font-family: var(--mono);
   font-size: var(--fs-code);
-}
-.settings input[type='time'] {
-  margin-top: 4px;
 }
 .settings textarea {
   font: var(--fs-code) / 1.45 var(--mono);
@@ -1658,21 +1554,6 @@ form.settings {
   .new-session-toggle {
     padding: 18px 22px;
     border-radius: var(--r-box);
-  }
-  .reports {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-  /* 목록이 본문을 화면 밖으로 밀어내지 않게 고르기 상자로 바꾼다 */
-  .report-list select {
-    display: block;
-  }
-  .report-list ul {
-    display: none;
-  }
-  /* 제목으로 스크롤할 때 떠 있는 상단 띠(.side)에 가리지 않게 */
-  .report-body h3 {
-    scroll-margin-top: 240px;
   }
 }
 @media (max-width: 720px) {

@@ -6,7 +6,7 @@ import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { DEFAULTS, defaultConfigPath, loadConfig } from './config.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
-import { alertsFor, autoReportDue, exportAlerts, MAC_ALERT_STATES, REALERT_COOLDOWN_MS, restoreAlerts } from './notify.ts';
+import { alertsFor, exportAlerts, MAC_ALERT_STATES, REALERT_COOLDOWN_MS, restoreAlerts } from './notify.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
 
@@ -169,14 +169,3 @@ describe('alerts', () => {
   });
 });
 
-describe('autoReportDue', () => {
-  const at = (h: number, m = 0, day = 5) => new Date(2026, 9, day, h, m);
-  it('fires once per day after the scheduled time, only if running since before it', () => {
-    expect(autoReportDue(at(6, 59), '07:00', null, at(1))).toBe(false);
-    expect(autoReportDue(at(7, 0), '07:00', null, at(1))).toBe(true);
-    expect(autoReportDue(at(7, 5), '07:00', '2026-10-05', at(1))).toBe(false);
-    expect(autoReportDue(at(7, 5), '07:00', '2026-10-04', at(23, 0, 4))).toBe(true);
-    expect(autoReportDue(at(9), '07:00', null, at(8))).toBe(false); // 예약 시각 뒤에 켠 경우
-    expect(autoReportDue(at(9), null, null, at(1))).toBe(false);
-  });
-});

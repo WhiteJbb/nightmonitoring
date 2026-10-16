@@ -40,7 +40,7 @@ interface DraftProject {
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
 type Draft = Record<NumKey | PatternKey, string> &
-  Record<ToggleKey, boolean> & { autoReport: boolean; autoReportTime: string; ntfyUrl: string; hiddenSessions: string[]; projects: DraftProject[] };
+  Record<ToggleKey, boolean> & { ntfyUrl: string; hiddenSessions: string[]; projects: DraftProject[] };
 
 function toDraft({ settings: s, projects }: ConfigView): Draft {
   return {
@@ -52,8 +52,6 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
     ignoreSpinnerChanges: s.ignoreSpinnerChanges,
     sessionExitIsError: s.sessionExitIsError,
     notifications: s.notifications,
-    autoReport: s.autoReportTime !== null,
-    autoReportTime: s.autoReportTime ?? '07:00',
     ntfyUrl: s.ntfyUrl ?? '',
     errorPatterns: s.errorPatterns.join('\n'),
     errorIgnorePatterns: s.errorIgnorePatterns.join('\n'),
@@ -85,7 +83,6 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       ignoreSpinnerChanges: d.ignoreSpinnerChanges,
       sessionExitIsError: d.sessionExitIsError,
       notifications: d.notifications,
-      autoReportTime: d.autoReport ? d.autoReportTime : null,
       commandTimeoutSec: num(d.commandTimeoutSec),
       ntfyUrl: d.ntfyUrl.trim() || null,
       hiddenSessions: d.hiddenSessions,
@@ -113,7 +110,7 @@ const BLANK_PROJECT: DraftProject = {
   allowInput: false,
 };
 
-const FIELD_KEYS = new Set<string>([...NUMBERS.map(([k]) => k), ...PATTERNS.map(([k]) => k), 'autoReportTime', 'ntfyUrl']);
+const FIELD_KEYS = new Set<string>([...NUMBERS.map(([k]) => k), ...PATTERNS.map(([k]) => k), 'ntfyUrl']);
 const PROJECT_KEYS = new Set(['name', 'repoPath', 'tmuxSession', 'logFile', 'allowInput']);
 
 /**
@@ -308,27 +305,6 @@ export function Settings() {
         ))}
       </div>
       <div className="toggles">
-        <div className="toggle-row">
-          <label className="check">
-            <input
-              type="checkbox"
-              checked={draft.autoReport}
-              disabled={lock}
-              onChange={(e) => set({ autoReport: e.target.checked })}
-            />
-            Morning Report 자동 생성
-          </label>
-          <input
-            {...a11y('f-autoReportTime')}
-            type="time"
-            aria-label="자동 생성 시각"
-            required={draft.autoReport}
-            value={draft.autoReportTime}
-            disabled={lock || !draft.autoReport}
-            onChange={(e) => set({ autoReportTime: e.target.value })}
-          />
-          {errorOf('f-autoReportTime')}
-        </div>
         {TOGGLES.map(([key, label, hint]) => (
           <div className="toggle-row" key={key}>
             <label className="check">
@@ -514,8 +490,6 @@ export function Settings() {
         <dd className="wrap">{view.fileOnly.host}</dd>
         <dt>port</dt>
         <dd>{view.fileOnly.port}</dd>
-        <dt>reportsDir</dt>
-        <dd className="wrap">{view.fileOnly.reportsDir}</dd>
         <dt>allowedHosts</dt>
         <dd className="wrap">{view.fileOnly.allowedHosts.length ? view.fileOnly.allowedHosts.join(', ') : <span className="dim">없음</span>}</dd>
       </dl>

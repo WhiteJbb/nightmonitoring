@@ -88,18 +88,3 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
   for (const id of memory.keys()) if (!snapshot.projects.some((p) => p.id === id)) memory.delete(id);
   return alerts;
 }
-
-const pad = (n: number) => String(n).padStart(2, '0');
-export const localDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-
-/**
- * 자동 Morning Report 를 지금 만들어야 하는지.
- * 오늘의 예약 시각이 지났고, 오늘 아직 만들지 않았고, 서버가 그 시각 이전부터 돌고 있었을 때만 true
- * (예약 시각이 지난 뒤에 서버를 켰다면 다음 날까지 기다린다).
- */
-export function autoReportDue(now: Date, time: string | null, lastDate: string | null, processStartedAt: Date): boolean {
-  if (!time) return false;
-  const [h = 0, m = 0] = time.split(':').map(Number);
-  const due = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h, m);
-  return now >= due && lastDate !== localDate(now) && processStartedAt < due;
-}
