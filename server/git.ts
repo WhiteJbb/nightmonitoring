@@ -132,20 +132,23 @@ export async function collectGit(repoPath: string): Promise<GitInfo> {
   if (inside.code !== 0 || inside.stdout.trim() !== 'true') return failed(NOT_A_REPO);
 
   // 커밋이 하나도 없는 저장소에서는 HEAD 관련 명령이 실패한다 → 빈 값으로 취급.
-  const [branch, head, status, numstat, recent, today] = await Promise.all([
+  const [branch, head, status, numstat, recent, today, top] = await Promise.all([
     git(repoPath, 'branch', '--show-current'),
     git(repoPath, 'rev-parse', '--verify', '-q', 'HEAD'),
     git(repoPath, 'status', '--porcelain', '-z', '-uall'),
     git(repoPath, 'diff', '--numstat', '-z', 'HEAD'),
     git(repoPath, 'log', '-n', '10', LOG_FORMAT),
     git(repoPath, 'log', '--since=midnight', LOG_FORMAT),
+    git(repoPath, 'rev-parse', '--show-toplevel'),
   ]);
   if (status.code !== 0) return failed(`git status 실패: ${status.stderr.trim()}`);
+  // porcelain 의 경로는 저장소 최상위 기준이다. repoPath 가 하위 디렉터리(자동 발견 세션의 cwd 등)여도 파일을 제대로 찾게 한다.
+  const root = (top.code === 0 && top.stdout.trim()) || repoPath;
 
   const headSha = head.code === 0 ? head.stdout.trim() : null;
   const changedFiles = parseStatus(status.stdout);
   const branchName = branch.stdout.trim() || (headSha ? `(detached ${headSha.slice(0, 7)})` : '(unknown)');
-  const [untracked, fingerprint] = await Promise.all([untrackedStats(repoPath, changedFiles), fingerprintOf(repoPath, headSha, branchName, changedFiles)]);
+  const [untracked, fingerprint] = await Promise.all([untrackedStats(root, changedFiles), fingerprintOf(root, headSha, branchName, changedFiles)]);
   const diffStat = [...(numstat.code === 0 ? parseNumstat(numstat.stdout) : []), ...untracked];
   return {
     ok: true,

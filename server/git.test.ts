@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -126,6 +126,29 @@ describe('untracked files and fingerprint', () => {
       const since = await collectSince(dir, { at: '2026-10-04T00:00:00Z', branch: 'main', head: 'abc1234' }, second);
       expect(since.files.map((f) => f.path)).toContain('new.ts');
       expect(since.additions).toBe(3);
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+});
+
+describe('nested repoPath', () => {
+  it('reads changed files relative to the worktree root', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-git-'));
+    try {
+      await mkdir(path.join(dir, 'web'));
+      await writeFile(path.join(dir, 'web', 'new.ts'), 'a\nb\n');
+      respond({
+        'rev-parse --is-inside-work-tree': ok('true\n'),
+        'rev-parse --show-toplevel': ok(`${dir}\n`),
+        'branch --show-current': ok('main\n'),
+        'rev-parse --verify': ok('abc1234\n'),
+        'status --porcelain': ok('?? web/new.ts\0'),
+        'diff --numstat': ok(''),
+      });
+      const info = await collectGit(path.join(dir, 'web'));
+      expect(info.additions).toBe(2);
+      expect(info.fingerprint).not.toContain(':-1:');
     } finally {
       await rm(dir, { recursive: true });
     }
