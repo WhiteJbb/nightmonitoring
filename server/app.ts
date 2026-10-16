@@ -290,8 +290,9 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });
   });
 
-  // 설정에 없는 tmux 세션을 대시보드에서 숨긴다 (config 의 hiddenSessions). 설정 화면에서 지우면 다시 보인다.
-  api.post('/sessions/:name/hide', async (req, res) => {
+  // 설정에 없는 tmux 세션을 대시보드에서 숨긴다 (config 의 hiddenSessions). DELETE 는 되돌리기(실행 취소)다. 설정 화면에서 지워도 다시 보인다.
+  api.all('/sessions/:name/hide', async (req, res, next) => {
+    if (req.method !== 'POST' && req.method !== 'DELETE') return void next();
     if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
@@ -300,7 +301,7 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (view.projects.some((p) => p.tmuxSession === name)) return void res.status(409).json({ error: '등록된 프로젝트의 세션은 숨길 수 없습니다. 설정에서 프로젝트를 삭제하세요' });
     await configEditor.update({
       version: view.version,
-      settings: { ...view.settings, hiddenSessions: [...new Set([...view.settings.hiddenSessions, name])] },
+      settings: { ...view.settings, hiddenSessions: req.method === 'DELETE' ? view.settings.hiddenSessions.filter((s) => s !== name) : [...new Set([...view.settings.hiddenSessions, name])] },
       projects: editableProjects(view),
     });
     await monitor.tick();
