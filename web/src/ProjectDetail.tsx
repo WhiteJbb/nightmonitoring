@@ -122,7 +122,11 @@ const FORWARD: Record<string, InputKey> = {
   ArrowRight: 'Right',
   Escape: 'Escape',
   Backspace: 'BSpace',
+  PageUp: 'PPage',
+  PageDown: 'NPage',
 };
+// 빈 입력칸에서 Ctrl 조합은 pane 으로 간다. 컴퓨터에선 키 버튼이 숨겨져 있어 이게 유일한 길이다
+const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' };
 
 function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string; onSent: () => void }) {
   const [text, setText] = useState('');
@@ -189,8 +193,8 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
         },
         (e: unknown) => {
           setError(errorMessage(e));
-          // 보내지 못한 글은 되돌려 놓는다 (그사이 새로 친 것이 있으면 그대로 둔다)
-          if (sent !== undefined) setText((cur) => (cur === '' ? sent : cur));
+          // 보내지 못한 글은 되돌려 놓는다. 그사이 새로 친 글이 있으면 그 앞에 붙여 둘 다 남긴다
+          if (sent !== undefined) setText((cur) => (cur === '' ? sent : `${sent}\n${cur}`));
         },
       )
       .finally(() => setBusy(false));
@@ -203,15 +207,27 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     // 한글 등 IME 조합 중의 Enter 는 조합 확정이지 전송이 아니다
     if (e.nativeEvent.isComposing || e.keyCode === 229) return;
-    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.metaKey || e.altKey) return;
+    if (e.ctrlKey) {
+      const ctrl = text === '' ? CTRL[e.key.toLowerCase()] : undefined;
+      if (ctrl) {
+        e.preventDefault();
+        send({ pane, key: ctrl });
+      }
+      return;
+    }
     const forward = FORWARD[e.key];
     if (e.key === 'Enter') {
-      if (e.shiftKey) return; // Shift+Enter 는 줄바꿈
+      // Shift+Enter 는 줄바꿈. 터치 화면의 키보드에는 Shift+Enter 가 없으니 Enter 가 줄바꿈이고 "보내기" 버튼이 보낸다
+      if (e.shiftKey || !finePointer()) return;
       e.preventDefault();
       sendText(true);
     } else if (e.key === 'Tab') {
-      e.preventDefault();
-      if (text === '') send({ pane, key: e.shiftKey ? 'BTab' : 'Tab' });
+      // 빈 입력칸에서만 pane 으로 보낸다. 글을 치는 중엔 평소처럼 포커스가 옮겨져 키보드로 빠져나갈 수 있다
+      if (text === '') {
+        e.preventDefault();
+        send({ pane, key: e.shiftKey ? 'BTab' : 'Tab' });
+      }
     } else if (text === '' && forward) {
       e.preventDefault();
       send({ pane, key: forward });
@@ -225,7 +241,7 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           ref={inputRef}
           className="mono"
           aria-label="pane 에 보낼 입력"
-          placeholder="입력 후 Enter (줄바꿈은 Shift+Enter)"
+          placeholder={finePointer() ? '입력 후 Enter (줄바꿈은 Shift+Enter)' : '입력 후 보내기 (Enter 는 줄바꿈)'}
           autoComplete="off"
           autoCapitalize="off"
           spellCheck={false}
@@ -268,7 +284,11 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
             title={title}
             aria-label={title}
             disabled={busy}
-            onClick={() => send({ pane, key })}
+            onClick={() => {
+              // 중단·종료 키는 되돌릴 수 없다. 버튼은 손가락이 미끄러지기 쉬우니 한 번 묻는다 (키보드의 Ctrl+C 는 그대로)
+              if (CAUTION.includes(key) && !window.confirm(`${label} 를 보낼까요? 실행 중인 프로그램이 중단될 수 있습니다.`)) return;
+              send({ pane, key });
+            }}
           >
             {label}
           </button>
@@ -282,7 +302,9 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
           {error}
         </p>
       )}
-      <p className="hint">입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다. 이미지를 붙여넣거나 끌어다 놓으면 파일로 저장돼 경로가 들어갑니다.</p>
+      <p className="hint">
+        입력은 선택한 pane 에 그대로 전달됩니다. 보낸 내용은 서버에 기록됩니다. 빈 입력칸에서는 Esc·방향키·Tab·PgUp/PgDn·Ctrl+C 같은 키가 그대로 pane 으로 갑니다. 이미지를 붙여넣거나 끌어다 놓으면 파일로 저장돼 경로가 들어갑니다.
+      </p>
     </div>
   );
 }
