@@ -240,7 +240,7 @@ test('dashboard: waiting tile, meta line, and session reset after confirm', asyn
   const pill = screen.getByRole('button', { name: '입력 대기1' });
   fireEvent.click(pill);
   expect(pill.getAttribute('aria-pressed')).toBe('true');
-  expect(container.querySelectorAll('.card')).toHaveLength(1);
+  expect(container.querySelectorAll('.row')).toHaveLength(1);
   fireEvent.click(pill);
   expect(pill.getAttribute('aria-pressed')).toBe('false');
   const meta = container.querySelector('.meta')?.textContent ?? '';
