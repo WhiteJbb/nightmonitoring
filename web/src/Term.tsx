@@ -89,13 +89,14 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
     const enc = new TextEncoder();
     let queue = '';
     let sending = false;
+    let closed = false; // 탭·pane 을 바꾼 뒤에는 남은 입력을 이전 pane 으로 보내지 않는다
     const flush = async () => {
-      if (sending || queue === '') return;
+      if (closed || sending || queue === '') return;
       sending = true;
       const bytes = enc.encode(queue);
       queue = '';
       try {
-        for (let i = 0; i < bytes.length; i += RAW_CHUNK) await api.sendRaw(projectId, { pane, data: encode(bytes.subarray(i, i + RAW_CHUNK)) });
+        for (let i = 0; i < bytes.length && !closed; i += RAW_CHUNK) await api.sendRaw(projectId, { pane, data: encode(bytes.subarray(i, i + RAW_CHUNK)) });
       } catch (e) {
         cb.current.onStatus(errorMessage(e));
       }
@@ -166,6 +167,8 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fitFont) : null;
     ro?.observe(el);
     return () => {
+      closed = true;
+      queue = '';
       input.dispose();
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
