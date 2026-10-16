@@ -71,6 +71,8 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
         <h1>{p.name}</h1>
         <Badge state={p.status.state} />
         {p.id.startsWith('tmux:') && <Register project={p} />}
+        {/* 세션 끝내기는 드물고 되돌릴 수 없어 머리 오른쪽 끝에 따로 둔다 */}
+        {p.allowInput && p.tmux.exists && <EndSession projectId={p.id} session={p.tmuxSession ?? ''} />}
       </div>
       <Reasons reasons={p.status.reasons} />
       <LogErrorsAck
@@ -480,7 +482,7 @@ function EndSession({ projectId, session }: { projectId: string; session: string
       .finally(() => setBusy(false));
   };
   return (
-    <p>
+    <p className="end-session">
       <button type="button" className="danger" disabled={busy} onClick={end}>
         {busy ? '끝내는 중…' : '세션 종료'}
       </button>
@@ -654,7 +656,6 @@ export function TerminalTab({ project: p, now }: Props) {
             <span className="dim"> ({dateTime(t.lastOutputChangeAt ?? t.lastActivityAt)})</span>
           </dd>
         </dl>
-        {p.allowInput && <EndSession projectId={p.id} session={p.tmuxSession ?? ''} />}
       </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
       <div className={full ? 'term-frame full' : 'term-frame'} ref={frameRef}>

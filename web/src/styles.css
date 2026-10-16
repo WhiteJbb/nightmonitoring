@@ -838,6 +838,9 @@ button.stat[aria-pressed='true'] {
 .crumb a {
   color: var(--dim);
 }
+.end-session {
+  margin: 0 0 0 auto;
+}
 .detail-head {
   display: flex;
   flex-wrap: wrap;
