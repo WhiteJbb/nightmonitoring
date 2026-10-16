@@ -19,15 +19,33 @@ export interface AlertMemory {
   alertedState: ProjectState | null;
   /** 마지막으로 알림 상태에 들어온 뒤 출력이 바뀐 tick 수 (Git 변화는 REALERT_ACTIVITY 로 친다) */
   activity: number;
-  lastOutputAt: string | null;
-  lastGitAt: string | null;
+  /** undefined 면 아직 못 본 것 (재시작 뒤 복원한 기억). 첫 값은 활동으로 치지 않는다 */
+  lastOutputAt: string | null | undefined;
+  lastGitAt: string | null | undefined;
+  /** 상태별로 마지막 알림 시각과 그때의 Git 변화 시각 */
+  lastAlert: Partial<Record<ProjectState, { at: string; git: string | null }>>;
 }
+
+/** 재시작해도 이어지게 저장하는 부분 */
+export type SavedAlerts = Record<string, Pick<AlertMemory, 'state' | 'alertedState' | 'lastAlert'>>;
+
+export const exportAlerts = (memory: Map<string, AlertMemory>): SavedAlerts => Object.fromEntries([...memory].map(([id, m]) => [id, { state: m.state, alertedState: m.alertedState, lastAlert: m.lastAlert }]));
+
+export const restoreAlerts = (saved: SavedAlerts | undefined): Map<string, AlertMemory> =>
+  new Map(Object.entries(saved ?? {}).map(([id, m]) => [id, { ...m, activity: 0, lastOutputAt: undefined, lastGitAt: undefined }]));
 
 /**
  * 한 번 알린 상태로 되돌아왔을 때 다시 알리려면 그 사이에 이만큼의 활동이 있어야 한다.
  * 멈춘 세션도 화면 갱신 한 번으로 "정상"이 됐다가 30분 뒤 다시 "정지 의심"이 되는데, 그건 새 소식이 아니다.
  */
 export const REALERT_ACTIVITY = 3;
+
+/**
+ * 정지 의심·오류는 한 번 알리면 이 시간 동안 Git 변화(커밋·파일 변경)가 없는 한 다시 알리지 않는다.
+ * 화면 출력은 크기 바꾸기·시계·스피너로도 바뀌어 "실제로 돌았다"는 증거로 약하다.
+ */
+export const REALERT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
+const COOLDOWN_STATES: ProjectState[] = ['stalled', 'error'];
 
 /**
  * 이전 상태와 비교해 새로 입력 대기·정지 의심·오류가 된 프로젝트의 알림을 만든다.
@@ -41,11 +59,11 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
     const gitAt = p.lastGitChangeAt;
     const m = memory.get(p.id);
     if (!m) {
-      memory.set(p.id, { state, alertedState: null, activity: 0, lastOutputAt: outputAt, lastGitAt: gitAt });
+      memory.set(p.id, { state, alertedState: null, activity: 0, lastOutputAt: outputAt, lastGitAt: gitAt, lastAlert: {} });
       continue;
     }
-    if (outputAt !== m.lastOutputAt) m.activity += 1;
-    if (gitAt !== m.lastGitAt) m.activity += REALERT_ACTIVITY;
+    if (m.lastOutputAt !== undefined && outputAt !== m.lastOutputAt) m.activity += 1;
+    if (m.lastGitAt !== undefined && gitAt !== m.lastGitAt) m.activity += REALERT_ACTIVITY;
     m.lastOutputAt = outputAt;
     m.lastGitAt = gitAt;
     const label = ALERT_STATES[state];
@@ -54,9 +72,12 @@ export function alertsFor(memory: Map<string, AlertMemory>, snapshot: Snapshot):
       // 유휴는 정지 의심으로 가는 길목이라 반복 판단에 끼우지 않는다 (기본으로는 보내지도 않는다).
       if (state === 'idle') alerts.push(alert);
       else {
-        if (!(m.alertedState === state && m.activity < REALERT_ACTIVITY)) {
+        const last = m.lastAlert[state];
+        const cooling = COOLDOWN_STATES.includes(state) && last !== undefined && last.git === gitAt && Date.parse(snapshot.generatedAt) - Date.parse(last.at) < REALERT_COOLDOWN_MS;
+        if (!cooling && !(m.alertedState === state && m.activity < REALERT_ACTIVITY)) {
           alerts.push(alert);
           m.alertedState = state;
+          m.lastAlert[state] = { at: snapshot.generatedAt, git: gitAt };
         }
         m.activity = 0;
       }

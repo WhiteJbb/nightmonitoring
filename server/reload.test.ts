@@ -6,7 +6,7 @@ import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { DEFAULTS, defaultConfigPath, loadConfig } from './config.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
-import { alertsFor, autoReportDue, MAC_ALERT_STATES } from './notify.ts';
+import { alertsFor, autoReportDue, exportAlerts, MAC_ALERT_STATES, REALERT_COOLDOWN_MS, restoreAlerts } from './notify.ts';
 import { reloadConfig } from './reload.ts';
 import { Runner } from './runner.ts';
 
@@ -93,8 +93,9 @@ describe('reloadConfig', () => {
 });
 
 describe('alerts', () => {
-  const snap = (states: Record<string, string>, activity: Record<string, string | null> = {}): Snapshot =>
-    ({ projects: Object.entries(states).map(([id, state]) => ({ id, name: id.toUpperCase(), status: { state, reasons: [`${state} reason`] }, tmux: { lastOutputChangeAt: activity[id] ?? null }, lastGitChangeAt: activity[`${id}.git`] ?? null })) }) as unknown as Snapshot;
+  const T0 = Date.parse('2026-10-16T00:00:00Z');
+  const snap = (states: Record<string, string>, activity: Record<string, string | null> = {}, at = T0): Snapshot =>
+    ({ generatedAt: new Date(at).toISOString(), projects: Object.entries(states).map(([id, state]) => ({ id, name: id.toUpperCase(), status: { state, reasons: [`${state} reason`] }, tmux: { lastOutputChangeAt: activity[id] ?? null }, lastGitChangeAt: activity[`${id}.git`] ?? null })) }) as unknown as Snapshot;
 
   it('alerts on transitions into waiting, idle, stalled or error, never into running', () => {
     const prev = new Map();
@@ -112,23 +113,48 @@ describe('alerts', () => {
     const memory = new Map();
     const titles = (s: Snapshot) => alertsFor(memory, s).map((x) => x.title);
     titles(snap({ a: 'running' }, { a: 't0' }));
-    expect(titles(snap({ a: 'stalled' }, { a: 't0' }))).toEqual(['NightShift · A: 정지 의심']);
-    // 화면이 한 번 바뀌어 정상 → 유휴 → 정지 의심: 반복이므로 조용히
+    expect(titles(snap({ a: 'waiting' }, { a: 't0' }))).toEqual(['NightShift · A: 입력 대기']);
+    // 화면이 한 번 바뀌어 정상 → 다시 입력 대기: 반복이므로 조용히
     titles(snap({ a: 'running' }, { a: 't1' }));
-    titles(snap({ a: 'idle' }, { a: 't1' }));
-    expect(titles(snap({ a: 'stalled' }, { a: 't1' }))).toEqual([]);
+    expect(titles(snap({ a: 'waiting' }, { a: 't1' }))).toEqual([]);
     // 출력이 여러 tick 바뀌었다 = 실제로 돌았다 → 다시 알린다
     titles(snap({ a: 'running' }, { a: 't2' }));
     titles(snap({ a: 'running' }, { a: 't3' }));
     titles(snap({ a: 'running' }, { a: 't4' }));
     expect(titles(snap({ a: 'idle' }, { a: 't4' }))).toEqual(['NightShift · A: 유휴']);
-    expect(titles(snap({ a: 'stalled' }, { a: 't4' }))).toEqual(['NightShift · A: 정지 의심']);
-    // Git 변화 하나로도 충분하다
-    titles(snap({ a: 'running' }, { a: 't5', 'a.git': 'g1' }));
-    expect(titles(snap({ a: 'stalled' }, { a: 't5', 'a.git': 'g1' }))).toEqual(['NightShift · A: 정지 의심']);
-    // 다른 알림 상태를 거쳐 돌아온 것은 새 소식이다
-    expect(titles(snap({ a: 'waiting' }, { a: 't5', 'a.git': 'g1' }))).toEqual(['NightShift · A: 입력 대기']);
-    expect(titles(snap({ a: 'stalled' }, { a: 't6', 'a.git': 'g1' }))).toEqual(['NightShift · A: 정지 의심']);
+    expect(titles(snap({ a: 'waiting' }, { a: 't4' }))).toEqual(['NightShift · A: 입력 대기']);
+  });
+
+  it('stalled and error stay quiet for the cooldown unless Git changed, even with output activity or other alerts between', () => {
+    const memory = new Map();
+    const titles = (s: Snapshot) => alertsFor(memory, s).map((x) => x.title);
+    const H = 60 * 60 * 1000;
+    titles(snap({ a: 'running' }, { a: 't0' }));
+    expect(titles(snap({ a: 'stalled' }, { a: 't0' }))).toEqual(['NightShift · A: 정지 의심']);
+    // 화면 크기 바꾸기·시계 같은 출력 변화만으로는 다시 알리지 않는다
+    for (const t of ['t1', 't2', 't3', 't4']) titles(snap({ a: 'running' }, { a: t }, T0 + H));
+    expect(titles(snap({ a: 'stalled' }, { a: 't4' }, T0 + H))).toEqual([]);
+    // 다른 알림(입력 대기)을 거쳐 돌아와도 마찬가지
+    expect(titles(snap({ a: 'waiting' }, { a: 't4' }, T0 + H))).toEqual(['NightShift · A: 입력 대기']);
+    expect(titles(snap({ a: 'stalled' }, { a: 't4' }, T0 + H))).toEqual([]);
+    // Git 변화가 있었으면 새 소식이다
+    titles(snap({ a: 'running' }, { a: 't5', 'a.git': 'g1' }, T0 + 2 * H));
+    expect(titles(snap({ a: 'stalled' }, { a: 't5', 'a.git': 'g1' }, T0 + 2 * H))).toEqual(['NightShift · A: 정지 의심']);
+    // 쿨다운이 지나면 출력 활동만으로도 다시 알린다
+    for (const t of ['t6', 't7', 't8']) titles(snap({ a: 'running' }, { a: t, 'a.git': 'g1' }, T0 + 2 * H + REALERT_COOLDOWN_MS));
+    expect(titles(snap({ a: 'stalled' }, { a: 't8', 'a.git': 'g1' }, T0 + 2 * H + REALERT_COOLDOWN_MS))).toEqual(['NightShift · A: 정지 의심']);
+  });
+
+  it('remembers sent alerts across a restart', () => {
+    const before = new Map();
+    alertsFor(before, snap({ a: 'running' }, { a: 't0' }));
+    alertsFor(before, snap({ a: 'stalled' }, { a: 't0' }));
+    const after = restoreAlerts(JSON.parse(JSON.stringify(exportAlerts(before))));
+    // 재시작 뒤 첫 화면은 활동으로 치지 않고, 같은 정지는 다시 알리지 않는다
+    expect(alertsFor(after, snap({ a: 'stalled' }, { a: 't9' }))).toEqual([]);
+    for (const t of ['t10', 't11', 't12']) alertsFor(after, snap({ a: 'running' }, { a: t }));
+    expect(alertsFor(after, snap({ a: 'stalled' }, { a: 't12' }))).toEqual([]);
+    expect(restoreAlerts(undefined).size).toBe(0);
   });
 });
 
