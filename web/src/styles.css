@@ -1393,8 +1393,10 @@ form.settings {
   .row-col {
     gap: 2px;
   }
+  /* 타일은 줄을 꽉 채운다. 마지막 줄의 타일이 넓어져도 가장자리가 들쭉날쭉하지 않다 */
   .stat {
-    min-width: 110px;
+    flex: 1 1 100px;
+    min-width: 0;
     padding: 14px 20px;
     border-radius: var(--r-box);
   }
@@ -1412,6 +1414,18 @@ form.settings {
 @media (max-width: 720px) {
   .term-info:not(.open) {
     display: none;
+  }
+  /* 세션 정보는 한 줄에 못 들어가 이름과 값이 따로 꺾이므로, 좁으면 표 모양으로 */
+  .kv.inline {
+    display: grid;
+    margin: 12px 0;
+  }
+  .kv.inline dd {
+    margin-right: 0;
+  }
+  /* 입력칸은 한 줄을 다 쓰고, 버튼은 그 아래 한 줄에 */
+  .input-row textarea {
+    flex-basis: 100%;
   }
   .info-toggle {
     display: inline-block;
