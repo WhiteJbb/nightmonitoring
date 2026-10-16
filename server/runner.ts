@@ -42,6 +42,8 @@ export class Runner {
     if (!r) this.results.set(projectId, (r = { test: null, build: null }));
     return r;
   };
+  /** 읽기 전용. 없는 프로젝트(자동 발견 세션 등)를 위해 빈 항목을 만들지 않는다. */
+  peek = (projectId: string): Record<RunKind, RunResult | null> => this.results.get(projectId) ?? { test: null, build: null };
 
   /** 끝난 실행의 이력, 최신순. */
   history = (projectId: string): Record<RunKind, RunSummary[]> => {
@@ -135,8 +137,9 @@ export class Runner {
 
   /** 저장된 상태를 복원한다. 저장 당시 실행 중이던 것은 재시작으로 중단된 것으로 기록한다. */
   restore(state: RunnerState): void {
-    for (const [id, h] of Object.entries(state.history ?? {})) this.histories.set(id, { test: h.test ?? [], build: h.build ?? [] });
+      for (const [id, h] of Object.entries(state.history ?? {})) if (h) this.histories.set(id, { test: h.test ?? [], build: h.build ?? [] });
     for (const [id, runs] of Object.entries(state.results ?? {})) {
+      if (!runs) continue;
       for (const kind of ['test', 'build'] as const) {
         const r = runs[kind];
         if (!r) continue;

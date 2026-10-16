@@ -55,7 +55,7 @@ async function main() {
   const monitor = new Monitor({
     config,
     collector: demo ? demoCollector() : realCollector(config),
-    runs: runner.get,
+    runs: runner.peek,
     history: runner.history,
     demo,
     configPath,
@@ -66,8 +66,9 @@ async function main() {
 
   // 휴대폰에서 눌러 열 수 있는 주소. loopback 은 휴대폰에서 닿지 않으므로 붙이지 않는다.
   const reachable = !['127.0.0.1', 'localhost', '::1'].includes(config.host);
+  const hostForUrl = config.host.includes(':') ? `[${config.host}]` : config.host;
   const clickFor = (projectId?: string) =>
-    reachable ? { click: `http://${config.host}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
+    reachable ? { click: `http://${hostForUrl}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
   const testPush = async () => {
     const url = monitor.config.ntfyUrl;
     if (!url) return 'ntfy 주소가 설정되어 있지 않습니다. 먼저 저장하세요.';
