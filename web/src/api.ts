@@ -1,4 +1,4 @@
-import type { ProjectSnapshot, ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
+import type { AgentKind, ProjectSnapshot, ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
@@ -46,7 +46,7 @@ export const api = {
   hideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'POST'),
   unhideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'DELETE'),
   killSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'DELETE'),
-  startSession: (id: string, size: TermSize) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
+  startSession: (id: string, size: TermSize & { agent?: AgentKind }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
   fitPane: (id: string, paneId: string, size: TermSize) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', size),
   sendInput: (id: string, body: InputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/input`, 'POST', body),

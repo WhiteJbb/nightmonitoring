@@ -226,12 +226,13 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
 /** 등록된 세션이 꺼져 있을 때: 같은 이름으로 다시 만든다. */
 export function StartSession({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false);
+  const [agent, setAgent] = useState<AgentKind | ''>('');
   const [error, setError] = useState<string | null>(null);
   const start = () => {
     setBusy(true);
     setError(null);
     // 성공하면 다음 스냅샷에서 세션이 나타나 이 화면이 터미널로 바뀐다. 그때까지 "시작하는 중…"을 유지한다
-    api.startSession(projectId, fitSize(null)).then(
+    api.startSession(projectId, { ...fitSize(null), ...(agent ? { agent } : {}) }).then(
       () => setTimeout(() => setBusy(false), 15_000),
       (e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
@@ -241,10 +242,17 @@ export function StartSession({ projectId }: { projectId: string }) {
   };
   return (
     <>
+      <div className="seg" role="radiogroup" aria-label="함께 띄울 에이전트">
+        {AGENTS.map(([value, label]) => (
+          <button key={value} type="button" role="radio" aria-checked={agent === value} disabled={busy} onClick={() => setAgent(value)}>
+            {label}
+          </button>
+        ))}
+      </div>{' '}
       <button type="button" onClick={start} disabled={busy}>
         {busy ? '시작하는 중…' : '세션 시작'}
       </button>
-      <p className="hint">저장소 경로에서 셸만 띄운 새 세션을 같은 이름으로 만듭니다.</p>
+      <p className="hint">저장소 경로에서 같은 이름의 새 세션을 만듭니다. 고르면 에이전트까지 띄웁니다.</p>
       {error && (
         <p className="err" role="alert">
           {error}

@@ -278,8 +278,9 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
-    const size = (req.body ?? {}) as Record<string, unknown>;
-    const error = await terminal.createSession(project.tmuxSession, project.repoPath, clampSize(size.cols, size.rows));
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    if (body.agent !== undefined && body.agent !== null && !(typeof body.agent === 'string' && body.agent in AGENT_COMMANDS)) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
+    const error = await terminal.createSession(project.tmuxSession, project.repoPath, clampSize(body.cols, body.rows), typeof body.agent === 'string' ? (body.agent as AgentKind) : undefined);
     if (error) return void res.status(400).json({ error });
     await monitor.tick();
     res.json({ ok: true });
