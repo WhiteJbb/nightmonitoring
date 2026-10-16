@@ -23,21 +23,6 @@ export const sessionNameFrom = (name: string) =>
     .replace(/[\s:.;]+/g, '-')
     .replace(/^[-$=@%]+|-+$/g, '');
 
-/**
- * 등록된 프로젝트들이 가장 많이 모여 있는 상위 디렉터리 (끝에 "/" 포함). 새 세션의 경로 기본값으로 쓴다.
- * 프로젝트가 없으면 빈 문자열.
- */
-export function commonParentDir(repoPaths: string[]): string {
-  const counts = new Map<string, number>();
-  for (const p of repoPaths) {
-    const parent = p.replace(/\/+$/, '').replace(/[^/]+$/, '');
-    if (parent && parent !== '/') counts.set(parent, (counts.get(parent) ?? 0) + 1);
-  }
-  let best = '';
-  for (const [dir, n] of counts) if (n > (counts.get(best) ?? 0)) best = dir;
-  return best;
-}
-
 /** 대시보드에서 새 tmux 세션을 만들고 바로 프로젝트로 등록하는 접이식 폼. */
 const AGENTS: [AgentKind | '', string][] = [
   ['', '셸만'],
@@ -45,7 +30,10 @@ const AGENTS: [AgentKind | '', string][] = [
   ['codex', 'Codex'],
 ];
 
-export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
+/** Git 주소로 받는 저장소가 들어갈 폴더 */
+const CLONE_DIR = '~/repos/';
+
+export function NewSession() {
   const [open, setOpen] = useState(false);
   const [gitUrl, setGitUrl] = useState('');
   // 이름·경로·세션 이름은 사용자가 직접 고치기 전까지(null) 앞 칸에서 만든 값을 따라간다.
@@ -61,8 +49,8 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [error, setError] = useState<ApiError | Error | null>(null);
   const repo = repoNameFrom(gitUrl);
   const name = nameEdit ?? repo;
-  // Git 주소를 적으면 같은 폴더 아래에 받는다. 아니면 비워 둔다 (서버가 홈 폴더에서 연다)
-  const repoPath = pathEdit ?? (repo ? defaultDir + repo : '');
+  // Git 주소를 적으면 ~/repos/저장소이름 에 받는다. 아니면 비워 둔다 (서버가 홈 폴더에서 연다)
+  const repoPath = pathEdit ?? (repo ? CLONE_DIR + repo : '');
   const [more, setMore] = useState(false);
   const tmuxSession = session ?? sessionNameFrom(name);
   const cloning = busy && gitUrl.trim() !== '';

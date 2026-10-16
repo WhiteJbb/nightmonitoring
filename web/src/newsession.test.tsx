@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { commonParentDir, NewSession, sessionNameFrom, StartSession } from './NewSession.tsx';
+import { NewSession, sessionNameFrom, StartSession } from './NewSession.tsx';
 
 const fetchMock = vi.fn<typeof fetch>();
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
@@ -26,15 +26,8 @@ test('derives a tmux-safe session name', () => {
   expect(sessionNameFrom('한글 프로젝트')).toBe('한글-프로젝트');
 });
 
-test('picks the folder most projects live in as the default path', () => {
-  expect(commonParentDir(['/Users/me/repos/a', '/Users/me/repos/b/', '/Users/me/work/c'])).toBe('/Users/me/repos/');
-  expect(commonParentDir(['/Users/me/repos/a'])).toBe('/Users/me/repos/');
-  expect(commonParentDir([])).toBe('');
-  expect(commonParentDir(['/top'])).toBe('');
-});
-
 test('a session name and an agent are enough to start', async () => {
-  render(<NewSession defaultDir="/r/" />);
+  render(<NewSession />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
   type('tmux 세션 이름', 'quick');
   fireEvent.click(screen.getByRole('radio', { name: 'Codex' }));
@@ -46,7 +39,7 @@ test('a session name and an agent are enough to start', async () => {
 });
 
 test('the repo path is empty (home) unless a git url fills it under the default folder', async () => {
-  render(<NewSession defaultDir="/Users/me/repos/" />);
+  render(<NewSession />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
   expect(field('저장소 경로').value).toBe('');
   type('프로젝트 이름', 'App');
@@ -79,11 +72,11 @@ test('creates a session, following the project name until the session name is ed
 });
 
 test('a git url fills in name and path and is sent along', async () => {
-  render(<NewSession defaultDir="/Users/me/repos/" />);
+  render(<NewSession />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
   type('Git 저장소 주소 (선택)', 'git@github.com:me/my-app.git');
   expect(field('프로젝트 이름').value).toBe('my-app');
-  expect(field('저장소 경로').value).toBe('/Users/me/repos/my-app');
+  expect(field('저장소 경로').value).toBe('~/repos/my-app');
   expect(field('tmux 세션 이름').value).toBe('my-app');
   fetchMock.mockResolvedValueOnce(json(200, { id: 'my-app' }));
   fireEvent.click(screen.getByRole('button', { name: '만들기' }));
@@ -92,11 +85,11 @@ test('a git url fills in name and path and is sent along', async () => {
   expect(screen.getByRole('status').textContent).toContain('저장소를 받는 중…');
   expect(['Git 저장소 주소 (선택)', '프로젝트 이름', '저장소 경로', 'tmux 세션 이름', '터미널 입력 허용'].every((l) => field(l).disabled)).toBe(true);
   await waitFor(() => expect(window.location.hash).toBe('#/project/my-app'));
-  expect(lastBody()).toMatchObject({ name: 'my-app', repoPath: '/Users/me/repos/my-app', gitUrl: 'git@github.com:me/my-app.git' });
+  expect(lastBody()).toMatchObject({ name: 'my-app', repoPath: '~/repos/my-app', gitUrl: 'git@github.com:me/my-app.git' });
 });
 
 test('name and path follow the git url as it is typed, until edited by hand', () => {
-  render(<NewSession defaultDir="/r/" />);
+  render(<NewSession />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
   const url = 'https://github.com/me/app.git';
   // 한 글자씩 칠 때: 덜 적은 주소("h", "https://github.com/")에서는 채우지 않는다
@@ -107,17 +100,17 @@ test('name and path follow the git url as it is typed, until edited by hand', ()
   expect(field('프로젝트 이름').value).toBe('');
   type('Git 저장소 주소 (선택)', url);
   expect(field('프로젝트 이름').value).toBe('app');
-  expect(field('저장소 경로').value).toBe('/r/app');
+  expect(field('저장소 경로').value).toBe('~/repos/app');
   // 주소를 고치면 따라 바뀐다
   type('Git 저장소 주소 (선택)', 'git@github.com:me/api');
   expect(field('프로젝트 이름').value).toBe('api');
-  expect(field('저장소 경로').value).toBe('/r/api');
+  expect(field('저장소 경로').value).toBe('~/repos/api');
   expect(field('tmux 세션 이름').value).toBe('api');
   // 직접 고친 칸은 더 이상 따라가지 않는다
   type('프로젝트 이름', 'My API');
   type('Git 저장소 주소 (선택)', url);
   expect(field('프로젝트 이름').value).toBe('My API');
-  expect(field('저장소 경로').value).toBe('/r/app');
+  expect(field('저장소 경로').value).toBe('~/repos/app');
   expect(field('tmux 세션 이름').value).toBe('my-api');
 });
 

@@ -5,7 +5,7 @@ import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
 import { dateTime, relTime, STATE_LABEL } from './format.ts';
 import { Badge, ProjectDetail, QuickAnswers, Reasons } from './ProjectDetail.tsx';
-import { commonParentDir, NewSession } from './NewSession.tsx';
+import { NewSession } from './NewSession.tsx';
 import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
@@ -306,7 +306,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
         {/* 새 세션은 대시보드의 주 동작이라 요약 줄 오른쪽 끝에 둔다 */}
         {!snapshot.demo && (
           <div className="dash-new">
-            <NewSession defaultDir={commonParentDir(snapshot.projects.map((p) => p.repoPath))} />
+            <NewSession />
           </div>
         )}
       </div>
