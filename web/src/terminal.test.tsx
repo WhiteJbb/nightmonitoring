@@ -108,7 +108,7 @@ const fetchMock = vi.fn<typeof fetch>();
 function serve(input: () => Response = () => json(200, { ok: true })) {
   fetchMock.mockImplementation(async () => input());
 }
-const posts = () => fetchMock.mock.calls.filter(([, init]) => init?.method === 'POST').map(([url, init]) => [String(url), JSON.parse(init?.body as string) as InputRequest & { data?: string }] as const);
+const posts = () => fetchMock.mock.calls.filter(([url, init]) => init?.method === 'POST' && !String(url).endsWith('/fit')).map(([url, init]) => [String(url), JSON.parse(init?.body as string) as InputRequest & { data?: string }] as const);
 
 const tick = (ms = 0) =>
   act(async () => {
@@ -435,20 +435,29 @@ test('on a touch screen Enter inserts a newline, 보내기 sends, and a key butt
   expect(document.activeElement).toBe(input);
 });
 
-test('offers to fit an unattached session whose pane is wider than the terminal area', async () => {
+test('fits an unattached session to the screen it is opened on, once; an attached one is left alone', async () => {
+  const fits = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/panes/%251/fit'));
   await renderTab(project(TWO));
   await init(200, 50);
-  // 테스트 환경에서는 요소 크기를 잴 수 없어 화면 폭으로 어림한 칸 수(약 120칸)와 비교한다
+  await tick();
+  // 테스트 환경에서는 요소 크기를 잴 수 없어 화면 폭으로 어림한 칸 수(약 120칸)·40줄로 맞춘다
+  expect(fits()).toHaveLength(1);
+  expect(fits()[0]![1]?.method).toBe('POST');
+  expect(JSON.parse(fits()[0]![1]?.body as string)).toMatchObject({ rows: 40 });
+  await init(200, 50);
+  await tick();
+  expect(fits()).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '화면에 맞추기' }));
   await tick();
-  const call = fetchMock.mock.calls.find(([url]) => String(url).endsWith('/panes/%251/fit'))!;
-  expect(call[1]?.method).toBe('POST');
-  expect(JSON.parse(call[1]?.body as string)).toMatchObject({ rows: 40 });
+  expect(fits()).toHaveLength(2);
 
   cleanup();
+  fetchMock.mockClear();
   const attached = project(TWO);
   attached.tmux.attached = true;
   await renderTab(attached);
   await init(200, 50);
+  await tick();
+  expect(fits()).toHaveLength(0);
   expect(screen.queryByRole('button', { name: '화면에 맞추기' })).toBeNull();
 });

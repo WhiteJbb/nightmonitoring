@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import type { TermEvent } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
-import { charWidth } from './termsize.ts';
+import { charWidth, ROW_RATIO, TERM_MAX_VIEWPORT } from './termsize.ts';
 
 /** 'connecting' | 'live' | 'down' | 'exit' 또는 서버가 보낸 오류 메시지 */
 export type TermStatus = string;
@@ -17,8 +17,6 @@ const RAW_CHUNK = 4096;
 // eslint-disable-next-line no-control-regex -- 터미널 이스케이프 시퀀스를 다룬다
 const MOTION_RE = /\x1b\[<(?:35|39|43|47|51|55|59|63);\d+;\d+[Mm]/g;
 const LINE_HEIGHT = 1.2;
-/** 터미널이 차지할 수 있는 화면 높이 비율 */
-const TERM_MAX_VIEWPORT = 0.7;
 /** 휠을 이만큼(px) 굴릴 때마다 PgUp/PgDn 한 번 */
 const WHEEL_PAGE_PX = 120;
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -60,7 +58,7 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       // 줄 높이는 글꼴 지표에 따라 글자 크기의 1.2배보다 크다. 그려진 화면에서 실제 비율을 잰다
       const screen = el.querySelector<HTMLElement>('.xterm-screen');
       const size = Number(term.options.fontSize) || TERM_FONT_SIZE;
-      const ratio = screen && screen.clientHeight > 0 ? screen.clientHeight / term.rows / size : LINE_HEIGHT * 1.3;
+      const ratio = screen && screen.clientHeight > 0 ? screen.clientHeight / term.rows / size : ROW_RATIO;
       const byHeight = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT) / (term.rows * ratio));
       term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
