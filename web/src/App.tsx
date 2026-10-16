@@ -109,7 +109,8 @@ export function App() {
   const path = hash.replace(/^#/, '') || '/';
   const isReports = path === '/reports';
   const isSettings = path === '/settings';
-  const projectId = path.startsWith('/project/') ? safeDecode(path.slice('/project/'.length)) : null;
+  // #/project/<id>/<탭>: 탭은 ProjectDetail 이 읽는다
+  const projectId = path.startsWith('/project/') ? safeDecode(path.slice('/project/'.length).split('/')[0]!) : null;
 
   let page;
   if (isReports) {
