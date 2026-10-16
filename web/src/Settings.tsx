@@ -24,7 +24,7 @@ const PATTERNS = [
   ['errorIgnorePatterns', '오류 제외 패턴', '오류 패턴에 걸려도 무시할 줄'],
   ['promptPatterns', '입력 대기 패턴', '입력 대기 프롬프트로 판정할 줄'],
 ] as const;
-type PatternKey = (typeof PATTERNS)[number][0] | 'hiddenSessions';
+type PatternKey = (typeof PATTERNS)[number][0];
 
 interface DraftProject {
   id: string | null;
@@ -40,7 +40,7 @@ interface DraftProject {
 
 /** 입력 중인 폼 상태. 숫자는 비워 둘 수 있게 문자열로, 패턴은 줄바꿈으로 이은 문자열로 둔다. */
 type Draft = Record<NumKey | PatternKey, string> &
-  Record<ToggleKey, boolean> & { autoReport: boolean; autoReportTime: string; ntfyUrl: string; projects: DraftProject[] };
+  Record<ToggleKey, boolean> & { autoReport: boolean; autoReportTime: string; ntfyUrl: string; hiddenSessions: string[]; projects: DraftProject[] };
 
 function toDraft({ settings: s, projects }: ConfigView): Draft {
   return {
@@ -58,7 +58,7 @@ function toDraft({ settings: s, projects }: ConfigView): Draft {
     errorPatterns: s.errorPatterns.join('\n'),
     errorIgnorePatterns: s.errorIgnorePatterns.join('\n'),
     promptPatterns: s.promptPatterns.join('\n'),
-    hiddenSessions: s.hiddenSessions.join('\n'),
+    hiddenSessions: s.hiddenSessions,
     projects: projects.map((p) => ({ ...p, tmuxSession: p.tmuxSession ?? '', logFile: p.logFile ?? '' })),
   };
 }
@@ -88,7 +88,7 @@ function toUpdate(d: Draft): Omit<ConfigUpdate, 'version'> {
       autoReportTime: d.autoReport ? d.autoReportTime : null,
       commandTimeoutSec: num(d.commandTimeoutSec),
       ntfyUrl: d.ntfyUrl.trim() || null,
-      hiddenSessions: lines(d.hiddenSessions).map((l) => l.trim()),
+      hiddenSessions: d.hiddenSessions,
     },
     projects: d.projects.map((p) => ({
       id: p.id,
@@ -113,7 +113,28 @@ const BLANK_PROJECT: DraftProject = {
   allowInput: false,
 };
 
-function Field({ label, hint, children }: { label: string; hint?: ReactNode; children: ReactNode }) {
+const FIELD_KEYS = new Set<string>([...NUMBERS.map(([k]) => k), ...PATTERNS.map(([k]) => k), 'autoReportTime', 'ntfyUrl']);
+const PROJECT_KEYS = new Set(['name', 'repoPath', 'tmuxSession', 'logFile', 'allowInput']);
+
+/**
+ * 서버 검증 문제("projects[1].repoPath: 필수입니다", "thresholds.idleMinutes: …")가 가리키는 입력 칸의 id.
+ * 칸이 없는 문제(요청 형식 등)는 null 이라 목록에만 남는다.
+ */
+export function fieldOf(issue: string): string | null {
+  const m = /^(?:projects\[(\d+)\]\.?)?(?:thresholds\.)?(\w*)/.exec(issue)!;
+  if (m[1] === undefined) return FIELD_KEYS.has(m[2]!) ? `f-${m[2]}` : null;
+  // id 중복·객체 아님 같은 프로젝트 전체의 문제는 이름 칸에 붙인다
+  return `f-p${m[1]}-${PROJECT_KEYS.has(m[2]!) ? m[2] : 'name'}`;
+}
+
+/** 칸으로 옮겨 간다. 위 띠·바닥의 저장 막대에 가리지 않게 scroll-margin-top 만큼 띄운다 (styles.css) */
+function jump(id: string) {
+  const el = document.getElementById(id);
+  el?.scrollIntoView?.({ block: 'start' });
+  el?.focus({ preventScroll: true });
+}
+
+function Field({ label, hint, error, children }: { label: string; hint?: ReactNode; error?: ReactNode; children: ReactNode }) {
   return (
     <div className="field">
       <label>
@@ -121,6 +142,7 @@ function Field({ label, hint, children }: { label: string; hint?: ReactNode; chi
         {children}
       </label>
       {hint && <p className="hint">{hint}</p>}
+      {error}
     </div>
   );
 }
@@ -145,6 +167,13 @@ export function Settings() {
     api.config().then(loaded, (e: unknown) => setLoadError(errorMessage(e)));
   };
   useEffect(load, []); // 마운트 시 한 번만 불러온다
+
+  const issues = saveError instanceof ApiError ? saveError.issues : [];
+  // 저장이 검증에 걸리면 첫 번째 문제 칸으로 옮겨 간다
+  useEffect(() => {
+    const id = saveError instanceof ApiError ? saveError.issues.map(fieldOf).find((f) => f !== null) : null;
+    if (id) jump(id);
+  }, [saveError]);
 
   const dirty = view !== null && draft !== null && JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
   // 저장하지 않은 변경이 있으면 새로 고침·닫기·다른 화면으로 이동하기 전에 묻는다
@@ -180,6 +209,21 @@ export function Settings() {
 
   const ro = !view.editable;
   const lock = ro || saving; // 저장 중의 수정은 응답이 덮어쓰므로 입력만 잠근다
+  // 서버 검증 문제를 칸별로 모은다. 칸 옆에서는 경로("thresholds.idleMinutes:")를 떼고 보여 준다
+  const errs = new Map<string, string[]>();
+  for (const issue of issues) {
+    const id = fieldOf(issue);
+    if (id) errs.set(id, [...(errs.get(id) ?? []), issue.replace(/^[^:]*:\s*/, '')]);
+  }
+  const a11y = (id: string) => ({ id, 'aria-invalid': errs.has(id) || undefined, 'aria-describedby': errs.has(id) ? `${id}-err` : undefined });
+  const errorOf = (id: string) =>
+    errs.has(id) && (
+      <p className="err field-err" id={`${id}-err`}>
+        {errs.get(id)!.join(' · ')}
+      </p>
+    );
+  // 시험 알림은 저장된 주소로 보낸다. 고친 주소가 있으면 먼저 저장해야 한다
+  const pushStale = draft.ntfyUrl.trim() !== (view.settings.ntfyUrl ?? '');
 
   const set = (patch: Partial<Draft>) => {
     setDraft({ ...draft, ...patch });
@@ -246,24 +290,12 @@ export function Settings() {
         </div>
       )}
 
-      <h3>파일에서만 바꿀 수 있는 값</h3>
-      <dl className="kv">
-        <dt>host</dt>
-        <dd className="wrap">{view.fileOnly.host}</dd>
-        <dt>port</dt>
-        <dd>{view.fileOnly.port}</dd>
-        <dt>reportsDir</dt>
-        <dd className="wrap">{view.fileOnly.reportsDir}</dd>
-        <dt>allowedHosts</dt>
-        <dd className="wrap">{view.fileOnly.allowedHosts.length ? view.fileOnly.allowedHosts.join(', ') : <span className="dim">없음</span>}</dd>
-      </dl>
-      <p className="hint">이 값들은 config 파일을 직접 고친 뒤 서버를 다시 시작해야 바뀝니다.</p>
-
       <h3>전역 설정</h3>
       <div className="settings-grid nums">
         {NUMBERS.map(([key, label, min, hint]) => (
-          <Field key={key} label={label} hint={hint}>
+          <Field key={key} label={label} hint={hint} error={errorOf(`f-${key}`)}>
             <input
+              {...a11y(`f-${key}`)}
               type="number"
               min={min}
               step="any"
@@ -287,6 +319,7 @@ export function Settings() {
             Morning Report 자동 생성
           </label>
           <input
+            {...a11y('f-autoReportTime')}
             type="time"
             aria-label="자동 생성 시각"
             required={draft.autoReport}
@@ -294,6 +327,7 @@ export function Settings() {
             disabled={lock || !draft.autoReport}
             onChange={(e) => set({ autoReportTime: e.target.value })}
           />
+          {errorOf('f-autoReportTime')}
         </div>
         {TOGGLES.map(([key, label, hint]) => (
           <div className="toggle-row" key={key}>
@@ -311,6 +345,7 @@ export function Settings() {
         <label>
           <span>ntfy 주소</span>
           <input
+            {...a11y('f-ntfyUrl')}
             type="url"
             className="mono"
             spellCheck={false}
@@ -324,12 +359,17 @@ export function Settings() {
           입력 대기·정지 의심·오류로 바뀔 때 이 주소로 알림을 보냅니다. 휴대폰의 ntfy 앱에서 같은 주제를 구독하세요. 비워
           두면 보내지 않습니다.
         </p>
+        {errorOf('f-ntfyUrl')}
         {!ro && (
           <div className="row">
-            {/* 저장된 주소로 보내므로, 고친 내용이 있으면 먼저 저장해야 한다 */}
-            <button type="button" onClick={testPush} disabled={pushing || !view.settings.ntfyUrl || draft.ntfyUrl.trim() !== view.settings.ntfyUrl}>
+            <button type="button" onClick={testPush} disabled={pushing || !view.settings.ntfyUrl || pushStale} aria-describedby={pushStale ? 'push-stale' : undefined}>
               {pushing ? '보내는 중…' : '시험 알림 보내기'}
             </button>
+            {pushStale && (
+              <span className="hint" id="push-stale">
+                {draft.ntfyUrl.trim() ? '변경한 주소를 먼저 저장하세요' : '주소를 적고 저장하면 보낼 수 있습니다'}
+              </span>
+            )}
             {pushResult && (
               <span className={pushResult.ok ? 'ok' : 'err'} role={pushResult.ok ? 'status' : 'alert'}>
                 {pushResult.text}
@@ -345,8 +385,9 @@ export function Settings() {
       </p>
       <div className="settings-grid">
         {PATTERNS.map(([key, label, hint]) => (
-          <Field key={key} label={label} hint={hint}>
+          <Field key={key} label={label} hint={hint} error={errorOf(`f-${key}`)}>
             <textarea
+              {...a11y(`f-${key}`)}
               rows={6}
               spellCheck={false}
               value={draft[key]}
@@ -361,31 +402,22 @@ export function Settings() {
       <p className="hint">
         테스트·빌드 명령은 config 파일에서만 등록·수정할 수 있습니다. 여기서 추가한 프로젝트에는 명령이 없습니다.
       </p>
-      <div className="settings-grid">
-        <Field label="숨긴 미등록 세션" hint="설정에 없는 tmux 세션은 자동으로 카드가 뜹니다. 카드의 '숨김'으로 여기 쌓이며, 줄을 지우면 다시 보입니다">
-          <textarea rows={3} spellCheck={false} value={draft.hiddenSessions} disabled={lock} onChange={(e) => set({ hiddenSessions: e.target.value })} />
-        </Field>
-      </div>
       {draft.projects.length === 0 && <p className="dim">등록된 프로젝트가 없습니다.</p>}
       {draft.projects.map((p, i) => (
         // 모든 입력이 제어 컴포넌트라 index key 로도 삭제 시 값이 섞이지 않는다
         <fieldset className="project-edit" key={i}>
           <legend>{p.name || '새 프로젝트'}</legend>
           <div className="settings-grid">
-            <Field
-              label="이름"
-              hint={
-                p.id !== null &&
-                '이름을 바꾸면 프로젝트 id 가 바뀌어 "모니터링 시작 이후" 기준점과 실행 이력이 초기화됩니다.'
-              }
-            >
-              <input type="text" required value={p.name} disabled={lock} onChange={(e) => setProject(i, { name: e.target.value })} />
+            <Field label="이름" error={errorOf(`f-p${i}-name`)}>
+              <input {...a11y(`f-p${i}-name`)} type="text" required value={p.name} disabled={lock} onChange={(e) => setProject(i, { name: e.target.value })} />
             </Field>
             <Field
               label="저장소 경로"
               hint={p.repoPathLocked && '테스트·빌드 명령이 등록된 프로젝트의 경로는 config 파일에서만 바꿀 수 있습니다'}
+              error={errorOf(`f-p${i}-repoPath`)}
             >
               <input
+                {...a11y(`f-p${i}-repoPath`)}
                 type="text"
                 className="mono"
                 required
@@ -395,11 +427,9 @@ export function Settings() {
                 onChange={(e) => setProject(i, { repoPath: e.target.value })}
               />
             </Field>
-            <Field
-              label="tmux 세션"
-              hint="비워 두면 세션을 감시하지 않습니다"
-            >
+            <Field label="tmux 세션" hint="비워 두면 세션을 감시하지 않습니다" error={errorOf(`f-p${i}-tmuxSession`)}>
               <input
+                {...a11y(`f-p${i}-tmuxSession`)}
                 type="text"
                 className="mono"
                 spellCheck={false}
@@ -408,8 +438,9 @@ export function Settings() {
                 onChange={(e) => setProject(i, { tmuxSession: e.target.value })}
               />
             </Field>
-            <Field label="로그 파일" hint="비워 두면 로그를 읽지 않습니다. 저장소 경로 기준 상대 경로도 됩니다">
+            <Field label="로그 파일" hint="비워 두면 로그를 읽지 않습니다. 저장소 경로 기준 상대 경로도 됩니다" error={errorOf(`f-p${i}-logFile`)}>
               <input
+                {...a11y(`f-p${i}-logFile`)}
                 type="text"
                 className="mono"
                 spellCheck={false}
@@ -428,6 +459,7 @@ export function Settings() {
           <div className="field">
             <label className="check">
               <input
+                {...a11y(`f-p${i}-allowInput`)}
                 type="checkbox"
                 checked={p.allowInput}
                 disabled={lock}
@@ -442,6 +474,7 @@ export function Settings() {
             <p className="hint">
               켜면 터미널 탭에서 이 프로젝트의 tmux 세션으로 키 입력을 보낼 수 있습니다. 보낸 내용은 서버에 기록됩니다.
             </p>
+            {errorOf(`f-p${i}-allowInput`)}
           </div>
           {!ro && (
             <button type="button" className="danger" disabled={saving} onClick={() => removeProject(i)}>
@@ -455,6 +488,38 @@ export function Settings() {
           프로젝트 추가
         </button>
       )}
+
+      <h3>숨긴 미등록 세션</h3>
+      <p className="hint">설정에 없는 tmux 세션은 자동으로 카드가 뜹니다. 카드의 '숨김'을 누른 세션이 여기 쌓이며, '다시 표시' 후 저장하면 대시보드에 다시 보입니다.</p>
+      {draft.hiddenSessions.length === 0 ? (
+        <p className="dim">숨긴 세션이 없습니다.</p>
+      ) : (
+        <ul className="hidden-sessions">
+          {draft.hiddenSessions.map((name) => (
+            <li key={name}>
+              <span className="mono wrap">{name}</span>
+              {!ro && (
+                <button type="button" disabled={saving} onClick={() => set({ hiddenSessions: draft.hiddenSessions.filter((n) => n !== name) })}>
+                  다시 표시
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <h3>파일에서만 바꿀 수 있는 값</h3>
+      <dl className="kv">
+        <dt>host</dt>
+        <dd className="wrap">{view.fileOnly.host}</dd>
+        <dt>port</dt>
+        <dd>{view.fileOnly.port}</dd>
+        <dt>reportsDir</dt>
+        <dd className="wrap">{view.fileOnly.reportsDir}</dd>
+        <dt>allowedHosts</dt>
+        <dd className="wrap">{view.fileOnly.allowedHosts.length ? view.fileOnly.allowedHosts.join(', ') : <span className="dim">없음</span>}</dd>
+      </dl>
+      <p className="hint">이 값들은 config 파일을 직접 고친 뒤 서버를 다시 시작해야 바뀝니다.</p>
 
       {!ro && (
         <div className="settings-actions">
@@ -475,9 +540,21 @@ export function Settings() {
               <p>{saveError.message}</p>
               {saveError instanceof ApiError && saveError.issues.length > 0 && (
                 <ul className="mono">
-                  {saveError.issues.map((issue) => (
-                    <li key={issue}>{issue}</li>
-                  ))}
+                  {saveError.issues.map((issue) => {
+                    // 칸이 있는 문제는 눌러서 그 칸으로 간다
+                    const id = fieldOf(issue);
+                    return (
+                      <li key={issue}>
+                        {id ? (
+                          <button type="button" className="issue-link" onClick={() => jump(id)}>
+                            {issue}
+                          </button>
+                        ) : (
+                          issue
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {saveError instanceof ApiError && saveError.status === 409 && (

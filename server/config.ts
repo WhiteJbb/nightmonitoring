@@ -190,7 +190,10 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
       if (p.allowInput !== undefined && typeof p.allowInput !== 'boolean') issues.push(`${where}allowInput: true 또는 false 여야 합니다`);
       if (!name || !repoPath) return;
       // id 는 이름에서 만든다. 자리 순서로 꼬리표를 붙이면 앞 프로젝트를 지울 때 뒤 프로젝트의 id 가 바뀌어 기록이 끊긴다.
-      const id = slugify(name);
+      // 설정 화면에서 이름을 바꾸면 이전 id 를 "id" 로 남겨 기준점·실행 이력이 이어지게 한다.
+      const fixedId = optStr(p, 'id', where);
+      if (fixedId && slugify(fixedId) !== fixedId) issues.push(`${where}id: 영문 소문자·숫자·한글·'-' 만 쓸 수 있습니다`);
+      const id = fixedId ?? slugify(name);
       if (ids.has(id)) issues.push(`${where}name: "${name}" 은(는) 다른 프로젝트와 같은 id(${id}) 가 됩니다. 이름을 바꾸세요`);
       ids.add(id);
       const repo = expandPath(repoPath, baseDir);

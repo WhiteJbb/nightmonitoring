@@ -4,8 +4,12 @@ import type { FormEvent } from 'react';
 import { api, ApiError } from './api.ts';
 import { fitSize } from './termsize.ts';
 
-/** 주소의 마지막 경로 조각 (".git" 제거). 서버의 repoNameFrom 과 같다 */
-const repoNameFrom = (url: string) => url.trim().replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? '';
+/** 서버가 clone 을 허용하는 주소 형식 (server/git.ts 의 GIT_URL_RE 와 같다) */
+const GIT_URL_RE = /^(https:\/\/[\w.-]+(:\d+)?\/[\w.~/-]+|ssh:\/\/[\w.-]+@?[\w.-]+(:\d+)?\/[\w.~/-]+|[\w.-]+@[\w.-]+:[\w.~/-]+)$/;
+
+/** 주소의 마지막 경로 조각 (".git" 제거). 서버의 repoNameFrom 과 같다. 아직 덜 적은 주소면 빈 문자열 */
+export const repoNameFrom = (url: string) =>
+  GIT_URL_RE.test(url.trim()) ? (url.trim().replace(/\/+$/, '').replace(/\.git$/, '').split(/[/:]/).pop() ?? '') : '';
 
 const ALLOW_INPUT_CONFIRM =
   '새 세션에 브라우저에서 키 입력을 보낼 수 있게 됩니다.\n대시보드에 접속할 수 있는 사람은 누구나 이 Mac 계정으로 명령을 실행할 수 있습니다.\n\n켤까요?';
@@ -36,17 +40,22 @@ export function commonParentDir(repoPaths: string[]): string {
 /** 대시보드에서 새 tmux 세션을 만들고 바로 프로젝트로 등록하는 접이식 폼. */
 export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  // 대부분 같은 폴더 아래에서 작업하므로 거기까지 미리 채워 둔다
-  const [repoPath, setRepoPath] = useState(defaultDir);
-  // 사용자가 세션 이름을 직접 고치기 전까지는 프로젝트 이름을 따라간다
+  const [gitUrl, setGitUrl] = useState('');
+  // 이름·경로·세션 이름은 사용자가 직접 고치기 전까지(null) 앞 칸에서 만든 값을 따라간다.
+  // 이름과 경로는 Git 주소의 저장소 이름, 세션 이름은 프로젝트 이름
+  const [nameEdit, setName] = useState<string | null>(null);
+  const [pathEdit, setRepoPath] = useState<string | null>(null);
   const [session, setSession] = useState<string | null>(null);
   const [allowInput, setAllowInput] = useState(false);
-  const [gitUrl, setGitUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [closing, setClosing] = useState(false);
   const [error, setError] = useState<ApiError | Error | null>(null);
+  const repo = repoNameFrom(gitUrl);
+  const name = nameEdit ?? repo;
+  // 대부분 같은 폴더 아래에서 작업하므로 거기까지 미리 채워 둔다
+  const repoPath = pathEdit ?? defaultDir + repo;
   const tmuxSession = session ?? sessionNameFrom(name);
+  const cloning = busy && gitUrl.trim() !== '';
 
   if (!open) {
     return (
@@ -83,7 +92,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   };
 
   return (
-    <form className={closing ? 'settings new-session closing' : 'settings new-session'} onSubmit={submit}>
+    <form className={closing ? 'settings new-session closing' : 'settings new-session'} onSubmit={submit} aria-busy={busy}>
       <h3>tmux 세션 만들기</h3>
       <p className="hint">
         저장소 경로에서 셸만 띄운 새 세션을 만들고 프로젝트로 등록합니다. 같은 이름의 세션이 이미 있으면 그 세션을
@@ -99,15 +108,8 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
               spellCheck={false}
               placeholder="https://github.com/me/my-app.git"
               value={gitUrl}
-              onChange={(e) => {
-                const url = e.target.value;
-                setGitUrl(url);
-                // 주소를 붙여 넣으면 이름과 경로를 저장소 이름으로 채운다 (아직 안 적었을 때만)
-                const repo = repoNameFrom(url);
-                if (!repo) return;
-                if (!name.trim()) setName(repo);
-                if (repoPath === defaultDir) setRepoPath(defaultDir + repo);
-              }}
+              disabled={busy}
+              onChange={(e) => setGitUrl(e.target.value)}
             />
           </label>
           <p className="hint">적으면 저장소 경로에 먼저 clone 합니다. 비공개 저장소는 이 Mac 의 SSH 키·자격 증명을 씁니다</p>
@@ -115,7 +117,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
         <div className="field">
           <label>
             <span>프로젝트 이름</span>
-            <input type="text" required value={name} onChange={(e) => setName(e.target.value)} />
+            <input type="text" required value={name} disabled={busy} onChange={(e) => setName(e.target.value)} />
           </label>
         </div>
         <div className="field">
@@ -128,6 +130,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
               spellCheck={false}
               placeholder="~/code/my-app"
               value={repoPath}
+              disabled={busy}
               // 미리 채운 폴더 뒤에 바로 이어 쓸 수 있게 커서를 끝에 둔다
               onFocus={(e) => e.target.setSelectionRange(e.target.value.length, e.target.value.length)}
               onChange={(e) => setRepoPath(e.target.value)}
@@ -143,6 +146,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
               required
               spellCheck={false}
               value={tmuxSession}
+              disabled={busy}
               onChange={(e) => setSession(e.target.value)}
             />
           </label>
@@ -153,6 +157,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
             <input
               type="checkbox"
               checked={allowInput}
+              disabled={busy}
               onChange={(e) => {
                 if (e.target.checked && !window.confirm(ALLOW_INPUT_CONFIRM)) return;
                 setAllowInput(e.target.checked);
@@ -163,10 +168,16 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
           <p className="hint">켜면 만들자마자 터미널 탭에서 입력을 보낼 수 있습니다</p>
         </div>
       </div>
+      {/* 누른 버튼 바로 위에 둔다: 휴대폰에서는 버튼 아래가 화면 밖이기 쉽다 */}
+      {cloning && (
+        <p className="hint pending" role="status">
+          저장소를 받는 중… 큰 저장소는 몇 분 걸릴 수 있습니다. 끝나면 터미널 화면으로 넘어갑니다.
+        </p>
+      )}
       <div className="row">
         <button type="submit" className="primary cta" disabled={busy}>
-          {busy ? (gitUrl.trim() ? '복제하는 중…' : '만드는 중…') : '만들기'}
-          <ArrowRight size={18} weight="bold" aria-hidden="true" />
+          {busy ? (cloning ? '저장소를 받는 중…' : '만드는 중…') : '만들기'}
+          {!busy && <ArrowRight size={18} weight="bold" aria-hidden="true" />}
         </button>
         <button type="button" onClick={close} disabled={busy || closing}>
           닫기

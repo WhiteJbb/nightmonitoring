@@ -1426,6 +1426,48 @@ form.settings {
 .settings-actions .notice ul {
   margin-top: 8px;
 }
+/* 문제 목록의 항목은 그 칸으로 옮겨 가는 링크처럼 보인다 */
+.settings-actions .issue-link {
+  display: inline;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  min-height: 0;
+  cursor: pointer;
+}
+.settings-actions .notice li + li {
+  margin-top: 6px;
+}
+.settings-actions .issue-link:hover {
+  background: none;
+  transform: none;
+}
+.field .field-err,
+.toggle-row .field-err {
+  margin: 4px 0 0 14px;
+  font-size: var(--fs-sm);
+}
+.settings [aria-invalid='true'] {
+  box-shadow: 0 0 0 1px var(--red);
+  scroll-margin-top: 30vh;
+}
+.hidden-sessions {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.hidden-sessions li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
 /* ── 터미널 입력 ── */
 .input-bar {
@@ -1505,6 +1547,23 @@ form.settings {
 }
 .new-session .notice {
   margin-top: 12px;
+}
+/* clone 중: 도는 고리 + 안내. 몇 분 걸릴 수 있어 멈춘 것처럼 보이지 않게 */
+.new-session .pending {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0 0;
+}
+.new-session .pending::before {
+  content: '';
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--text);
+  border-radius: 50%;
+  animation: sweep 0.9s linear infinite;
 }
 
 /* ── 좁은 화면: 사이드바가 떠 있는 유리 띠가 되고, 줄은 세로로 쌓인다 ── */

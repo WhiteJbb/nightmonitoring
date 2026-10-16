@@ -75,9 +75,38 @@ test('a git url fills in name and path and is sent along', async () => {
   expect(field('tmux 세션 이름').value).toBe('my-app');
   fetchMock.mockResolvedValueOnce(json(200, { id: 'my-app' }));
   fireEvent.click(screen.getByRole('button', { name: '만들기' }));
-  expect(screen.getByRole('button', { name: '복제하는 중…' })).toBeTruthy();
+  // clone 하는 동안은 기다리라는 안내가 뜨고 모든 칸이 잠긴다
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '저장소를 받는 중…' }).disabled).toBe(true);
+  expect(screen.getByRole('status').textContent).toContain('저장소를 받는 중…');
+  expect(['Git 저장소 주소 (선택)', '프로젝트 이름', '저장소 경로', 'tmux 세션 이름', '터미널 입력 허용'].every((l) => field(l).disabled)).toBe(true);
   await waitFor(() => expect(window.location.hash).toBe('#/project/my-app'));
   expect(lastBody()).toMatchObject({ name: 'my-app', repoPath: '/Users/me/repos/my-app', gitUrl: 'git@github.com:me/my-app.git' });
+});
+
+test('name and path follow the git url as it is typed, until edited by hand', () => {
+  render(<NewSession defaultDir="/r/" />);
+  fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
+  const url = 'https://github.com/me/app.git';
+  // 한 글자씩 칠 때: 덜 적은 주소("h", "https://github.com/")에서는 채우지 않는다
+  type('Git 저장소 주소 (선택)', 'h');
+  expect(field('프로젝트 이름').value).toBe('');
+  expect(field('저장소 경로').value).toBe('/r/');
+  type('Git 저장소 주소 (선택)', 'https://github.com/');
+  expect(field('프로젝트 이름').value).toBe('');
+  type('Git 저장소 주소 (선택)', url);
+  expect(field('프로젝트 이름').value).toBe('app');
+  expect(field('저장소 경로').value).toBe('/r/app');
+  // 주소를 고치면 따라 바뀐다
+  type('Git 저장소 주소 (선택)', 'git@github.com:me/api');
+  expect(field('프로젝트 이름').value).toBe('api');
+  expect(field('저장소 경로').value).toBe('/r/api');
+  expect(field('tmux 세션 이름').value).toBe('api');
+  // 직접 고친 칸은 더 이상 따라가지 않는다
+  type('프로젝트 이름', 'My API');
+  type('Git 저장소 주소 (선택)', url);
+  expect(field('프로젝트 이름').value).toBe('My API');
+  expect(field('저장소 경로').value).toBe('/r/app');
+  expect(field('tmux 세션 이름').value).toBe('my-api');
 });
 
 test('terminal input needs a confirm, and errors keep the form', async () => {
