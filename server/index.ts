@@ -11,7 +11,7 @@ import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
 import { alertsFor, autoReportDue, exportAlerts, localDate, MAC_ALERT_STATES, restoreAlerts } from './notify.ts';
-import { sendNtfy } from './push.ts';
+import { sendNtfy, withRetry } from './push.ts';
 import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
@@ -91,7 +91,9 @@ async function main() {
         if (monitor.config.notifications && MAC_ALERT_STATES.includes(a.state)) void notify(a.title, a.message);
         const { ntfyUrl, ntfyStates } = monitor.config;
         if (ntfyUrl && ntfyStates.includes(a.state)) {
-          void sendNtfy(ntfyUrl, { title: a.title, message: a.message, state: a.state, ...clickFor(a.projectId) }).then((error) => error && console.error(error));
+          // 일시적인 실패(네트워크, 429)는 잠시 뒤 다시 보낸다. 알림 판단(alertsFor)은 이미 보낸 것으로 기억한다.
+          const msg = { title: a.title, message: a.message, state: a.state, ...clickFor(a.projectId) };
+          void withRetry(() => sendNtfy(ntfyUrl, msg)).then((error) => error && console.error(`${error} (${a.title})`));
         }
       }
 
