@@ -1265,6 +1265,12 @@ form.settings {
 .input-bar {
   margin-top: 12px;
 }
+/* 키보드가 있는 컴퓨터에선 특수 키 버튼이 필요 없다. 빈 입력칸에서 Esc·방향키·Tab 이 그대로 전달된다 */
+@media (hover: hover) and (pointer: fine) {
+  .keys {
+    display: none;
+  }
+}
 .input-row,
 .keys {
   display: flex;
