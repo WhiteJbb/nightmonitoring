@@ -11,7 +11,7 @@ thresholds:
 
 # 일반 문자열은 대소문자 무시 부분 일치, "/…/" 는 정규식
 errorPatterns: [error, failed, exception]
-errorIgnorePatterns: ["0 errors", "no errors", "0 failed"]
+errorIgnorePatterns: ["/\\b0 errors\\b/", "no errors", "/\\b0 failed\\b/"]
 promptPatterns:
   - Do you want to
   - Would you like to
