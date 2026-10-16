@@ -21,6 +21,31 @@ const LINE_HEIGHT = 1.2;
 const WHEEL_PAGE_PX = 120;
 /** 터치로 한 줄 높이를 쓸 때 보내는 휠 횟수 (마우스를 받는 프로그램). 느리면 올린다 */
 const TOUCH_SPEED = 1.5;
+/**
+ * 클립보드에 쓴다. 이 서버는 보통 http(비보안 출처)로 열려 navigator.clipboard 가 없으니
+ * 숨긴 입력칸을 골라 execCommand('copy') 로 쓴다 (클릭 직후라 브라우저가 허용한다).
+ */
+function copyText(text: string): boolean {
+  if (window.isSecureContext && navigator.clipboard) {
+    void navigator.clipboard.writeText(text).catch(() => {});
+    return true;
+  }
+  const prev = document.activeElement as HTMLElement | null;
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok: boolean;
+  try {
+    ok = document.execCommand('copy');
+  } catch {
+    ok = false;
+  }
+  ta.remove();
+  prev?.focus();
+  return ok;
+}
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
 
@@ -28,11 +53,11 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * pane 하나를 실제 터미널(xterm.js)로 그린다. 서버의 SSE 스트림(첫 화면 + 이어지는 바이트)을 그대로 쓰고,
  * 입력이 허용된 프로젝트면 키·마우스 보고 바이트를 pane 으로 돌려보낸다. 크기는 tmux pane 을 따른다.
  */
-export function Term({ projectId, pane, canInput, full = false, onStatus, onSize }: { projectId: string; pane: string; canInput: boolean; full?: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void }) {
+export function Term({ projectId, pane, canInput, full = false, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
-  const cb = useRef({ onStatus, onSize });
-  cb.current = { onStatus, onSize };
+  const cb = useRef({ onStatus, onSize, onNotice });
+  cb.current = { onStatus, onSize, onNotice };
   // 전체 화면 여부는 글자 크기 계산에만 쓴다. 바뀌어도 터미널을 다시 만들지 않는다
   const fullRef = useRef(full);
   fullRef.current = full;
@@ -51,9 +76,24 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       cursorBlink: canInput,
       // Option+←/→/Backspace 를 터미널처럼 단어 이동·삭제(Meta)로 쓴다
       macOptionIsMeta: true,
+      // 프로그램이 마우스를 받을 때(Claude Code)도 Option+끌기로 터미널 글자를 직접 고른다 (Cmd+C 로 복사)
+      macOptionClickForcesSelection: true,
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
+
+    // 프로그램이 클립보드에 넣으라고 보내는 OSC 52 (Claude Code 에서 끌어 고르면 이걸로 복사한다)
+    term.parser.registerOscHandler(52, (data) => {
+      const b64 = data.slice(data.indexOf(';') + 1);
+      if (!b64 || b64 === '?') return true;
+      try {
+        const ok = copyText(new TextDecoder().decode(decode(b64)));
+        cb.current.onNotice?.(ok ? '복사됨' : '복사하지 못했습니다 (Option+끌기로 고른 뒤 Cmd+C)');
+      } catch {
+        // 깨진 base64 는 무시한다
+      }
+      return true;
+    });
 
     // pane 이 영역보다 넓거나 화면보다 높으면 글자를 줄인다 (9px 아래로는 안 간다).
     // 터미널 전체가 한 화면에 들어와야 그 위에서 쓸기를 프로그램 스크롤로 쓸 수 있다
@@ -118,6 +158,28 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       queue += d;
       void flush();
     });
+
+    // 이미지 붙여넣기: 파일로 올리고 그 경로를 친다 (입력칸과 같은 방식. Claude Code·Codex 가 첨부로 읽는다)
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+      if (!file || !canInput) return;
+      e.preventDefault();
+      e.stopPropagation();
+      cb.current.onNotice?.('이미지 올리는 중…');
+      const reader = new FileReader();
+      reader.onload = () => {
+        api.upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' }).then(
+          ({ path }) => {
+            queue += `${path} `;
+            void flush();
+            cb.current.onNotice?.('이미지 경로를 넣었습니다');
+          },
+          (err: unknown) => cb.current.onNotice?.(`이미지 올리기 실패: ${errorMessage(err)}`),
+        );
+      };
+      reader.readAsDataURL(file);
+    };
+    el.addEventListener('paste', onPaste, { capture: true });
 
     // Shift+Enter 는 xterm 에선 Enter 와 같다. Claude Code·Codex 의 줄바꿈(Option+Enter 와 같은 ESC+CR)으로 보낸다
     term.attachCustomKeyEventHandler((ev) => {
@@ -187,6 +249,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       closed = true;
       queue = '';
       input.dispose();
+      el.removeEventListener('paste', onPaste, { capture: true });
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
