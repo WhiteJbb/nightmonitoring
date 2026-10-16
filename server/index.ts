@@ -10,8 +10,7 @@ import { demoCollector, demoConfig, demoExec, seedDemoRuns } from './demo.ts';
 import { notify } from './exec.ts';
 import { logInput, sendInput } from './input.ts';
 import { Monitor, realCollector } from './monitor.ts';
-import { alertsFor, autoReportDue, localDate, MAC_ALERT_STATES } from './notify.ts';
-import type { AlertMemory } from './notify.ts';
+import { alertsFor, autoReportDue, exportAlerts, localDate, MAC_ALERT_STATES, restoreAlerts } from './notify.ts';
 import { sendNtfy } from './push.ts';
 import { reloadConfig } from './reload.ts';
 import { saveReport } from './report.ts';
@@ -80,11 +79,12 @@ async function main() {
 
   const reportsDir = () => (demo ? path.join(monitor.config.reportsDir, 'demo') : monitor.config.reportsDir);
   let lastAutoReportDate = saved?.lastAutoReportDate ?? null;
+  // 재시작해도 이미 보낸 알림을 다시 보내지 않게 저장해 둔 기억에서 시작한다
+  const alertMemory = restoreAlerts(saved?.alerts);
   let autoReportBusy = false;
 
   if (!demo) {
     // 상태 변화 알림과 예약된 Morning Report. 둘 다 실패해도 감시는 계속된다.
-    const alertMemory = new Map<string, AlertMemory>();
     monitor.subscribe((snapshot) => {
       const alerts = alertsFor(alertMemory, snapshot);
       for (const a of alerts) {
@@ -120,7 +120,7 @@ async function main() {
   if (stateFile) {
     let last = '';
     monitor.subscribe(() => {
-      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate };
+      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), lastAutoReportDate, alerts: exportAlerts(alertMemory) };
       const json = JSON.stringify(state);
       if (json === last) return;
       try {
