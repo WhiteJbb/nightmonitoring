@@ -240,6 +240,63 @@ test('a 400 with issues lists every issue and keeps the edits', async () => {
   expect(input('입력 대기 패턴').value).toBe('/(/');
   expect(screen.getByRole<HTMLButtonElement>('button', { name: '저장' }).disabled).toBe(false);
   expect(screen.queryByText('저장됨 — 바로 적용되었습니다')).toBeNull();
+
+  // 문제는 칸 옆에도 붙고, 첫 번째 문제 칸으로 포커스가 간다
+  const idle = input('유휴 판정(분)');
+  expect(idle.getAttribute('aria-invalid')).toBe('true');
+  expect(document.getElementById(idle.getAttribute('aria-describedby')!)!.textContent).toBe('0 이상의 숫자여야 합니다');
+  expect(document.activeElement).toBe(idle);
+  expect(input('입력 대기 패턴').getAttribute('aria-invalid')).toBe('true');
+  expect(input('오류 패턴').hasAttribute('aria-invalid')).toBe(false);
+  // 목록의 항목을 누르면 그 칸으로 간다
+  fireEvent.click(within(alert).getByRole('button', { name: issues[1] }));
+  expect(document.activeElement).toBe(input('입력 대기 패턴'));
+});
+
+test('project issues land on the project field; issues without a field stay in the list only', async () => {
+  await renderLoaded();
+  change(input('이름', project('web-app')), 'web 2');
+  const issues = ['projects[1].repoPath: 필수입니다', '요청 형식이 잘못되었습니다'];
+  await save(json(400, { error: '설정이 올바르지 않습니다', issues }));
+  const alert = await screen.findByRole('alert');
+  const repo = input('저장소 경로', project('web 2'));
+  expect(repo.getAttribute('aria-invalid')).toBe('true');
+  expect(document.activeElement).toBe(repo);
+  expect(within(project('web 2')).getByText('필수입니다')).toBeTruthy();
+  expect(within(alert).getAllByRole('button').map((b) => b.textContent)).toEqual([issues[0]]);
+});
+
+test('test push explains why it is disabled after the address is edited', async () => {
+  const v = view();
+  v.settings.ntfyUrl = 'https://ntfy.sh/abc';
+  await renderLoaded(v);
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: '시험 알림 보내기' });
+  expect(button.disabled).toBe(false);
+  expect(screen.queryByText('변경한 주소를 먼저 저장하세요')).toBeNull();
+  change(input('ntfy 주소'), 'https://ntfy.sh/xyz');
+  expect(button.disabled).toBe(true);
+  expect(document.getElementById(button.getAttribute('aria-describedby')!)!.textContent).toBe('변경한 주소를 먼저 저장하세요');
+  change(input('ntfy 주소'), 'https://ntfy.sh/abc ');
+  expect(button.disabled).toBe(false);
+});
+
+test('hidden sessions are listed one by one and can be shown again on save', async () => {
+  const v = view();
+  v.settings.hiddenSessions = ['scratch', 'tmp-1'];
+  await renderLoaded(v);
+  const item = (name: string) => screen.getByText(name).closest('li')!;
+  fireEvent.click(within(item('scratch')).getByRole('button', { name: '다시 표시' }));
+  expect(screen.queryByText('scratch')).toBeNull();
+  const body = await save(json(200, v));
+  expect(body.settings.hiddenSessions).toEqual(['tmp-1']);
+});
+
+test('renaming keeps the project id in the PUT body', async () => {
+  await renderLoaded();
+  change(input('이름', project('api-server')), 'api v2');
+  expect(screen.queryByText(/초기화됩니다/)).toBeNull();
+  const body = await save(json(200, view()));
+  expect(body.projects[0]).toMatchObject({ id: 'api', name: 'api v2' });
 });
 
 test('a 409 offers to reload the latest file, discarding the edits', async () => {
