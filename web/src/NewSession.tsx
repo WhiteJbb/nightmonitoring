@@ -207,11 +207,14 @@ export function StartSession({ projectId }: { projectId: string }) {
   const start = () => {
     setBusy(true);
     setError(null);
-    // 성공하면 다음 스냅샷에서 세션이 나타나 이 화면이 터미널로 바뀐다
-    api
-      .startSession(projectId, fitSize(null))
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+    // 성공하면 다음 스냅샷에서 세션이 나타나 이 화면이 터미널로 바뀐다. 그때까지 "시작하는 중…"을 유지한다
+    api.startSession(projectId, fitSize(null)).then(
+      () => setTimeout(() => setBusy(false), 15_000),
+      (e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setBusy(false);
+      },
+    );
   };
   return (
     <>
