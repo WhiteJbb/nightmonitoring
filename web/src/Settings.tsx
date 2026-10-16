@@ -146,6 +146,25 @@ export function Settings() {
   };
   useEffect(load, []); // 마운트 시 한 번만 불러온다
 
+  const dirty = view !== null && draft !== null && JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
+  // 저장하지 않은 변경이 있으면 새로 고침·닫기·다른 화면으로 이동하기 전에 묻는다
+  useEffect(() => {
+    if (!dirty) return;
+    const onUnload = (e: BeforeUnloadEvent) => e.preventDefault();
+    // 해시가 바뀐 뒤에 되돌리면 이미 화면이 교체돼 초안이 사라진다. 링크 클릭 단계에서 막는다
+    const onClick = (e: MouseEvent) => {
+      const a = e.target instanceof Element ? e.target.closest('a[href^="#"]') : null;
+      if (!a || a.getAttribute('href') === '#/settings') return;
+      if (!window.confirm('저장하지 않은 설정이 있습니다. 그래도 이 화면을 떠날까요?')) e.preventDefault();
+    };
+    window.addEventListener('beforeunload', onUnload);
+    document.addEventListener('click', onClick, true);
+    return () => {
+      window.removeEventListener('beforeunload', onUnload);
+      document.removeEventListener('click', onClick, true);
+    };
+  }, [dirty]);
+
   if (loadError !== null) {
     return (
       <div className="notice error" role="alert">
@@ -161,7 +180,6 @@ export function Settings() {
 
   const ro = !view.editable;
   const lock = ro || saving; // 저장 중의 수정은 응답이 덮어쓰므로 입력만 잠근다
-  const dirty = JSON.stringify(toUpdate(draft)) !== JSON.stringify(toUpdate(toDraft(view)));
 
   const set = (patch: Partial<Draft>) => {
     setDraft({ ...draft, ...patch });

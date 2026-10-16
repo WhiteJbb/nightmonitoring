@@ -201,6 +201,13 @@ export function App() {
       <main>
         <div className="page">
           {snapshot?.configError != null && <ConfigErrorBanner message={snapshot.configError} />}
+          {/* 끊긴 동안의 화면은 멈춘 사진이다. 가장 작은 글씨로만 알리지 않고 본문 위에 크게 적는다 */}
+          {conn === 'down' && (
+            <div className="notice error banner" role="alert">
+              <strong>서버와 연결이 끊겼습니다. 다시 연결하는 중…</strong>
+              {snapshot && <p>지금 보이는 내용은 {dateTime(snapshot.generatedAt)} 기준이며 더 갱신되지 않았습니다.</p>}
+            </div>
+          )}
           {page}
         </div>
       </main>

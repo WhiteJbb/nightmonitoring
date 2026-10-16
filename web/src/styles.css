@@ -11,7 +11,7 @@
   --bg: #030407;
   --text: #ffffff;
   --dim: rgba(255, 255, 255, 0.6);
-  --faint: rgba(255, 255, 255, 0.4);
+  --faint: rgba(255, 255, 255, 0.55);
   --s1: rgba(255, 255, 255, 0.02);
   --s2: rgba(255, 255, 255, 0.05);
   --s3: rgba(255, 255, 255, 0.1);
@@ -53,7 +53,7 @@
   --bg: #f5f7fa;
   --text: #050608;
   --dim: rgba(5, 6, 8, 0.62);
-  --faint: rgba(5, 6, 8, 0.45);
+  --faint: rgba(5, 6, 8, 0.58);
   --s1: rgba(5, 6, 8, 0.025);
   --s2: rgba(5, 6, 8, 0.055);
   --s3: rgba(5, 6, 8, 0.1);
@@ -189,7 +189,7 @@ h4,
 .history th,
 .eyebrow,
 .side-foot {
-  font: 500 10.5px / 1.5 var(--mono);
+  font: 500 11px / 1.5 var(--mono);
   text-transform: uppercase;
   letter-spacing: 0.2em;
   color: var(--faint);
@@ -850,7 +850,7 @@ pre {
 }
 .term-bar .conn {
   margin-left: auto;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.6);
 }
 .term-bar .conn-down {
   color: var(--red);

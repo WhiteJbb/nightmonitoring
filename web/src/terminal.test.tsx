@@ -318,12 +318,16 @@ test('special-key buttons send { pane, key } to the selected pane', async () => 
   fireEvent.click(more);
   expect(group.className).toBe('keys open');
   expect(screen.getByRole('button', { name: '접기' }).getAttribute('aria-expanded')).toBe('true');
+  // 중단 키는 확인창을 거친다
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
   for (const name of ['Ctrl+C 보내기 (중단)', 'Shift+Tab 보내기', 'Esc 보내기']) {
     const button = screen.getByRole('button', { name });
     expect(button.title).toBe(name);
     fireEvent.click(button);
     await tick();
   }
+  expect(confirm).toHaveBeenCalledOnce();
   expect(posts().map(([, body]) => body)).toEqual([
     { pane: '%2', key: 'C-c' },
     { pane: '%2', key: 'BTab' },
@@ -344,14 +348,17 @@ test('keys in an empty input are forwarded; with text they edit locally', async 
   expect(await press({ key: 'Backspace' })).toBe(true);
   expect(await press({ key: 'Tab' })).toBe(true);
   expect(await press({ key: 'Tab', shiftKey: true })).toBe(true);
-  expect(posts().map(([, body]) => body.key)).toEqual(['Up', 'BSpace', 'Tab', 'BTab']);
+  expect(await press({ key: 'PageUp' })).toBe(true);
+  expect(await press({ key: 'c', ctrlKey: true })).toBe(true);
+  expect(posts().map(([, body]) => body.key)).toEqual(['Up', 'BSpace', 'Tab', 'BTab', 'PPage', 'C-c']);
 
   type('ls');
   expect(await press({ key: 'ArrowUp' })).toBe(false);
   expect(await press({ key: 'Backspace' })).toBe(false);
-  // Tab 은 글이 있어도 포커스를 옮기지 않지만 보내지도 않는다
-  expect(await press({ key: 'Tab' })).toBe(true);
-  expect(posts()).toHaveLength(4);
+  expect(await press({ key: 'c', ctrlKey: true })).toBe(false);
+  // 글이 있으면 Tab 은 평소처럼 포커스를 옮긴다 (키보드로 빠져나갈 수 있어야 한다). 보내지도 않는다
+  expect(await press({ key: 'Tab' })).toBe(false);
+  expect(posts()).toHaveLength(6);
 });
 
 test('a 403 shows the server error and puts the text back; the next success clears it', async () => {
@@ -430,10 +437,16 @@ test('on a touch screen a key button does not pull focus into the input (no keyb
   serve(() => json(200, { lines: [] }));
   await renderTab(project(TWO));
   await tick();
-  const box = screen.getByPlaceholderText(/입력 후 Enter/);
+  const box = screen.getByPlaceholderText(/입력 후 보내기/);
   fireEvent.click(screen.getByRole('button', { name: 'Page Up 보내기 (프로그램 안에서 위로)' }));
   await tick();
   expect(document.activeElement).not.toBe(box);
+
+  // 터치 키보드에는 Shift+Enter 가 없다. Enter 는 줄바꿈이고 "보내기" 버튼만 보낸다
+  fireEvent.change(box, { target: { value: 'line' } });
+  expect(fireEvent.keyDown(box, { key: 'Enter' })).toBe(true);
+  await tick();
+  expect(posts().map(([, body]) => body.key)).toEqual(['PPage']);
 
   // 글을 보낸 뒤에는 이어서 칠 수 있게 포커스가 입력 칸에 있다
   fireEvent.change(box, { target: { value: 'hello' } });

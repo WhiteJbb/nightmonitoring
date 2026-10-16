@@ -47,6 +47,10 @@ export function Reports() {
   }, []); // 마운트 시 한 번만 불러온다
 
   const generate = () => {
+    // 같은 날 다시 만들면 오늘 파일을 덮어쓴다. 모르고 잃지 않게 한 번 묻는다
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}-morning-report.md`;
+    if (list?.some((m) => m.name === today) && !window.confirm(`오늘 보고서(${today})가 이미 있습니다. 지금 상태로 다시 만들어 덮어쓸까요?`)) return;
     setGenerating(true);
     setGenError(null);
     api
