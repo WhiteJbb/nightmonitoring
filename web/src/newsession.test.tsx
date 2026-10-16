@@ -38,10 +38,11 @@ test('a session name and an agent are enough to start', async () => {
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
   type('tmux 세션 이름', 'quick');
   fireEvent.click(screen.getByRole('radio', { name: 'Codex' }));
+  expect(screen.getByLabelText<HTMLInputElement>('터미널 입력 허용').checked).toBe(true);
   fetchMock.mockResolvedValueOnce(json(200, { id: 'quick' }));
   fireEvent.click(screen.getByRole('button', { name: '만들기' }));
   await waitFor(() => expect(window.location.hash).toBe('#/project/quick'));
-  expect(lastBody()).toMatchObject({ name: 'quick', repoPath: '', tmuxSession: 'quick', agent: 'codex' });
+  expect(lastBody()).toMatchObject({ name: 'quick', repoPath: '', tmuxSession: 'quick', agent: 'codex', allowInput: true });
 });
 
 test('the repo path is empty (home) unless a git url fills it under the default folder', async () => {

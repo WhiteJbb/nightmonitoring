@@ -128,12 +128,16 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
           {/* 세 가지 중 하나: 알약 안에서 고른 칸만 밝다 (탭과 같은 모양) */}
           <div className="seg" role="radiogroup" aria-labelledby="agent-label">
             {AGENTS.map(([value, label]) => (
-              <button key={value} type="button" role="radio" aria-checked={agent === value} disabled={busy} onClick={() => setAgent(value)}>
+              <button key={value} type="button" role="radio" aria-checked={agent === value} disabled={busy} onClick={() => {
+                  setAgent(value);
+                  // 에이전트를 띄우는 건 지시하려는 것이다: 입력 허용도 같이 켠다 (끌 수 있다)
+                  if (value) setAllowInput(true);
+                }}>
                 {label}
               </button>
             ))}
           </div>
-          <p className="hint">{agent ? `새 세션에서 ${agent} 를 띄웁니다. 이미 있던 세션이면 건드리지 않습니다` : '셸만 띄웁니다'}</p>
+          <p className="hint">{agent ? `새 세션에서 ${agent} 를 띄우고 터미널 입력을 켭니다. 이미 있던 세션이면 건드리지 않습니다` : '셸만 띄웁니다'}</p>
         </div>
         <div className="field">
           <label className="check">
