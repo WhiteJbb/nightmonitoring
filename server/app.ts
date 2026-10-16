@@ -11,7 +11,7 @@ import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
 import type { Runner } from './runner.ts';
 import type { TermSize } from './tmux.ts';
-import { clampSize, MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
+import { clampSize } from './tmux.ts';
 import { parseUpload } from './upload.ts';
 
 /** 한 번에 받는 raw 입력의 최대 바이트 (키 몇 개나 마우스 보고 묶음이면 충분하다) */
@@ -76,7 +76,6 @@ export interface AppDeps {
   runner: Runner;
   /** 실시간 pane 보기와 키 입력. 없으면(demo) 스냅샷의 출력만 돌려주고 입력은 거부한다 */
   terminal?: {
-    capture: (paneId: string, lines: number) => Promise<string[]>;
     /** 실패하면 오류 메시지 */
     send: (input: ParsedInput) => Promise<string | null>;
     /** 터미널 에뮬레이터의 바이트를 그대로 넣는다. 실패하면 오류 메시지 */
@@ -177,14 +176,6 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     const project = monitor.snapshot.projects.find((p) => p.id === projectId);
     return { project, pane: project?.tmux.panes.find((x) => x.id === paneId) };
   };
-
-  api.get('/projects/:id/panes/:paneId', async (req, res) => {
-    const { pane } = findPane(req.params.id, req.params.paneId);
-    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
-    // 스크롤백을 더 보려면 ?lines= 로 늘린다. 터무니없는 값은 범위 안으로 자른다.
-    const lines = Math.min(MAX_LIVE_LINES, Math.max(OUTPUT_LINES, Math.floor(Number(req.query.lines)) || OUTPUT_LINES));
-    res.json({ lines: terminal ? await terminal.capture(pane.id, lines) : pane.lines });
-  });
 
   // 웹에서 터미널로 키 입력을 보내는 유일한 경로. 임의 명령 실행과 같으므로 여러 겹으로 막는다:
   // allowInput 을 켠 프로젝트만, loopback·Tailscale 바인딩일 때만, 그 프로젝트 세션의 pane 으로만.

@@ -17,8 +17,6 @@ export interface TmuxSessions {
 export type PaneMeta = Omit<TmuxPane, 'lines'> & { height: number };
 
 export const OUTPUT_LINES = 100;
-/** 실시간 보기에서 한 번에 가져올 수 있는 최대 줄 수 (tmux 의 기본 스크롤백은 2000줄) */
-export const MAX_LIVE_LINES = 5000;
 export const MAX_PANES = 8;
 
 // session_activity 는 키 입력 위주라, pane 출력으로 갱신되는 window_activity 와 함께 본다.
@@ -137,12 +135,6 @@ export async function capturePane(pane: Pick<PaneMeta, 'id' | 'height'>, lines =
   const start = pane.height - lines;
   const r = await run('tmux', ['-u', 'capture-pane', '-p', '-e', '-J', '-t', pane.id, '-S', String(start)]);
   return r.code === 0 ? cleanOutput(r.stdout, lines) : [];
-}
-
-/** 지금 이 순간의 pane 출력 (폴링 주기를 기다리지 않는 실시간 보기용). */
-export async function capturePaneNow(id: string, lines = OUTPUT_LINES): Promise<string[]> {
-  const h = await run('tmux', ['display-message', '-p', '-t', id, '#{pane_height}']);
-  return capturePane({ id, height: Number(h.stdout.trim()) || 0 }, lines);
 }
 
 /** tmux 는 인자 끝의 ';' 를 명령 구분자로 먹는다 (-l 이나 -- 뒤라도). '\;' 로 쓰면 글자 ';' 가 된다. */

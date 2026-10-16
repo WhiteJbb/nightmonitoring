@@ -13,7 +13,7 @@ import { ENTER_DELAY_MS, logInput, parseInput, sendInput } from './input.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
 import { Runner } from './runner.ts';
-import { capturePaneNow, clampSize, newSession, resizeWindow } from './tmux.ts';
+import { clampSize, newSession, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -81,23 +81,6 @@ describe('sendInput', () => {
   });
 });
 
-describe('capturePaneNow', () => {
-  it('asks for the pane height, then captures', async () => {
-    mockRun.mockResolvedValueOnce(ok('40\n')).mockResolvedValueOnce(ok('a\n\x1b[31mb\x1b[0m\n'));
-    expect(await capturePaneNow('%3')).toEqual(['a', '\x1b[31mb\x1b[0m']);
-    expect(mockRun.mock.calls[1]![1]).toEqual(['-u', 'capture-pane', '-p', '-e', '-J', '-t', '%3', '-S', '-60']);
-  });
-
-  it('reaches further back into the scrollback when asked for more lines', async () => {
-    const many = Array.from({ length: 1200 }, (_, i) => `l${i}`).join('\n');
-    mockRun.mockResolvedValueOnce(ok('40\n')).mockResolvedValueOnce(ok(many));
-    const lines = await capturePaneNow('%3', 1000);
-    expect(mockRun.mock.calls[1]![1].at(-1)).toBe('-960');
-    expect(lines).toHaveLength(1000);
-    expect(lines.at(-1)).toBe('l1199');
-  });
-});
-
 describe('logInput', () => {
   it('appends one JSON line per input', async () => {
     const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-input-'));
@@ -128,7 +111,7 @@ describe('terminal API', () => {
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
     const sinks: ((e: TermEvent) => void)[] = [];
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string, size: unknown, agent?: string) => Promise<string | null>>(async () => null), killSession: vi.fn<(name: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
+    const terminal = { send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string, size: unknown, agent?: string) => Promise<string | null>>(async () => null), killSession: vi.fn<(name: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
     const server = createApp({ config, monitor, runner, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -136,19 +119,6 @@ describe('terminal API', () => {
     const post = (id: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${id}/input`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
     return { base, post, terminal, sinks };
   }
-
-  it('serves a live capture only for panes of that project', async () => {
-    const { base, terminal } = await start();
-    expect(await (await fetch(`${base}/open/panes/%251`)).json()).toEqual({ lines: ['live %1'] });
-    expect((await fetch(`${base}/open/panes/%252`)).status).toBe(404); // 다른 프로젝트의 pane
-    expect((await fetch(`${base}/nope/panes/%251`)).status).toBe(404);
-    expect(terminal.capture).toHaveBeenCalledExactlyOnceWith('%1', 100);
-    // 줄 수는 100~5000 으로 잘린다
-    for (const [q, n] of [['800', 800], ['999999', 5000], ['3', 100], ['abc', 100]] as const) {
-      await fetch(`${base}/open/panes/%251?lines=${q}`);
-      expect(terminal.capture).toHaveBeenLastCalledWith('%1', n);
-    }
-  });
 
   it('sends input only to an allowed project and its own panes, and logs it', async () => {
     const { post, terminal } = await start();
@@ -245,7 +215,6 @@ describe('terminal API', () => {
 
     const demo = await start({ demo: true });
     expect((await demo.post('open', { pane: '%1', text: 'x' })).status).toBe(403);
-    expect(await (await fetch(`${demo.base}/open/panes/%251`)).json()).toEqual({ lines: ['snapshot %1'] });
   });
 });
 
@@ -302,7 +271,7 @@ describe('session API', () => {
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string, size?: unknown, agent?: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
     const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, killSession: vi.fn(async () => null), cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
+    const terminal = { send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, killSession: vi.fn(async () => null), cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {
