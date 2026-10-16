@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ArrowRight } from '@phosphor-icons/react';
 import type { FormEvent } from 'react';
 import { api, ApiError } from './api.ts';
 import { fitSize } from './termsize.ts';
@@ -163,8 +164,9 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
         </div>
       </div>
       <div className="row">
-        <button type="submit" className="primary" disabled={busy}>
+        <button type="submit" className="primary cta" disabled={busy}>
           {busy ? (gitUrl.trim() ? '복제하는 중…' : '만드는 중…') : '만들기'}
+          <ArrowRight size={18} weight="bold" aria-hidden="true" />
         </button>
         <button type="button" onClick={close} disabled={busy || closing}>
           닫기

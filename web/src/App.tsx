@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import type React from 'react';
+import { FileText, GearSix, MoonStars, SquaresFour, Sun } from '@phosphor-icons/react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
@@ -10,27 +11,6 @@ import { Reports } from './Reports.tsx';
 import { Settings } from './Settings.tsx';
 
 type Conn = 'connecting' | 'live' | 'down';
-
-// 선 아이콘. 장식이므로 보조 기술에는 숨긴다 (의미는 옆 글자나 title 이 전한다).
-const icon = (d: React.ReactNode) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {d}
-  </svg>
-);
-const GRID_ICON = icon(<path d="M2.5 2.5h4.5v4.5H2.5zM9 2.5h4.5v4.5H9zM2.5 9h4.5v4.5H2.5zM9 9h4.5v4.5H9z" />);
-const DOC_ICON = icon(<path d="M4 1.5h5.5L12.5 4.5v10H4zM9.5 1.5v3h3M6 8h4M6 11h4" />);
-const GEAR_ICON = icon(
-  <>
-    <circle cx="8" cy="8" r="2.2" />
-    <path d="M8 1.5v2M8 12.5v2M1.5 8h2M12.5 8h2M3.4 3.4l1.4 1.4M11.2 11.2l1.4 1.4M3.4 12.6l1.4-1.4M11.2 4.8l1.4-1.4" />
-  </>,
-);
-// 워드마크 옆의 초승달. 밤새 지켜본다는 뜻만 담은 작은 표식이다.
-const MARK = (
-  <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-    <path d="M12.6 2.2a8 8 0 1 0 5.2 11.4 6.5 6.5 0 0 1-5.2-11.4Z" />
-  </svg>
-);
 
 function subscribeHash(cb: () => void) {
   window.addEventListener('hashchange', cb);
@@ -48,11 +28,40 @@ function safeDecode(s: string): string {
 
 const lastActivity = (p: ProjectSnapshot) => p.tmux.lastOutputChangeAt ?? p.tmux.lastActivityAt ?? p.lastGitChangeAt;
 
+type Theme = 'dark' | 'light';
+const storedTheme = (): Theme => (localStorage.getItem('theme') === 'light' ? 'light' : 'dark');
+const reduceMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
 export function App() {
   const hash = useSyncExternalStore(subscribeHash, getHash);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [conn, setConn] = useState<Conn>('connecting');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [theme, setTheme] = useState<Theme>(storedTheme);
+
+  // 테마는 <html data-theme> 로 적용하고 기억한다. 바꾸는 0.6초 동안만 .theming 으로 색 전환을 켠다
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+  const toggleTheme = () => {
+    const root = document.documentElement;
+    root.classList.add('theming');
+    setTimeout(() => root.classList.remove('theming'), 650);
+    setTheme(theme === 'dark' ? 'light' : 'dark');
+  };
+
+  // 배경의 빛이 마우스를 살짝 따라온다 (움직임 줄이기면 끈다)
+  useEffect(() => {
+    if (reduceMotion()) return;
+    const onMove = (e: PointerEvent) => {
+      const root = document.documentElement.style;
+      root.setProperty('--mx', ((e.clientX / window.innerWidth) * 2 - 1).toFixed(3));
+      root.setProperty('--my', ((e.clientY / window.innerHeight) * 2 - 1).toFixed(3));
+    };
+    window.addEventListener('pointermove', onMove, { passive: true });
+    return () => window.removeEventListener('pointermove', onMove);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -136,23 +145,31 @@ export function App() {
 
   return (
     <div className="shell">
+      <div className="sky" aria-hidden="true">
+        <i />
+        <i />
+      </div>
+      <div className="hud" aria-hidden="true">
+        <span className="hud-tag">NIGHTSHIFT // v{__APP_VERSION__}</span>
+        <span className="hud-edge">SYS.MONITOR // {conn === 'live' ? 'ON-LINE' : conn === 'down' ? 'LINK LOST' : 'SYNC'}</span>
+      </div>
       <aside className="side">
         <a className="wordmark" href="#/">
-          {MARK}
+          <MoonStars size={20} weight="fill" aria-hidden="true" />
           NightShift
           {snapshot?.demo && <span className="demo-badge">DEMO</span>}
         </a>
         <nav aria-label="주 메뉴">
           <a href="#/" aria-current={!isReports && !isSettings && projectId === null ? 'page' : undefined}>
-            {GRID_ICON}
+            <SquaresFour size={16} aria-hidden="true" />
             대시보드
           </a>
           <a href="#/reports" aria-current={isReports ? 'page' : undefined}>
-            {DOC_ICON}
+            <FileText size={16} aria-hidden="true" />
             보고서
           </a>
           <a href="#/settings" aria-current={isSettings ? 'page' : undefined}>
-            {GEAR_ICON}
+            <GearSix size={16} aria-hidden="true" />
             설정
           </a>
         </nav>
@@ -172,9 +189,13 @@ export function App() {
         <div className="side-foot">
           <span className={`conn conn-${conn}`} role="status">
             <span className="dot" aria-hidden="true" />
-            {conn === 'live' ? 'live' : conn === 'down' ? '연결 끊김 / 재연결 중' : '연결 중'}
+            {conn === 'live' ? 'UPLINK // ON-LINE' : conn === 'down' ? 'UPLINK // LOST · 재연결 중' : 'UPLINK // SYNC'}
           </span>
-          {snapshot && <span>갱신 {dateTime(snapshot.generatedAt)}</span>}
+          {snapshot && <span>SYNC {dateTime(snapshot.generatedAt)}</span>}
+          <button type="button" className="theme" onClick={toggleTheme} aria-label={theme === 'dark' ? '밝은 테마로' : '어두운 테마로'}>
+            {theme === 'dark' ? <Sun size={14} aria-hidden="true" /> : <MoonStars size={14} aria-hidden="true" />}
+            {theme === 'dark' ? 'LIGHT' : 'DARK'}
+          </button>
         </div>
       </aside>
       <main>
@@ -226,6 +247,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
     <>
       <div className="page-head">
         <div>
+          <span className="eyebrow">SYS.MONITOR // OVERVIEW</span>
           <h1>대시보드</h1>
           <div className="meta">
             <span>
@@ -334,7 +356,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         </div>
       </div>
       <div className="row-col">
-        <span className="lbl">브랜치 · 변경</span>
+        <span className="lbl">BRANCH // CHANGES</span>
         {git.ok ? (
           <span className="val">
             <span className="mono clip branch" title={`브랜치: ${git.branch}`}>
@@ -357,7 +379,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         )}
       </div>
       <div className="row-col">
-        <span className="lbl">마지막 커밋</span>
+        <span className="lbl">LAST COMMIT</span>
         <span className="val">
           <span className="clip" title={last?.subject}>
             {last ? last.subject : <span className="dim">커밋 없음</span>}
@@ -366,7 +388,7 @@ export function ProjectCard({ p, now }: { p: ProjectSnapshot; now: string }) {
         </span>
       </div>
       <div className="row-col">
-        <span className="lbl">tmux 세션</span>
+        <span className="lbl">TMUX SESSION</span>
         {!tmux.configured ? (
           <span className="val dim">세션 미등록</span>
         ) : (

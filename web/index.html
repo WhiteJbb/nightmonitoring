@@ -3,8 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%230a84ff' d='M12.6 2.2a8 8 0 1 0 5.2 11.4 6.5 6.5 0 0 1-5.2-11.4Z'/%3E%3C/svg%3E" />
+    <meta name="color-scheme" content="dark light" />
+    <script>
+      document.documentElement.dataset.theme = localStorage.getItem('theme') === 'light' ? 'light' : 'dark';
+    </script>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Cpath fill='%23ffffff' d='M12.6 2.2a8 8 0 1 0 5.2 11.4 6.5 6.5 0 0 1-5.2-11.4Z'/%3E%3C/svg%3E" />
     <title>NightShift</title>
   </head>
   <body>
