@@ -355,12 +355,15 @@ describe('session API', () => {
   it('restarts the session of a registered project', async () => {
     const { post, createSession } = await start();
     expect(await post('/projects/old/session')).toEqual([200, { ok: true }]);
-    expect(createSession).toHaveBeenCalledExactlyOnceWith('old', '/r/old', { cols: 120, rows: 40 });
+    expect(createSession).toHaveBeenCalledExactlyOnceWith('old', '/r/old', { cols: 120, rows: 40 }, undefined);
     // 보는 화면 크기를 보내면 그 크기로 (범위를 벗어나면 잘라서)
     await post('/projects/old/session', { cols: 96, rows: 5000 });
-    expect(createSession).toHaveBeenLastCalledWith('old', '/r/old', { cols: 96, rows: 100 });
+    expect(createSession).toHaveBeenLastCalledWith('old', '/r/old', { cols: 96, rows: 100 }, undefined);
     expect((await post('/projects/nosession/session'))[0]).toBe(400);
     expect((await post('/projects/nope/session'))[0]).toBe(404);
+    await post('/projects/old/session', { agent: 'codex' });
+    expect(createSession).toHaveBeenLastCalledWith('old', '/r/old', { cols: 120, rows: 40 }, 'codex');
+    expect((await post('/projects/old/session', { agent: 'bash' }))[0]).toBe(400);
   });
 
   it('refuses in demo mode and when exposed beyond loopback/Tailscale', async () => {
