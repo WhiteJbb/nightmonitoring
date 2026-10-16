@@ -115,12 +115,13 @@ export async function sendText(id: string, text: string): Promise<string | null>
   return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
 }
 
-// ponytail: 버퍼 이름이 하나라 동시에 두 번 보내면 섞일 수 있다. 입력창이 한 번에 하나만 보내므로 충분하다.
-const PASTE_BUFFER = 'nightshift-input';
+// 탭 두 개가 동시에 보내도 섞이지 않게 요청마다 다른 버퍼를 쓴다.
+let pasteSeq = 0;
 async function paste(id: string, text: string) {
-  const set = await run('tmux', ['set-buffer', '-b', PASTE_BUFFER, '--', text]);
+  const buffer = `nightshift-${process.pid}-${++pasteSeq}`;
+  const set = await run('tmux', ['set-buffer', '-b', buffer, '--', text]);
   // -p: 프로그램이 bracketed paste 를 켰을 때만 괄호 코드를 붙인다. -d: 쓰고 나서 버퍼를 지운다.
-  return set.code === 0 ? run('tmux', ['paste-buffer', '-p', '-d', '-b', PASTE_BUFFER, '-t', id]) : set;
+  return set.code === 0 ? run('tmux', ['paste-buffer', '-p', '-d', '-b', buffer, '-t', id]) : set;
 }
 
 /** pane 에 특수 키 하나를 보낸다. key 는 호출부가 허용 목록으로 검증한 값이어야 한다. */
