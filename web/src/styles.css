@@ -443,6 +443,11 @@ button.quiet,
 .side-list h4 {
   margin: 0 0 6px 14px;
 }
+.field > .seg {
+  display: flex;
+  width: fit-content;
+  margin-top: 0;
+}
 .side-item .dot {
   flex: none;
   width: 7px;
@@ -873,6 +878,26 @@ button.stat[aria-pressed='true'] {
 .tabs button {
   gap: 6px;
 }
+/* 몇 가지 중 하나 고르기 (새 세션의 에이전트 등): 탭과 같은 알약 */
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px;
+  background: var(--s2);
+  border-radius: var(--r-pill);
+}
+.seg button {
+  background: none;
+  color: var(--dim);
+  padding: 5px 18px;
+  min-height: 30px;
+}
+.seg button[aria-checked='true'] {
+  color: var(--text);
+  background: var(--s3);
+}
 .tab-count {
   font: var(--fs-xs) var(--mono);
   color: var(--red);
@@ -1223,7 +1248,8 @@ form.settings {
 .field label {
   display: block;
 }
-.field label > span {
+.field label > span,
+.field > .field-label {
   display: block;
   color: var(--dim);
   font-size: var(--fs-sm);

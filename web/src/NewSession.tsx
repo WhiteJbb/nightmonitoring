@@ -39,6 +39,12 @@ export function commonParentDir(repoPaths: string[]): string {
 }
 
 /** 대시보드에서 새 tmux 세션을 만들고 바로 프로젝트로 등록하는 접이식 폼. */
+const AGENTS: [AgentKind | '', string][] = [
+  ['', '셸만'],
+  ['claude', 'Claude Code'],
+  ['codex', 'Codex'],
+];
+
 export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
   const [open, setOpen] = useState(false);
   const [gitUrl, setGitUrl] = useState('');
@@ -98,7 +104,7 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
     <form className={closing ? 'settings new-session closing' : 'settings new-session'} onSubmit={submit} aria-busy={busy}>
       <h3>tmux 세션 만들기</h3>
       <p className="hint">
-        저장소 경로에서 셸만 띄운 새 세션을 만들고 프로젝트로 등록합니다. 같은 이름의 세션이 이미 있으면 그 세션을
+        저장소 경로에서 새 세션을 만들고(고르면 에이전트까지 띄워) 프로젝트로 등록합니다. 같은 이름의 세션이 이미 있으면 그 세션을
         등록합니다.
       </p>
       <div className="settings-grid">
@@ -156,15 +162,18 @@ export function NewSession({ defaultDir = '' }: { defaultDir?: string }) {
           <p className="hint">공백, ":", "." 은 쓸 수 없습니다</p>
         </div>
         <div className="field">
-          <label>
-            <span>바로 시작할 에이전트</span>
-            <select value={agent} disabled={busy} onChange={(e) => setAgent(e.target.value as AgentKind | '')}>
-              <option value="">없음 (셸만)</option>
-              <option value="claude">Claude Code</option>
-              <option value="codex">Codex</option>
-            </select>
-          </label>
-          <p className="hint">새로 만든 세션에서 <code>claude</code> 또는 <code>codex</code> 를 쳐서 띄웁니다 (이미 있던 세션이면 건드리지 않음)</p>
+          <span id="agent-label" className="field-label">
+            바로 시작할 에이전트
+          </span>
+          {/* 세 가지 중 하나: 알약 안에서 고른 칸만 밝다 (탭과 같은 모양) */}
+          <div className="seg" role="radiogroup" aria-labelledby="agent-label">
+            {AGENTS.map(([value, label]) => (
+              <button key={value} type="button" role="radio" aria-checked={agent === value} disabled={busy} onClick={() => setAgent(value)}>
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="hint">{agent ? `새 세션에서 ${agent} 를 띄웁니다. 이미 있던 세션이면 건드리지 않습니다` : '셸만 띄웁니다'}</p>
         </div>
         <div className="field">
           <label className="check">
