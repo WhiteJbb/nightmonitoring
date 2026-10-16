@@ -316,9 +316,16 @@ describe('session API', () => {
     expect(createSession).toHaveBeenCalledWith('a1', '/r', { cols: 120, rows: 40 }, 'claude');
   });
 
+  it('a session name alone is enough: the name becomes the project name, the folder is home', async () => {
+    const { post, createSession, file } = await start();
+    expect(await post('/sessions', { tmuxSession: 'quick', agent: 'claude' })).toEqual([200, { id: 'quick' }]);
+    expect(createSession).toHaveBeenCalledWith('quick', '~', { cols: 120, rows: 40 }, 'claude');
+    expect(loadConfig(file, '/base').config.projects.at(-1)).toMatchObject({ name: 'quick', tmuxSession: 'quick' });
+  });
+
   it('rejects incomplete, duplicate and invalid requests without registering anything', async () => {
     const { post, createSession, file } = await start();
-    expect((await post('/sessions', { name: 'x', repoPath: '', tmuxSession: 's' }))[0]).toBe(400);
+    expect((await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: '' }))[0]).toBe(400);
     expect((await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 'old' }))[0]).toBe(409);
     expect(createSession).not.toHaveBeenCalled();
     expect(await post('/sessions', { name: 'x', repoPath: '/r', tmuxSession: 'bad name' })).toEqual([400, { error: '세션 이름이 올바르지 않습니다' }]);

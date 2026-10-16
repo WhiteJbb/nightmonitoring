@@ -308,10 +308,14 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
-    const { name, repoPath, tmuxSession, allowInput, gitUrl, agent, cols, rows } = (req.body ?? {}) as Record<string, unknown>;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { tmuxSession, allowInput, gitUrl, agent, cols, rows } = body;
+    // 세션 이름만 있어도 된다: 프로젝트 이름은 세션 이름, 경로는 홈 폴더
+    const name = typeof body.name === 'string' && body.name.trim() ? body.name : tmuxSession;
+    const repoPath = typeof body.repoPath === 'string' && body.repoPath.trim() ? body.repoPath : '~';
     if (agent !== undefined && agent !== null && !(typeof agent === 'string' && agent in AGENT_COMMANDS)) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
-      return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
+      return void res.status(400).json({ error: '세션 이름을 입력하세요' });
     }
     if (!SESSION_RE.test(tmuxSession)) return void res.status(400).json({ error: '세션 이름이 올바르지 않습니다' });
     const registered = (v: ConfigView) => v.projects.some((p) => p.tmuxSession === tmuxSession);

@@ -33,10 +33,21 @@ test('picks the folder most projects live in as the default path', () => {
   expect(commonParentDir(['/top'])).toBe('');
 });
 
-test('prefills the repo path with the default folder', async () => {
+test('a session name and an agent are enough to start', async () => {
+  render(<NewSession defaultDir="/r/" />);
+  fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
+  type('tmux 세션 이름', 'quick');
+  fireEvent.click(screen.getByRole('radio', { name: 'Codex' }));
+  fetchMock.mockResolvedValueOnce(json(200, { id: 'quick' }));
+  fireEvent.click(screen.getByRole('button', { name: '만들기' }));
+  await waitFor(() => expect(window.location.hash).toBe('#/project/quick'));
+  expect(lastBody()).toMatchObject({ name: 'quick', repoPath: '', tmuxSession: 'quick', agent: 'codex' });
+});
+
+test('the repo path is empty (home) unless a git url fills it under the default folder', async () => {
   render(<NewSession defaultDir="/Users/me/repos/" />);
   fireEvent.click(screen.getByRole('button', { name: '+ tmux 세션 만들기' }));
-  expect(field('저장소 경로').value).toBe('/Users/me/repos/');
+  expect(field('저장소 경로').value).toBe('');
   type('프로젝트 이름', 'App');
   type('저장소 경로', '/Users/me/repos/app');
   fetchMock.mockResolvedValueOnce(json(200, { id: 'app' }));
@@ -90,7 +101,7 @@ test('name and path follow the git url as it is typed, until edited by hand', ()
   // 한 글자씩 칠 때: 덜 적은 주소("h", "https://github.com/")에서는 채우지 않는다
   type('Git 저장소 주소 (선택)', 'h');
   expect(field('프로젝트 이름').value).toBe('');
-  expect(field('저장소 경로').value).toBe('/r/');
+  expect(field('저장소 경로').value).toBe('');
   type('Git 저장소 주소 (선택)', 'https://github.com/');
   expect(field('프로젝트 이름').value).toBe('');
   type('Git 저장소 주소 (선택)', url);
