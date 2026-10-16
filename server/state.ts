@@ -17,6 +17,8 @@ export interface TrackedState {
   logErrors?: string[];
   /** 마지막으로 터미널 출력이 바뀐 시각. 없으면 재시작 후 tmux 활동 시각으로 다시 잡는다 */
   outputChangedAt?: string | null;
+  /** 에이전트(작업 중 표시를 띄운 적 있는) 세션인지 */
+  agent?: boolean;
 }
 
 export interface MonitorState {

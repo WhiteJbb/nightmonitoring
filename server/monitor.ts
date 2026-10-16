@@ -3,7 +3,7 @@ import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
 import type { LogPos, LogScan } from './logs.ts';
-import { findPrompt, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
+import { findPrompt, isBusy, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import type { MonitorState } from './state.ts';
 import { judge } from './status.ts';
 import { capturePane, listPanes, listSessions } from './tmux.ts';
@@ -89,6 +89,8 @@ interface Tracked {
   sizeKey: string | null;
   /** 크기가 바뀐 뒤 출력 변화를 활동으로 치지 않을 남은 tick 수 */
   settle: number;
+  /** 작업 중 표시를 띄운 적이 있는 에이전트 세션 */
+  agent: boolean;
 }
 
 /** 크기 변경 뒤 화면을 다시 그리는 데 걸리는 tick 수 (그동안의 출력 변화는 활동이 아니다) */
@@ -137,7 +139,7 @@ export class Monitor {
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
       // 경로가 달라졌으면 collectOne 이 기준점을 버린다. 따라간 저장소(followRepo)는 여기서 그대로 이어받는다.
-      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, logErrors: saved.logErrors ?? [], outputChangedAt: saved.outputChangedAt ?? null });
+      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, logErrors: saved.logErrors ?? [], outputChangedAt: saved.outputChangedAt ?? null, agent: saved.agent ?? false });
     }
     this.snapshot = this.build();
   }
@@ -185,7 +187,7 @@ export class Monitor {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, logErrors: tr.logErrors, outputChangedAt: tr.outputChangedAt };
+      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, logErrors: tr.logErrors, outputChangedAt: tr.outputChangedAt, agent: tr.agent };
     }
     return { startedAt: this.startedAt, tracked };
   }
@@ -306,6 +308,7 @@ export class Monitor {
     let lastOutputChangeAt: string | null = null;
     let waitingPrompt: string | null = null;
     let waitingChoices: TmuxInfo['waitingChoices'];
+    let agent: TmuxInfo['agent'];
     if (raw.exists) {
       // 어느 pane 이든 출력이 바뀌면 활동이다. pane 정보가 없으면 활성 pane 출력만 본다.
       const plain = raw.panes.length ? raw.panes.map((pane) => pane.lines.map(stripAnsi)) : [raw.output];
@@ -323,6 +326,10 @@ export class Monitor {
       if (tr.sizeKey !== null && sizeKey !== tr.sizeKey) tr.settle = RESIZE_SETTLE_TICKS;
       tr.sizeKey = sizeKey;
       if (tr.output !== null && text !== tr.output && tr.settle === 0) tr.outputChangedAt = nowIso;
+      const busy = plain.some((lines) => isBusy(lines, this.opts.config.busyPatterns));
+      // 작업 중 표시를 한 번 봤거나, pane 에서 Claude Code·Codex 가 돌고 있으면 에이전트 세션이다
+      if (busy || raw.panes.some((x) => /claude|codex/i.test(x.command))) tr.agent = true;
+      if (tr.agent) agent = busy ? 'busy' : 'ready';
       if (tr.settle > 0) tr.settle -= 1;
       tr.output = text;
       // tmux 의 활동 시각은 스피너 출력에도 갱신되므로 최초 관측의 초기값으로만 쓰고,
@@ -339,7 +346,7 @@ export class Monitor {
       git,
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
-      tmux: { ...raw, lastOutputChangeAt, waitingPrompt, ...(waitingChoices ? { waitingChoices } : {}) },
+      tmux: { ...raw, lastOutputChangeAt, waitingPrompt, ...(waitingChoices ? { waitingChoices } : {}), ...(agent ? { agent } : {}) },
       logErrors,
     };
   }
@@ -413,7 +420,7 @@ const tailRun = (r: RunResult | null): RunResult | null => {
   if (!r || (r.stdout.length <= SNAPSHOT_OUTPUT_CHARS && r.stderr.length <= SNAPSHOT_OUTPUT_CHARS)) return r;
   return { ...r, stdout: r.stdout.slice(-SNAPSHOT_OUTPUT_CHARS), stderr: r.stderr.slice(-SNAPSHOT_OUTPUT_CHARS), truncated: true };
 };
-const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0 });
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0, agent: false });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,

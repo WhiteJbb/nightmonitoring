@@ -77,6 +77,16 @@ describe('judge', () => {
     expect(judge(input({ tmux: prompting, logErrors: ['Error: x'] })).state).toBe('error');
   });
 
+  it('an agent session follows its busy marker, not screen changes', () => {
+    // 화면이 방금 바뀌었어도(스크롤·입력·크기 변경) 작업 중 표시가 없으면 기다리는 중
+    expect(judge(input({ tmux: { ...tmux, agent: 'ready', lastOutputChangeAt: ago(0) } }))).toEqual({ state: 'idle', reasons: ['작업을 마치고 다음 지시를 기다리는 중'] });
+    // 표시가 떠 있으면 화면이 20분 그대로여도(긴 명령) 작업 중, 오래 그대로면 정지 의심
+    expect(judge(input({ tmux: { ...tmux, agent: 'busy', lastOutputChangeAt: ago(20) }, lastGitChangeAt: ago(20) }))).toEqual({ state: 'running', reasons: ['에이전트 작업 중'] });
+    expect(judge(input({ tmux: { ...tmux, agent: 'busy', lastOutputChangeAt: ago(50) }, lastGitChangeAt: ago(50) })).state).toBe('stalled');
+    // 입력 대기가 먼저다
+    expect(judge(input({ tmux: { ...tmux, agent: 'ready', waitingPrompt: 'Do you want to proceed?' } })).state).toBe('waiting');
+  });
+
   it('uses git activity alone when no session is configured', () => {
     const none = { ...tmux, configured: false, exists: false, lastOutputChangeAt: null };
     expect(judge(input({ tmux: none, lastGitChangeAt: ago(5) }))).toEqual({ state: 'running', reasons: ['5분 전 마지막 Git 변화'] });

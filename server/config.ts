@@ -40,6 +40,8 @@ export interface Config {
   errorIgnorePatterns: string[];
   /** 터미널 마지막 줄들에서 찾을 입력 대기 프롬프트 패턴 */
   promptPatterns: string[];
+  /** 에이전트가 일하는 중에만 화면 아래쪽에 뜨는 표시 (Claude Code·Codex 의 "esc to interrupt"). 설정 파일에서만 바꾼다 */
+  busyPatterns: string[];
   /** 숫자·스피너 문자만 바뀌는 출력 변화는 활동으로 보지 않는다 */
   ignoreSpinnerChanges: boolean;
   sessionExitIsError: boolean;
@@ -66,6 +68,7 @@ export const DEFAULTS = {
   thresholds: { idleMinutes: 15, stalledMinutes: 30, noCommitMinutes: 30 },
   errorPatterns: ['error', 'failed', 'exception'],
   errorIgnorePatterns: ['/\\b0 errors\\b/', 'no errors', '/\\b0 failed\\b/'],
+  busyPatterns: ['esc to interrupt'],
   promptPatterns: ['Do you want to', 'Would you like to', '(y/n)', '[y/n]', '(yes/no)', 'Press Enter to continue', '/^\\s*❯\\s*1\\.\\s*Yes/'],
   ignoreSpinnerChanges: true,
   sessionExitIsError: true,
@@ -236,6 +239,7 @@ export function parseConfig(raw: unknown, baseDir: string): Config {
     errorPatterns: patterns('errorPatterns', DEFAULTS.errorPatterns),
     errorIgnorePatterns: patterns('errorIgnorePatterns', DEFAULTS.errorIgnorePatterns),
     promptPatterns: patterns('promptPatterns', DEFAULTS.promptPatterns),
+    busyPatterns: patterns('busyPatterns', DEFAULTS.busyPatterns),
     ignoreSpinnerChanges: bool('ignoreSpinnerChanges', DEFAULTS.ignoreSpinnerChanges),
     sessionExitIsError: bool('sessionExitIsError', DEFAULTS.sessionExitIsError),
     notifications: bool('notifications', DEFAULTS.notifications),

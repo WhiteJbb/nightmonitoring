@@ -106,6 +106,11 @@ export interface TmuxInfo {
   waitingPrompt: string | null;
   /** 프롬프트 아래의 번호 선택지 ("❯ 1. Yes", "2. No") 와 그 pane. 화면에서 버튼으로 바로 답한다 */
   waitingChoices?: { pane: string; options: { key: string; label: string }[] };
+  /**
+   * 화면에 "작업 중" 표시(esc to interrupt)를 한 번이라도 띄운 에이전트 세션이면: busy = 지금 일하는 중, ready = 할 일을 마치고 기다림.
+   * 이런 세션은 화면이 바뀌었는지(스크롤·입력·크기 변경도 바꾼다)가 아니라 이 표시로 상태를 정한다.
+   */
+  agent?: 'busy' | 'ready';
   /** 예: tmux attach -t session-name */
   attachCommand: string | null;
   error?: string;

@@ -34,6 +34,12 @@ const VOLATILE_RE = /[\d\u2800-\u28ff✢✳✶✻✽✺·∗*|/\\—-]/g;
 export const stripVolatile = (s: string): string => s.replace(VOLATILE_RE, '');
 
 const PROMPT_SCAN_LINES = 15;
+/** 화면 마지막 몇 줄에 "작업 중" 표시(busyPatterns)가 있는지. 상태 줄은 맨 아래에 있으니 본문 인용에는 잘 걸리지 않는다 */
+export function isBusy(lines: string[], patterns: string[]): boolean {
+  if (!patterns.length) return false;
+  const match = compileMatcher(patterns);
+  return lines.filter((l) => l.trim() !== '').slice(-6).some(match);
+}
 const CHOICE_RE = /^[\s│┃║▌]*(?:[❯›>]\s*)?([1-9])[.)]\s+(.+?)[\s│┃║]*$/;
 /** 프롬프트 줄부터 아래로 "1. Yes" 같은 번호 선택지를 모은다 (같은 번호는 처음 것만). */
 export function promptChoices(lines: string[], prompt: string): { key: string; label: string }[] {

@@ -44,6 +44,9 @@ export function judge(i: StatusInput): ProjectStatus {
 
   if (i.tmux.exists && i.tmux.waitingPrompt) return { state: 'waiting', reasons: [`입력 대기: ${i.tmux.waitingPrompt}`] };
 
+  // 에이전트 세션: 작업 중 표시가 없으면 할 일을 마치고 기다리는 것이다. 화면이 바뀌어도(스크롤·입력·크기) 일하는 게 아니다
+  if (i.tmux.exists && i.tmux.agent === 'ready') return { state: 'idle', reasons: ['작업을 마치고 다음 지시를 기다리는 중'] };
+
   const gitIdle = minutesSince(i.lastGitChangeAt, i.now);
   // 세션이 없으면 볼 출력이 없으므로 Git 활동만으로 판정한다.
   const outputIdle = i.tmux.exists ? minutesSince(i.tmux.lastOutputChangeAt, i.now) : gitIdle;
@@ -52,6 +55,8 @@ export function judge(i: StatusInput): ProjectStatus {
   if (outputIdle >= i.thresholds.stalledMinutes && gitIdle >= i.thresholds.noCommitMinutes) {
     return { state: 'stalled', reasons: [`${fmt(Math.min(outputIdle, gitIdle))} 출력·Git 변화 없음`] };
   }
+  // 작업 중 표시가 떠 있는 동안은 화면이 한동안 그대로여도(긴 명령 실행) 유휴가 아니다. 정지 의심만 따진다
+  if (i.tmux.exists && i.tmux.agent === 'busy') return { state: 'running', reasons: ['에이전트 작업 중'] };
   if (outputIdle >= i.thresholds.idleMinutes) {
     return { state: 'idle', reasons: [`${fmt(outputIdle)} ${what} 변화 없음`] };
   }
