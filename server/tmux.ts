@@ -88,7 +88,38 @@ export function parsePanes(out: string): Map<string, PaneMeta[]> {
 
 export async function listPanes(): Promise<Map<string, PaneMeta[]>> {
   const r = await run('tmux', ['list-panes', '-a', '-F', PANE_FORMAT]);
-  return r.code === 0 ? parsePanes(r.stdout) : new Map();
+  if (r.code !== 0) return new Map();
+  const panes = parsePanes(r.stdout);
+  await nameScriptAgents([...panes.values()].flat());
+  return panes;
+}
+
+/** ps 출력에서 tty 의 전면 프로세스 명령줄 중 에이전트 이름(codex·claude)을 찾는다 */
+export function agentOnTty(ps: string, tty: string): string | null {
+  for (const line of ps.split('\n')) {
+    const [t, stat, ...args] = line.trim().split(/\s+/);
+    if (t !== tty || !stat?.includes('+')) continue;
+    const m = /\b(codex|claude)\b/i.exec(args.join(' '));
+    if (m) return m[1]!.toLowerCase();
+  }
+  return null;
+}
+
+/**
+ * Codex 처럼 node 로 도는 에이전트는 tmux 가 명령 이름을 'node' 로만 알려 준다.
+ * 그런 pane 만 골라 그 tty 의 전면 프로세스 명령줄로 진짜 이름을 찾는다 (없으면 그대로 둔다).
+ */
+async function nameScriptAgents(panes: PaneMeta[]): Promise<void> {
+  const nodes = panes.filter((p) => p.command === 'node');
+  if (!nodes.length) return;
+  const [ttys, ps] = await Promise.all([run('tmux', ['list-panes', '-a', '-F', '#{pane_id} #{pane_tty}']), run('ps', ['-A', '-o', 'tty=,stat=,args='])]);
+  if (ttys.code !== 0 || ps.code !== 0) return;
+  const ttyOf = new Map(ttys.stdout.split('\n').map((l) => l.split(' ') as [string, string | undefined]));
+  for (const p of nodes) {
+    const tty = ttyOf.get(p.id)?.replace('/dev/', '');
+    const name = tty ? agentOnTty(ps.stdout, tty) : null;
+    if (name) p.command = name;
+  }
 }
 
 /** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */

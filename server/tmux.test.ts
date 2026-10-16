@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { compileMatcher, findErrors, findPrompt, isBusy, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
-import { capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
+import { agentOnTty, capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -156,6 +156,13 @@ describe('pattern helpers', () => {
     expect(isBusy(['❯ ', '─────', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents'], p)).toBe(false);
     expect(isBusy(['본문에 esc to interrupt 라고 썼다', 'a', 'b', 'c', 'd', 'e', 'f'], p)).toBe(false);
     expect(isBusy(['esc to interrupt'], [])).toBe(false);
+  });
+
+  it('finds the agent behind a node pane from ps output', () => {
+    const ps = ['ttys005  Ss   -zsh', 'ttys005  S+   node /opt/homebrew/bin/codex', 'ttys007  S+   node server.js', '??       S    /Users/u/.codex/bin/codex app-server'].join('\n');
+    expect(agentOnTty(ps, 'ttys005')).toBe('codex');
+    expect(agentOnTty(ps, 'ttys007')).toBeNull();
+    expect(agentOnTty(ps, 'ttys009')).toBeNull();
   });
 
   it('normalizes spinner and counter churn', () => {

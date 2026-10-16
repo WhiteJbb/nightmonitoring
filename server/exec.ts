@@ -2,7 +2,8 @@
 import { execFile, spawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 
-const ALLOWED_BINS = ['git', 'tmux', 'osascript'] as const;
+// ps: node 로 도는 에이전트(Codex)의 이름을 찾을 때 프로세스 목록만 읽는다
+const ALLOWED_BINS = ['git', 'tmux', 'osascript', 'ps'] as const;
 export type Bin = (typeof ALLOWED_BINS)[number];
 
 export interface ExecResult {
