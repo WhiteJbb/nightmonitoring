@@ -16,6 +16,8 @@ import { parseUpload } from './upload.ts';
 
 /** 한 번에 받는 raw 입력의 최대 바이트 (키 몇 개나 마우스 보고 묶음이면 충분하다) */
 export const MAX_RAW_BYTES = 4096;
+/** 터미널 스트림 한 연결이 보내지 못하고 쌓아 둘 수 있는 최대 바이트 */
+export const MAX_SSE_BUFFER = 8 * 1024 * 1024;
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
@@ -211,8 +213,15 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (!project || !pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     if (!terminal || !project.tmuxSession) return void res.status(403).json({ error: 'demo mode 에서는 터미널 스트림이 없습니다' });
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    // 출력은 건너뛸 수 없다 (한 조각이 빠지면 화면이 어긋난다). 느린 클라이언트면 메모리에 쌓인다.
-    const off = terminal.stream(project.tmuxSession, pane.id, (e) => void res.write(`data: ${JSON.stringify(e)}\n\n`));
+    // 출력은 건너뛸 수 없다 (한 조각이 빠지면 화면이 어긋난다). 느린 클라이언트에 너무 쌓이면 끊는다:
+    // 브라우저 EventSource 가 다시 붙으면 첫 화면부터 새로 받는다
+    const off = terminal.stream(project.tmuxSession, pane.id, (e) => {
+      res.write(`data: ${JSON.stringify(e)}\n\n`);
+      if (res.writableLength > MAX_SSE_BUFFER) {
+        off();
+        res.end();
+      }
+    });
     req.on('close', off);
   });
 
