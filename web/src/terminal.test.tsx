@@ -20,6 +20,12 @@ const { FakeTerminal } = vi.hoisted(() => {
       FakeTerminal.all.push(this);
     }
     open() {}
+    buffer = { active: { type: 'normal' } };
+    modes = { mouseTrackingMode: 'none' };
+    wheel: ((ev: WheelEvent) => boolean) | null = null;
+    attachCustomWheelEventHandler(h: (ev: WheelEvent) => boolean) {
+      this.wheel = h;
+    }
     reset() {
       this.resets++;
     }
@@ -205,6 +211,23 @@ test('mouse moves without a button are not sent; wheel reports are', async () =>
   act(() => xterm().type('\x1b[<35;12;5M\x1b[<64;12;5M'));
   await tick();
   expect(posts().map(([, body]) => atob(body.data!))).toEqual(['\x1b[<64;12;5M']);
+});
+
+test('wheel in a full-screen program without mouse support turns into PgUp/PgDn; with mouse support xterm handles it', async () => {
+  await renderTab(project(ONE));
+  await init();
+  const t = xterm();
+  const wheel = (deltaY: number) => t.wheel!(new WheelEvent('wheel', { deltaY, cancelable: true }));
+  expect(wheel(-120)).toBe(true); // 일반 화면: xterm 의 스크롤백
+  t.buffer.active.type = 'alternate';
+  expect(wheel(-60)).toBe(false);
+  expect(wheel(-60)).toBe(false);
+  expect(wheel(240)).toBe(false);
+  await tick();
+  await tick();
+  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x1b[5~\x1b[6~\x1b[6~');
+  t.modes.mouseTrackingMode = 'any';
+  expect(wheel(-120)).toBe(true);
 });
 
 test('a read-only project gets a terminal without stdin, no input bar, and the config hint', async () => {

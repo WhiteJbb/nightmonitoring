@@ -16,6 +16,11 @@ const RAW_CHUNK = 4096;
 // SGR 마우스 보고 중 버튼 없는 이동: 코드의 하위 2비트가 3(버튼 없음)이고 32(이동) 비트가 켜진 것
 // eslint-disable-next-line no-control-regex -- 터미널 이스케이프 시퀀스를 다룬다
 const MOTION_RE = /\x1b\[<(?:35|39|43|47|51|55|59|63);\d+;\d+[Mm]/g;
+const LINE_HEIGHT = 1.2;
+/** 터미널이 차지할 수 있는 화면 높이 비율 */
+const TERM_MAX_VIEWPORT = 0.7;
+/** 휠을 이만큼(px) 굴릴 때마다 PgUp/PgDn 한 번 */
+const WHEEL_PAGE_PX = 120;
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
 
@@ -38,19 +43,26 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       scrollback: 5000,
       fontFamily: TERM_FONT,
       fontSize: TERM_FONT_SIZE,
-      lineHeight: 1.2,
+      lineHeight: LINE_HEIGHT,
       disableStdin: !canInput,
       cursorBlink: canInput,
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
 
-    // pane 이 영역보다 넓으면 글자를 줄여 가로 스크롤을 피한다 (9px 아래로는 안 간다)
+    // pane 이 영역보다 넓거나 화면보다 높으면 글자를 줄인다 (9px 아래로는 안 간다).
+    // 터미널 전체가 한 화면에 들어와야 그 위에서 쓸기를 프로그램 스크롤로 쓸 수 있다
     const fitFont = () => {
       const width = el.clientWidth;
       if (!width) return;
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
-      term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, Math.floor(width / (term.cols * perPx))));
+      const byWidth = Math.floor(width / (term.cols * perPx));
+      // 줄 높이는 글꼴 지표에 따라 글자 크기의 1.2배보다 크다. 그려진 화면에서 실제 비율을 잰다
+      const screen = el.querySelector<HTMLElement>('.xterm-screen');
+      const size = Number(term.options.fontSize) || TERM_FONT_SIZE;
+      const ratio = screen && screen.clientHeight > 0 ? screen.clientHeight / term.rows / size : LINE_HEIGHT * 1.3;
+      const byHeight = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT) / (term.rows * ratio));
+      term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
 
     const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/term/${encodeURIComponent(pane)}`);
@@ -103,10 +115,51 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       void flush();
     });
 
+    // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램(Codex)엔
+    // xterm 이 화살표 키로 바꿔 보내는데, 거기선 화살표가 입력 기록 탐색이다. 대신 PgUp/PgDn 으로 넘긴다
+    let wheelAcc = 0;
+    term.attachCustomWheelEventHandler((ev) => {
+      if (!canInput || term.buffer.active.type !== 'alternate' || term.modes.mouseTrackingMode !== 'none') return true;
+      wheelAcc += ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+      while (Math.abs(wheelAcc) >= WHEEL_PAGE_PX) {
+        const down = wheelAcc > 0;
+        wheelAcc -= down ? WHEEL_PAGE_PX : -WHEEL_PAGE_PX;
+        queue += down ? '\x1b[6~' : '\x1b[5~';
+      }
+      void flush();
+      ev.preventDefault();
+      return false;
+    });
+    // 터치: 대체 화면엔 xterm 스크롤백이 없어 손가락으로 쓸어도 아무 일이 없다. 쓴 거리만큼 휠 이벤트로 바꿔 위 경로를 탄다
+    let lastY: number | null = null;
+    const onTouchStart = (e: TouchEvent) => {
+      lastY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (lastY === null || !canInput || term.buffer.active.type !== 'alternate') return;
+      const t = e.touches[0]!;
+      const dy = lastY - t.clientY;
+      if (Math.abs(dy) < 8) return;
+      lastY = t.clientY;
+      e.preventDefault();
+      // 터미널 일부가 화면 밖이면 페이지를 움직여 보이게 한다. xterm 이 터치 이동을 막아 페이지가 저절로는 안 움직인다
+      const r = el.getBoundingClientRect();
+      if ((dy > 0 && r.bottom > window.innerHeight + 1) || (dy < 0 && r.top < -1)) {
+        window.scrollBy(0, dy);
+        return;
+      }
+      const target = el.querySelector('.xterm-screen') ?? el;
+      target.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
+    };
+    el.addEventListener('touchstart', onTouchStart, { passive: true });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fitFont) : null;
     ro?.observe(el);
     return () => {
       input.dispose();
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
       es.close();
       term.dispose();
