@@ -3,7 +3,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createApp, guard } from './app.ts';
 import { parseConfig } from './config.ts';
 import { demoCollector } from './demo.ts';
-import { Monitor } from './monitor.ts';
+import { Monitor, SNAPSHOT_OUTPUT_CHARS } from './monitor.ts';
 import { Runner } from './runner.ts';
 
 const config = parseConfig({ projects: [{ name: 'app', repoPath: '/repo/app', testCommand: 'npm test' }] }, '/base');
@@ -37,9 +37,29 @@ describe('API', () => {
     expect((await fetch(`${base}/api/projects/app/run/deploy`, { method: 'DELETE' })).status).toBe(400);
   });
 
+  it('sends only the tail of long run output in the snapshot and the full output on request', async () => {
+    const stdout = `${'x'.repeat(100_000)}END`;
+    runner.seed('app', { kind: 'build', command: 'npm run build', running: false, startedAt: new Date().toISOString(), finishedAt: new Date().toISOString(), exitCode: 1, timedOut: false, canceled: false, durationMs: 1, stdout, stderr: 'short' });
+    monitor.publish();
+    const s = await (await fetch(`${base}/api/snapshot`)).json();
+    const build = s.projects[0].runs.build;
+    expect(build).toMatchObject({ truncated: true, stderr: 'short', exitCode: 1 });
+    expect(build.stdout).toHaveLength(SNAPSHOT_OUTPUT_CHARS);
+    expect(build.stdout.endsWith('END')).toBe(true);
+    expect(s.projects[0].status.state).toBe('error'); // 판정은 잘리지 않은 결과로 한다
+    const full = await (await fetch(`${base}/api/projects/app/run/build`)).json();
+    expect(full.stdout).toBe(stdout);
+    expect(full.truncated).toBeUndefined();
+    expect((await fetch(`${base}/api/projects/nope/run/build`)).status).toBe(404);
+    expect((await fetch(`${base}/api/projects/app/run/deploy`)).status).toBe(400);
+  });
+
   it('rejects cross-origin writes but allows same-origin', async () => {
     const cross = await fetch(`${base}/api/projects/app/run/test`, { method: 'POST', headers: { Origin: 'https://evil.example' } });
     expect(cross.status).toBe(403);
+    // 같은 호스트의 다른 포트(다른 개발 서버)도 다른 출처다
+    const otherPort = await fetch(`${base}/api/projects/app/run/test`, { method: 'POST', headers: { Origin: base.replace(/:\d+$/, ':8443') } });
+    expect(otherPort.status).toBe(403);
     const same = await fetch(`${base}/api/reports/x`, { headers: { Origin: base } });
     expect(same.status).toBe(404);
   });

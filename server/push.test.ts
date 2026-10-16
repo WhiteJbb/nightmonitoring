@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { parseConfig } from './config.ts';
-import { parseNtfyUrl, sendNtfy } from './push.ts';
+import { MAX_PENDING_RETRIES, parseNtfyUrl, RETRY_DELAYS_MS, sendNtfy, withRetry } from './push.ts';
 
 describe('parseNtfyUrl', () => {
   it('splits server and topic', () => {
@@ -36,6 +36,36 @@ describe('sendNtfy', () => {
     expect(await sendNtfy('not a url', { title: 't', message: 'm' })).toBe('ntfy 주소가 올바르지 않습니다');
     expect(await sendNtfy('https://ntfy.sh/t', { title: 't', message: 'm' }, vi.fn(async () => new Response('', { status: 429 })))).toBe('ntfy 서버가 429 로 응답했습니다');
     expect(await sendNtfy('https://ntfy.sh/t', { title: 't', message: 'm' }, vi.fn(async () => Promise.reject(new Error('offline'))))).toBe('ntfy 전송 실패: offline');
+  });
+});
+
+describe('withRetry', () => {
+  it('retries a failed send with backoff and gives up after the last delay', async () => {
+    const waits: number[] = [];
+    const wait = async (ms: number) => void waits.push(ms);
+    const flaky = vi.fn<() => Promise<string | null>>().mockResolvedValueOnce('ntfy 서버가 429 로 응답했습니다').mockResolvedValueOnce(null);
+    expect(await withRetry(flaky, wait)).toBeNull();
+    expect(flaky).toHaveBeenCalledTimes(2);
+    expect(waits).toEqual([30_000]);
+    const down = vi.fn(async () => 'ntfy 전송 실패: offline');
+    expect(await withRetry(down, wait)).toBe('ntfy 전송 실패: offline');
+    expect(down).toHaveBeenCalledTimes(RETRY_DELAYS_MS.length + 1);
+    const ok = vi.fn(async () => null);
+    expect(await withRetry(ok, wait)).toBeNull();
+    expect(ok).toHaveBeenCalledOnce();
+  });
+
+  it('drops new failures once too many retries are waiting', async () => {
+    let release = () => {};
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const fail = vi.fn(async () => 'offline');
+    const waiting = Array.from({ length: MAX_PENDING_RETRIES }, () => withRetry(fail, () => gate));
+    await new Promise((resolve) => setImmediate(resolve)); // 모두 첫 실패 뒤 기다리는 중
+    const dropped = vi.fn(async () => 'offline');
+    expect(await withRetry(dropped, async () => {})).toBe('offline');
+    expect(dropped).toHaveBeenCalledOnce();
+    release();
+    await Promise.all(waiting);
   });
 });
 

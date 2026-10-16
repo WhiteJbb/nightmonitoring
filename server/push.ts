@@ -1,4 +1,5 @@
 // 휴대폰 푸시 (ntfy). 설정에 주소를 적었을 때만 밖으로 요청을 보낸다.
+import { setTimeout as sleep } from 'node:timers/promises';
 import type { ProjectState } from '../shared/types.ts';
 
 export interface PushMessage {
@@ -45,4 +46,26 @@ export async function sendNtfy(url: string, msg: PushMessage, fetchFn: typeof fe
   } catch (e) {
     return `ntfy 전송 실패: ${(e as Error).message}`;
   }
+}
+
+/** 실패한 알림을 다시 보내기까지 기다리는 시간. 이만큼 해도 안 되면 버린다 */
+export const RETRY_DELAYS_MS = [30_000, 2 * 60_000, 10 * 60_000];
+/** 재시도를 기다리는 알림의 최대 개수. 넘치면 새 실패는 바로 버린다 (ntfy 가 오래 죽어 있어도 쌓이지 않게) */
+export const MAX_PENDING_RETRIES = 20;
+let pendingRetries = 0;
+
+/** send 가 실패하면 RETRY_DELAYS_MS 간격으로 다시 시도한다. 끝내 실패하면 마지막 오류 메시지. */
+export async function withRetry(send: () => Promise<string | null>, wait: (ms: number) => Promise<unknown> = (ms) => sleep(ms, undefined, { ref: false })): Promise<string | null> {
+  let error = await send();
+  for (const ms of RETRY_DELAYS_MS) {
+    if (!error || pendingRetries >= MAX_PENDING_RETRIES) break;
+    pendingRetries += 1;
+    try {
+      await wait(ms);
+    } finally {
+      pendingRetries -= 1;
+    }
+    error = await send();
+  }
+  return error;
 }

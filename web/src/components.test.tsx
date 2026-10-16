@@ -349,3 +349,14 @@ test('dashboard: hiding a discovered session offers an undo that un-hides it', a
   await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   expect(alert).not.toHaveBeenCalled();
 });
+
+test('RunPanel loads the full output on demand when the snapshot only has the tail', async () => {
+  const p = project({ runs: { test: run({ stdout: '...tail', truncated: true }), build: null } });
+  render(<RunPanel project={p} kind="test" title="테스트" />);
+  expect(screen.getByText('...tail')).toBeTruthy();
+  respond(200, run({ stdout: 'head...tail' }));
+  fireEvent.click(screen.getByRole('button', { name: '전체 출력 보기' }));
+  await waitFor(() => expect(screen.getByText('head...tail')).toBeTruthy());
+  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/run/test', { method: 'GET' });
+  expect(screen.queryByRole('button', { name: '전체 출력 보기' })).toBeNull();
+});

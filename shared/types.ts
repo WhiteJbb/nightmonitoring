@@ -122,6 +122,8 @@ export interface RunResult {
   durationMs: number | null;
   stdout: string;
   stderr: string;
+  /** 스냅샷에 실으려고 stdout/stderr 의 앞부분을 잘라냈으면 true. 전체는 GET /api/projects/:id/run/:kind */
+  truncated?: boolean;
 }
 
 /** 실행 이력 한 건 (출력 제외) */

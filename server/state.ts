@@ -13,6 +13,8 @@ export interface TrackedState {
   /** 어느 로그 파일의 어디까지 확인했는지. 로그 파일이 바뀌면 버린다. */
   logFile: string | null;
   logPos: LogPos | null;
+  /** 확인 처리 전의 로그 오류. 재시작 뒤에는 스캔 창에서 밀려났을 수 있어 함께 저장한다 (예전 파일에는 없다) */
+  logErrors?: string[];
   /** 마지막으로 터미널 출력이 바뀐 시각. 없으면 재시작 후 tmux 활동 시각으로 다시 잡는다 */
   outputChangedAt?: string | null;
 }

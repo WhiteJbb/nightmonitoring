@@ -95,7 +95,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 - **입력**: `POST /projects/:id/input`은 `tmux send-keys -t <pane> -l -- <text>`(글자 그대로, 키 이름·옵션 해석 없음)와 `send-keys <key>`(허용 목록 15개 중 하나)만 실행한다. `execFile`이라 셸 해석도 없다.
 - **허용 조건** (모두 만족해야 함): ① 그 프로젝트의 `allowInput`이 켜짐 ② 서버가 loopback 또는 Tailscale 주소(100.64.0.0/10, fd7a:115c:a1e0::/48)에 바인딩 — `0.0.0.0`·LAN 주소는 거부 ③ pane id가 현재 스냅샷에서 그 프로젝트 세션의 pane 목록에 있음 ④ Host·Origin 검사 통과 ⑤ JSON 본문 검증 통과(4000자 이하, NUL 없음). demo mode에서는 항상 거부.
 - `allowInput`은 처음에는 파일 전용이었으나, 사용자의 결정으로 설정 화면에서도 켜고 끌 수 있게 했다(켤 때 확인 창). 따라서 **대시보드에 닿을 수 있는 범위가 곧 보안 경계**다. 노출은 loopback, `tailscale serve`(+ `allowedHosts`), Tailscale 주소 바인딩 중 하나로만 한다.
-- `allowedHosts`(파일 전용): loopback 바인딩일 때 Host·Origin 검사에서 추가로 받아들일 호스트 이름. 프록시가 원래 이름을 Host로 넘기든 `127.0.0.1`로 바꿔 넘기든 Origin이 목록에 있으면 변경 요청을 받는다.
+- `allowedHosts`(파일 전용): loopback 바인딩일 때 Host·Origin 검사에서 추가로 받아들일 호스트 이름. 프록시가 원래 이름을 Host로 넘기든 `127.0.0.1`로 바꿔 넘기든 Origin이 `https://<이름>`(443)이면 변경 요청을 받는다. 그 밖의 변경 요청은 Origin이 `http://<Host 헤더>`이고 그 포트가 서버가 받은 포트일 때만 받는다(같은 기기의 다른 포트에서 띄운 페이지 차단).
 - 모든 입력은 보내기 전에 `.nightshift/input.log`에 JSON 한 줄로 남긴다.
 - **세션 만들기**: `tmux new-session -d -s <이름> -c <경로>`만 실행한다. 실행할 명령은 받지 않아 항상 기본 셸이 뜬다. 이름은 config와 같은 규칙으로 검증하고 경로는 존재하는 디렉터리여야 한다. 세션을 먼저 만들고(이미 있으면 그대로) 설정 편집 경로(`configEdit`)로 프로젝트를 추가하므로 기존 프로젝트의 명령은 건드리지 않는다. 입력과 같은 바인딩 조건(loopback·Tailscale)을 적용하고 demo에서는 거부한다.
 

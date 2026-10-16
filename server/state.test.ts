@@ -147,6 +147,29 @@ describe('Monitor session state', () => {
     expect(m.ackErrors('nope')).toBe(false);
   });
 
+  it('keeps unacknowledged log errors across restarts, and old state files without them still load', async () => {
+    const state = { head: 'h1', log: { errors: [] as string[], size: 10 } };
+    const first = new Monitor({ config, collector: collector(state), runs: noRuns, now: () => T0 });
+    await first.tick();
+    state.log = { errors: ['Error: boom'], size: 30 };
+    await first.tick();
+    const saved = JSON.parse(JSON.stringify(first.exportState()));
+    expect(saved.tracked.app.logErrors).toEqual(['Error: boom']);
+
+    // 재시작 사이에 오류가 스캔 창에서 밀려났다
+    state.log = { errors: [], size: 200_000 };
+    const second = new Monitor({ config, collector: collector(state), runs: noRuns, now: () => T0, restore: saved });
+    await second.tick();
+    expect(second.snapshot.projects[0]!.logErrors).toEqual(['Error: boom']);
+    second.ackErrors('app');
+    expect(second.exportState().tracked.app!.logErrors).toEqual([]);
+
+    delete saved.tracked.app.logErrors;
+    const old = new Monitor({ config, collector: collector(state), runs: noRuns, now: () => T0, restore: saved });
+    await old.tick();
+    expect(old.snapshot.projects[0]!.logErrors).toEqual([]);
+  });
+
   it('an in-flight scan cannot bring back acknowledged errors', async () => {
     const state: { head: string; log: FakeLog; gate?: Promise<void> } = { head: 'h1', log: { errors: [], size: 10 } };
     const m = new Monitor({ config, collector: collector(state), runs: noRuns, now: () => T0 });

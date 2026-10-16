@@ -407,7 +407,7 @@ describe('network guards', () => {
         code = c;
         return { json: () => {} };
       };
-      g({ method, headers }, { status }, () => {});
+      g({ method, headers, socket: { localPort: 4477 } }, { status }, () => {});
       return code;
     };
     expect(check('GET', { host: 'MAC.tailnet.ts.net' })).toBe(200);
@@ -417,5 +417,23 @@ describe('network guards', () => {
     expect(check('POST', { host: '127.0.0.1:4477', origin: 'https://mac.tailnet.ts.net' })).toBe(200);
     expect(check('POST', { host: 'mac.tailnet.ts.net', origin: 'https://evil.example' })).toBe(403);
     expect(check('POST', { host: '127.0.0.1:4477', origin: 'null' })).toBe(403);
+  });
+
+  it('accepts writes only from the exact origin the server is reached at', () => {
+    const g = guard({ host: '100.101.102.103', allowedHosts: ['mac.tailnet.ts.net'] }) as unknown as (req: object, res: object, next: () => void) => void;
+    const check = (host: string, origin: string) => {
+      let code = 200;
+      g({ method: 'POST', headers: { host, origin }, socket: { localPort: 4477 } }, { status: (c: number) => ((code = c), { json: () => {} }) }, () => {});
+      return code;
+    };
+    expect(check('100.101.102.103:4477', 'http://100.101.102.103:4477')).toBe(200);
+    expect(check('my-mac:4477', 'http://my-mac:4477')).toBe(200);
+    expect(check('mac.tailnet.ts.net', 'https://mac.tailnet.ts.net')).toBe(200);
+    // 같은 기기의 다른 포트·다른 scheme 에서 띄운 페이지는 거부
+    expect(check('100.101.102.103:4477', 'http://100.101.102.103:8443')).toBe(403);
+    expect(check('my-mac:4477', 'http://my-mac:8443')).toBe(403);
+    expect(check('mac.tailnet.ts.net', 'https://mac.tailnet.ts.net:8443')).toBe(403);
+    expect(check('mac.tailnet.ts.net', 'http://mac.tailnet.ts.net')).toBe(403);
+    expect(check('mac.tailnet.ts.net:8443', 'http://mac.tailnet.ts.net:8443')).toBe(403); // Host 를 그 포트로 꾸며도 받은 포트와 다르다
   });
 });
