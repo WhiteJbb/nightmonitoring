@@ -381,6 +381,14 @@ test('dashboard: hiding a discovered session offers an undo that un-hides it', a
   expect(alert).not.toHaveBeenCalled();
 });
 
+test('RunPanel shows colored command output without the raw escape codes', () => {
+  const p = project({ runs: { test: run({ stdout: '\x1b[32m✓\x1b[39m server/app.test.ts\nline 2' }), build: null } });
+  render(<RunPanel project={p} kind="test" title="테스트" />);
+  const out = document.querySelector('pre.output')!;
+  expect(out.textContent).toBe('✓ server/app.test.ts\nline 2');
+  expect((out.querySelector('span') as HTMLElement).style.color).not.toBe('');
+});
+
 test('RunPanel loads the full output on demand when the snapshot only has the tail', async () => {
   const p = project({ runs: { test: run({ stdout: '...tail', truncated: true }), build: null } });
   render(<RunPanel project={p} kind="test" title="테스트" />);
