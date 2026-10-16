@@ -1061,8 +1061,23 @@ pre {
   color: var(--text);
   background: var(--s3);
 }
+/* 고르기 상자는 좁은 화면에서만 (아래 900px 규칙) */
+.report-list select {
+  display: none;
+  width: 100%;
+  font: var(--fs-code) var(--mono);
+  color: var(--text);
+  background: var(--s2);
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 9px 16px;
+}
 .report-body h3 {
   margin-top: 0;
+  scroll-margin-top: 16px;
+}
+.report-body h3:focus {
+  outline: none;
 }
 .md h2 {
   font-size: var(--fs-xl);
@@ -1438,6 +1453,18 @@ form.settings {
   }
   .reports {
     grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+  }
+  /* 목록이 본문을 화면 밖으로 밀어내지 않게 고르기 상자로 바꾼다 */
+  .report-list select {
+    display: block;
+  }
+  .report-list ul {
+    display: none;
+  }
+  /* 제목으로 스크롤할 때 떠 있는 상단 띠(.side)에 가리지 않게 */
+  .report-body h3 {
+    scroll-margin-top: 240px;
   }
 }
 @media (max-width: 720px) {
