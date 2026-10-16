@@ -130,7 +130,7 @@ export class Monitor {
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
       // 경로가 달라졌으면 collectOne 이 기준점을 버린다. 따라간 저장소(followRepo)는 여기서 그대로 이어받는다.
-      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, outputChangedAt: saved.outputChangedAt ?? null });
+      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, logErrors: saved.logErrors ?? [], outputChangedAt: saved.outputChangedAt ?? null });
     }
     this.snapshot = this.build();
   }
@@ -173,12 +173,12 @@ export class Monitor {
     this.publish();
   }
 
-  /** 디스크에 저장할 상태 (기준점, 변경 시각, 로그 위치). */
+  /** 디스크에 저장할 상태 (기준점, 변경 시각, 로그 위치와 확인 전 오류). */
   exportState(): MonitorState {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, outputChangedAt: tr.outputChangedAt };
+      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, logErrors: tr.logErrors, outputChangedAt: tr.outputChangedAt };
     }
     return { startedAt: this.startedAt, tracked };
   }
