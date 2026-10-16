@@ -2,21 +2,23 @@ import type { TermSize } from '../../shared/types.ts';
 
 /** 터미널이 차지할 수 있는 화면 높이 비율 */
 export const TERM_MAX_VIEWPORT = 0.7;
-/** xterm 한 줄 높이 / 글자 크기 (lineHeight 1.2 × 글꼴 지표, 실측) */
-export const ROW_RATIO = 1.56;
+/** xterm 한 줄 높이 / 글자 크기 (lineHeight 1.2 × 글꼴 지표, 실측 1.56~1.59 에 여유를 둔다) */
+export const ROW_RATIO = 1.6;
 const FALLBACK_CHAR = 7.8; // 13px 고정폭 글꼴의 대략적인 글자 폭 (측정할 수 없는 환경용)
 
-/** 주어진 글꼴에서 고정폭 글자 하나의 폭(px). */
+/**
+ * 주어진 글꼴에서 고정폭 글자 하나의 폭(px). xterm 처럼 DOM 에 그려 잰다:
+ * 캔버스는 기기에 따라 웹 글꼴 대신 대체 글꼴로 재서 칸 수가 모자라고 오른쪽이 빈다
+ */
 export function charWidth(font: string): number {
-  try {
-    const ctx = document.createElement('canvas').getContext('2d');
-    if (!ctx) return FALLBACK_CHAR;
-    ctx.font = font;
-    const w = ctx.measureText('0'.repeat(20)).width / 20;
-    return w > 0 ? w : FALLBACK_CHAR;
-  } catch {
-    return FALLBACK_CHAR;
-  }
+  const span = document.createElement('span');
+  span.style.cssText = 'position:absolute;visibility:hidden;white-space:pre';
+  span.style.font = font;
+  span.textContent = '0'.repeat(20);
+  document.body.appendChild(span);
+  const w = span.getBoundingClientRect().width / 20;
+  span.remove();
+  return w > 0 ? w : FALLBACK_CHAR;
 }
 
 /**
