@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
-import { compileMatcher, findErrors, findPrompt, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
+import { compileMatcher, findErrors, findPrompt, isBusy, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
 import { capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
@@ -147,6 +147,15 @@ describe('pattern helpers', () => {
     ]);
     expect(promptChoices(['Overwrite? (y/n)'], 'Overwrite? (y/n)')).toEqual([]);
     expect(promptChoices(['x'], 'not on screen')).toEqual([]);
+  });
+
+  it('sees the busy marker only in the status lines at the bottom', () => {
+    const p = ['esc to interrupt'];
+    expect(isBusy(['✻ Hashing… (52s)', '❯ ', '─────', '  ⏵⏵ auto mode on (shift+tab to cycle) · esc to interrupt · ← for agents'], p)).toBe(true);
+    expect(isBusy(['• Working (12s • esc to interrupt)', '', '› Ask Codex to do anything'], p)).toBe(true);
+    expect(isBusy(['❯ ', '─────', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents'], p)).toBe(false);
+    expect(isBusy(['본문에 esc to interrupt 라고 썼다', 'a', 'b', 'c', 'd', 'e', 'f'], p)).toBe(false);
+    expect(isBusy(['esc to interrupt'], [])).toBe(false);
   });
 
   it('normalizes spinner and counter churn', () => {

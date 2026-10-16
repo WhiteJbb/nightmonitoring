@@ -68,6 +68,8 @@ const DEMO: DemoProject[] = [
         ` ${green('✓')} allows requests under the limit`,
         ` ${green('✓')} blocks requests over the limit`,
         ` ${green('✓')} resets after the window`,
+        '',
+        dim('✻ Running tests… (esc to interrupt)'),
       ]),
       pane('node', [`${dim('[12:01:44]')} ${green('GET')} /health 200 1ms`, `${dim('[12:01:49]')} ${green('GET')} /api/items 200 12ms`, `${dim('[12:01:51]')} ${red('POST')} /api/items 429 0ms`], 'server'),
     ],
