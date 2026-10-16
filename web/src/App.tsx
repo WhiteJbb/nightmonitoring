@@ -254,7 +254,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   };
   // 0 인 상태는 보여 주지 않는다. 문제가 있을 때만 그 상태가 줄에 나타난다. 고른 타일은 0 이 되어도 남겨 둔다.
   const states: [string, number, string][] = [
-    ['정상', s.running, 'running'],
+    ['정상 실행', s.running, 'running'],
     ['입력 대기', s.waiting, 'waiting'],
     ['유휴', s.idle, 'idle'],
     ['정지 의심', s.stalled, 'stalled'],
