@@ -1503,9 +1503,12 @@ form.settings {
   margin-bottom: 6px;
 }
 /* 키보드가 있는 컴퓨터에선 특수 키 버튼과 보내기 버튼이 필요 없다. Enter 가 보내고, 빈 입력칸에서 Esc·방향키·Tab 이 그대로 전달된다 */
+/* 컴퓨터에선 터미널에 바로 친다. 따로 있는 입력칸은 휴대폰용 (고른 pane 이 사라졌다는 안내만 남긴다) */
 @media (hover: hover) and (pointer: fine) {
-  .input-bar .keys,
-  .input-row button.primary {
+  .input-bar:not(.lost) {
+    display: none;
+  }
+  .input-bar.lost > :not(.input-target) {
     display: none;
   }
 }

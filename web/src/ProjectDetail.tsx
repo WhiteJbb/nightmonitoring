@@ -341,7 +341,7 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
 
   const blocked = busy || !target || uploading > 0;
   return (
-    <div className="input-bar">
+    <div className={target ? 'input-bar' : 'input-bar lost'}>
       {/* pane 이 하나뿐이면 보낼 곳이 뻔하니 숨긴다 */}
       {target ? (
         (showTarget || uploading > 0) && (
