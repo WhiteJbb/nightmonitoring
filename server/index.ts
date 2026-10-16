@@ -18,7 +18,9 @@ import { saveReport } from './report.ts';
 import { Runner } from './runner.ts';
 import { loadState, saveState } from './state.ts';
 import type { TermSize } from './tmux.ts';
-import { capturePaneNow, newSession, resizeWindow } from './tmux.ts';
+import { capturePaneNow, newSession, resizeWindow, sendRaw } from './tmux.ts';
+import { TermStreams } from './termstream.ts';
+import type { TermEvent } from '../shared/types.ts';
 import { saveUpload } from './upload.ts';
 
 const ROOT = path.resolve(import.meta.dirname, '..');
@@ -162,7 +164,8 @@ async function main() {
     // clone 도 등록된 명령과 같은 시간 제한을 쓴다 (hot reload 를 따라가게 매번 읽는다)
     return cloneRepo(url, dir, monitor.config.commandTimeoutSec * 1000);
   };
-  const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
+  const streams = new TermStreams();
+const terminal = demo ? undefined : { capture: capturePaneNow, send: sendInput, sendRaw, stream: (session: string, pane: string, sink: (e: TermEvent) => void) => streams.subscribe(session, pane, sink), log: (id: string, input: Parameters<typeof sendInput>[0]) => void logInput(inputLog, id, input), createSession, cloneRepo: cloneRepoTo, resize: resizeWindow, saveUpload: (id: string, ext: string, data: Buffer) => saveUpload(path.join(ROOT, '.nightshift/uploads'), id, ext, data) };
   const app = createApp({ config, monitor, runner, reportsDir, configEditor, ...(terminal ? { terminal } : {}), ...(demo ? {} : { testPush }) });
   const server = http.createServer(app);
 

@@ -858,6 +858,22 @@ pre {
 .term-frame .terminal {
   border-radius: 0;
 }
+/* xterm 이 그리는 영역. 글꼴은 Term 의 옵션과 같아야 "화면에 맞추기"의 칸 수 계산이 맞는다 */
+.term-view {
+  padding: 8px 10px;
+  font: 13px / 1.2 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  background: var(--term);
+  overflow-x: auto;
+}
+.xterm-host .xterm {
+  padding: 0;
+}
+.xterm-host .xterm-viewport {
+  background: transparent !important;
+}
+.xterm-host .xterm .xterm-screen {
+  max-width: 100%;
+}
 .terminal {
   height: min(62vh, 680px);
 }

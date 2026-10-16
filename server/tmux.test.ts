@@ -9,7 +9,9 @@ beforeEach(() => mockRun.mockReset());
 
 describe('listSessions', () => {
   it('parses sessions', async () => {
-    mockRun.mockResolvedValue({ code: 0, stdout: 'agent\t1790000000\t1\t1790000300\t1790000600\nother\t1790000100\t0\t1790000100\t\ngarbage\tx\t0\t\t\n', stderr: '', timedOut: false });
+    mockRun.mockResolvedValueOnce({ code: 0, stdout: 'agent\t1790000000\t1\t1790000300\t1790000600\nother\t1790000100\t1\t1790000100\t\ngarbage\tx\t0\t\t\n', stderr: '', timedOut: false });
+    // list-clients: agent 에는 사람 클라이언트(0)와 컨트롤 클라이언트(1), other 에는 컨트롤 클라이언트만 → other 는 attached 가 아니다
+    mockRun.mockResolvedValueOnce({ code: 0, stdout: 'agent\t1\nagent\t0\nother\t1\n', stderr: '', timedOut: false });
     const { sessions, error } = await listSessions();
     expect(error).toBeUndefined();
     expect(sessions.get('agent')).toEqual({

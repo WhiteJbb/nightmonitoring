@@ -8,6 +8,7 @@ import { loadConfig, parseConfig } from './config.ts';
 import { applyConfigUpdate, readConfigView } from './configEdit.ts';
 import { run } from './exec.ts';
 import type { ParsedInput } from './input.ts';
+import type { TermEvent } from '../shared/types.ts';
 import { ENTER_DELAY_MS, logInput, parseInput, sendInput } from './input.ts';
 import type { Collector } from './monitor.ts';
 import { Monitor, NO_LOG } from './monitor.ts';
@@ -126,13 +127,14 @@ describe('terminal API', () => {
     const runner = new Runner({ timeoutSec: 1, logDir: null });
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
-    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
+    const sinks: ((e: TermEvent) => void)[] = [];
+    const terminal = { capture: vi.fn(async (id: string) => [`live ${id}`]), send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
     const server = createApp({ config, monitor, runner, reportsDir: () => '/nonexistent', ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
     const base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/projects`;
     const post = (id: string, body: unknown, headers: Record<string, string> = {}) => fetch(`${base}/${id}/input`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
-    return { base, post, terminal };
+    return { base, post, terminal, sinks };
   }
 
   it('serves a live capture only for panes of that project', async () => {
@@ -162,6 +164,37 @@ describe('terminal API', () => {
     expect((await post('open', { pane: '%1', text: 'x' }, { Origin: 'https://evil.example' })).status).toBe(403);
     expect((await fetch(`${(await start()).base}/open/input`, { method: 'POST', body: '{"pane":"%1","text":"x"}' })).status).toBe(400); // JSON 이 아닌 본문
     expect(terminal.send).toHaveBeenCalledTimes(1);
+  });
+
+  it('raw terminal bytes follow the input rules; mouse-only reports are sent but not logged', async () => {
+    const { base, terminal } = await start();
+    const raw = (id: string, body: unknown) => fetch(`${base}/${id}/raw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const b64 = (s: string) => Buffer.from(s).toString('base64');
+    expect((await raw('open', { pane: '%1', data: b64('\x1b[A') })).status).toBe(200);
+    expect(Buffer.from(terminal.sendRaw.mock.calls[0]![1]).toString()).toBe('\x1b[A');
+    expect(terminal.log).toHaveBeenCalledExactlyOnceWith('open', { pane: '%1', text: '\x1b[A', enter: false });
+    expect((await raw('open', { pane: '%1', data: b64('\x1b[<64;10;5M') })).status).toBe(200);
+    expect(terminal.sendRaw).toHaveBeenCalledTimes(2);
+    expect(terminal.log).toHaveBeenCalledTimes(1);
+
+    expect((await raw('closed', { pane: '%2', data: b64('x') })).status).toBe(403);
+    expect((await raw('open', { pane: '%2', data: b64('x') })).status).toBe(404);
+    expect((await raw('open', { pane: '%1', data: '' })).status).toBe(400);
+    expect((await raw('open', { pane: '%1', data: 'not base64!' })).status).toBe(400);
+    expect((await raw('open', { pane: '%1', data: b64('x'.repeat(4097)) })).status).toBe(400);
+    expect(terminal.sendRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('streams a pane of the project as SSE, read-only projects included, and 404s for other panes', async () => {
+    const { base, terminal } = await start();
+    const ctrl = new AbortController();
+    const res = await fetch(`${base}/closed/term/%252`, { signal: ctrl.signal });
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+    const first = new TextDecoder().decode((await res.body!.getReader().read()).value);
+    expect(first).toBe('data: {"type":"init","cols":80,"rows":24,"alt":false,"data":"aGk="}\n\n');
+    expect(terminal.stream).toHaveBeenCalledWith('b', '%2', expect.any(Function));
+    ctrl.abort();
+    expect((await fetch(`${base}/open/term/%252`)).status).toBe(404);
   });
 
   it('stores an uploaded image under the same rules as input and returns its path', async () => {
@@ -269,7 +302,7 @@ describe('session API', () => {
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
     const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
-    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
+    const terminal = { capture: vi.fn(async () => []), send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {

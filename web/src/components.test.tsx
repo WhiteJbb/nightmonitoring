@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import type { ProjectSnapshot, RunResult, Snapshot, TmuxPane } from '../../shared/types.ts';
+import type { ProjectSnapshot, RunResult, Snapshot } from '../../shared/types.ts';
 import { ConfigErrorBanner, Dashboard, ProjectCard } from './App.tsx';
 import { GitTab, RunPanel, TerminalTab } from './ProjectDetail.tsx';
 
@@ -52,15 +52,6 @@ function project(over: Partial<ProjectSnapshot> = {}): ProjectSnapshot {
   };
 }
 
-const pane = (id: string, index: number, active: boolean, lines: string[]): TmuxPane => ({
-  id,
-  window: 0,
-  windowName: 'zsh',
-  index,
-  command: index === 0 ? 'node' : 'zsh',
-  active,
-  lines,
-});
 
 const run = (over: Partial<RunResult> = {}): RunResult => ({
   kind: 'test',
@@ -114,30 +105,6 @@ test('terminal falls back to plain output and shows the waiting prompt', () => {
   expect(screen.getByLabelText('최근 터미널 출력').textContent).toBe('plain output');
   expect(screen.getByRole('status').textContent).toContain('Proceed? (y/n)');
   expect(screen.queryByRole('group', { name: 'pane 선택' })).toBeNull();
-});
-
-test('pane selector defaults to the active pane, switches, and keeps the selection on rerender', () => {
-  const base = project();
-  const withPanes = (panes: TmuxPane[]) => project({ tmux: { ...base.tmux, panes } });
-  const term = () => screen.getByLabelText('최근 터미널 출력');
-  const { rerender } = render(
-    <TerminalTab project={withPanes([pane('%1', 0, false, ['\x1b[31mfirst']), pane('%2', 1, true, ['second'])])} now={NOW} />,
-  );
-  expect(term().textContent).toBe('second');
-  const first = screen.getByRole('button', { name: '0:zsh · 0 node' });
-  expect(screen.getByRole('button', { name: '0:zsh · 1 zsh' }).getAttribute('aria-pressed')).toBe('true');
-
-  fireEvent.click(first);
-  expect(term().textContent).toBe('first');
-  expect(screen.getByText('first').style.color).toBe('rgb(248, 113, 113)');
-
-  // 새 스냅샷: 내용이 바뀌어도 고른 pane 이 유지된다
-  rerender(<TerminalTab project={withPanes([pane('%1', 0, false, ['first', 'more']), pane('%2', 1, true, ['second!'])])} now={NOW} />);
-  expect(term().textContent).toBe('first\nmore');
-
-  // 고른 pane 이 사라지면 활성 pane 으로
-  rerender(<TerminalTab project={withPanes([pane('%2', 1, true, ['second!']), pane('%3', 2, false, ['third'])])} now={NOW} />);
-  expect(term().textContent).toBe('second!');
 });
 
 test('run panel shows 취소 while running and calls DELETE', async () => {

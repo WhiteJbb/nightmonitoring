@@ -1,6 +1,6 @@
 import express from 'express';
 import type { NextFunction, Request, Response } from 'express';
-import type { ConfigView, EditableProject } from '../shared/types.ts';
+import type { ConfigView, EditableProject, RawInputRequest, TermEvent } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
@@ -13,6 +13,9 @@ import type { Runner } from './runner.ts';
 import type { TermSize } from './tmux.ts';
 import { clampSize, MAX_LIVE_LINES, OUTPUT_LINES } from './tmux.ts';
 import { parseUpload } from './upload.ts';
+
+/** 한 번에 받는 raw 입력의 최대 바이트 (키 몇 개나 마우스 보고 묶음이면 충분하다) */
+export const MAX_RAW_BYTES = 4096;
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 const hostname = (host: string) => host.replace(/:\d+$/, '').toLowerCase();
@@ -71,6 +74,10 @@ export interface AppDeps {
     capture: (paneId: string, lines: number) => Promise<string[]>;
     /** 실패하면 오류 메시지 */
     send: (input: ParsedInput) => Promise<string | null>;
+    /** 터미널 에뮬레이터의 바이트를 그대로 넣는다. 실패하면 오류 메시지 */
+    sendRaw: (paneId: string, bytes: Uint8Array) => Promise<string | null>;
+    /** pane 출력 스트림. 돌려주는 함수로 끊는다 */
+    stream: (session: string, paneId: string, sink: (e: TermEvent) => void) => () => void;
     log: (projectId: string, input: ParsedInput) => void;
     /** repoPath(원문, "~" 가능)에서 셸 세션을 만든다. 이미 있으면 그대로 둔다. 실패하면 오류 메시지 */
     createSession: (name: string, repoPath: string, size: TermSize) => Promise<string | null>;
@@ -163,6 +170,36 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     const error = await terminal.send(input);
     if (error) return void res.status(500).json({ error });
     res.json({ ok: true });
+  });
+
+  // 터미널 에뮬레이터가 만든 바이트. 글 입력과 같은 경로와 같은 조건이고, 같은 파일에 기록한다.
+  api.post('/projects/:id/raw', express.json({ limit: '8kb' }), async (req, res) => {
+    const body = (req.body ?? {}) as Partial<RawInputRequest>;
+    const bytes = typeof body.data === 'string' && /^[A-Za-z0-9+/=]*$/.test(body.data) ? Buffer.from(body.data, 'base64') : null;
+    if (!bytes || bytes.length === 0 || bytes.length > MAX_RAW_BYTES) return void res.status(400).json({ error: `data 는 base64 1~${MAX_RAW_BYTES} 바이트여야 합니다` });
+    const { project, pane } = findPane(req.params.id, body.pane);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    // 마우스 보고(휠·클릭)만 있는 바이트는 기록하지 않는다. 사람이 친 글이 아니고 양이 많다
+    const text = bytes.toString('utf8');
+    // eslint-disable-next-line no-control-regex -- 터미널 이스케이프 시퀀스를 다룬다
+    if (text.replace(/\x1b\[<\d+;\d+;\d+[Mm]/g, '') !== '') terminal.log(project.id, { pane: pane.id, text, enter: false });
+    const error = await terminal.sendRaw(pane.id, bytes);
+    if (error) return void res.status(500).json({ error });
+    res.json({ ok: true });
+  });
+
+  // pane 출력 스트림. 읽기만 하므로 입력 조건은 걸지 않는다 (스냅샷에 있는 pane 만).
+  api.get('/projects/:id/term/:paneId', (req, res) => {
+    const { project, pane } = findPane(req.params.id, req.params.paneId);
+    if (!project || !pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    if (!terminal || !project.tmuxSession) return void res.status(403).json({ error: 'demo mode 에서는 터미널 스트림이 없습니다' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    // 출력은 건너뛸 수 없다 (한 조각이 빠지면 화면이 어긋난다). 느린 클라이언트면 메모리에 쌓인다.
+    const off = terminal.stream(project.tmuxSession, pane.id, (e) => void res.write(`data: ${JSON.stringify(e)}\n\n`));
+    req.on('close', off);
   });
 
   // 이미지는 파일로 저장만 한다. 경로를 입력에 넣어 보내는 것은 평범한 글 입력과 같은 경로를 탄다.

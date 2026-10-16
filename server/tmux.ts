@@ -43,7 +43,16 @@ export function parseSessions(out: string): Map<string, TmuxSession> {
 
 export async function listSessions(): Promise<TmuxSessions> {
   const r = await run('tmux', ['list-sessions', '-F', LIST_FORMAT]);
-  if (r.code === 0) return { sessions: parseSessions(r.stdout) };
+  if (r.code === 0) {
+    const sessions = parseSessions(r.stdout);
+    // session_attached 는 우리 터미널 스트림의 컨트롤 클라이언트도 센다. 사람이 붙인 터미널만 attached 로 친다
+    const c = await run('tmux', ['list-clients', '-F', '#{client_session}\t#{client_control_mode}']);
+    if (c.code === 0) {
+      const human = new Set(c.stdout.split('\n').filter((l) => l.endsWith('\t0')).map((l) => l.split('\t')[0]));
+      for (const [name, s] of sessions) s.attached = human.has(name);
+    }
+    return { sessions };
+  }
   // code 1 = tmux 서버가 안 떠 있음 (세션 0개). null = tmux 실행 자체가 실패.
   if (r.code === null) return { sessions: new Map(), error: `tmux 를 실행할 수 없습니다: ${r.stderr.trim()}` };
   return { sessions: new Map() };
@@ -125,6 +134,13 @@ async function paste(id: string, text: string) {
   const set = await run('tmux', ['set-buffer', '-b', buffer, '--', tmuxArg(text)]);
   // -p: 프로그램이 bracketed paste 를 켰을 때만 괄호 코드를 붙인다. -d: 쓰고 나서 버퍼를 지운다.
   return set.code === 0 ? run('tmux', ['paste-buffer', '-p', '-d', '-b', buffer, '-t', id]) : set;
+}
+
+/** 터미널 에뮬레이터가 만든 바이트(키·마우스 보고)를 그대로 넣는다. -H 는 16진수 바이트를 키 해석 없이 보낸다. */
+export async function sendRaw(id: string, bytes: Uint8Array): Promise<string | null> {
+  const hex = [...bytes].map((b) => b.toString(16).padStart(2, '0'));
+  const r = await run('tmux', ['send-keys', '-t', id, '-H', ...hex]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux send-keys 실패';
 }
 
 /** pane 에 특수 키 하나를 보낸다. key 는 호출부가 허용 목록으로 검증한 값이어야 한다. */
