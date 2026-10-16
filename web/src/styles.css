@@ -1130,6 +1130,19 @@ pre {
   background: color-mix(in srgb, var(--violet) 10%, var(--s2));
   margin-bottom: 12px;
 }
+.card .choices {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.card .choices button {
+  padding: 2px 12px;
+  min-height: 28px;
+  font-size: var(--fs-xs);
+}
 .notice.waiting .choices {
   display: flex;
   flex-wrap: wrap;
@@ -1206,6 +1219,19 @@ form.settings {
   color: var(--dim);
   font-size: var(--fs-sm);
   margin: 0 0 6px 14px;
+}
+fieldset.checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+}
+fieldset.checks legend {
+  margin-bottom: 6px;
+  font-size: var(--fs-sm);
+  color: var(--dim);
 }
 .field label.check {
   display: flex;
@@ -1621,6 +1647,7 @@ form.settings {
   }
   .keys button,
   .panes button,
+  .card .choices button,
   .meta button,
   .with-action button,
   .discovered button,

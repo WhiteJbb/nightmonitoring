@@ -208,6 +208,8 @@ export interface EditableSettings {
   commandTimeoutSec: number;
   /** 휴대폰 푸시를 보낼 ntfy 주소 (예: "https://ntfy.sh/내-주제"). null 이면 보내지 않는다 */
   ntfyUrl: string | null;
+  /** 휴대폰 푸시를 보낼 상태. idle 은 에이전트의 "작업 끝남" */
+  ntfyStates: ProjectState[];
   /** 대시보드에서 숨긴 미등록 tmux 세션 이름 */
   hiddenSessions: string[];
 }

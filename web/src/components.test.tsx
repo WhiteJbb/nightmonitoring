@@ -100,6 +100,16 @@ test('project card shows the git error variant', () => {
   expect(screen.queryByTitle(/^브랜치: /)).toBeNull();
 });
 
+test('a waiting card offers the numbered answers outside its link', async () => {
+  respond(200, { ok: true });
+  const base = project();
+  render(<ProjectCard p={project({ allowInput: true, tmux: { ...base.tmux, waitingPrompt: 'Do you want to proceed?', waitingChoices: { pane: '%3', options: [{ key: '1', label: 'Yes' }] } } })} now={NOW} />);
+  const yes = screen.getByRole('button', { name: '1. Yes' });
+  expect(yes.closest('a')).toBeNull();
+  fireEvent.click(yes);
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/input', expect.objectContaining({ method: 'POST' })));
+});
+
 test('terminal falls back to plain output and shows the waiting prompt', () => {
   const base = project();
   render(<TerminalTab project={project({ tmux: { ...base.tmux, waitingPrompt: 'Proceed? (y/n)' } })} now={NOW} />);
