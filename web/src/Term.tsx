@@ -145,7 +145,9 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
         return;
       }
       const target = el.querySelector('.xterm-screen') ?? el;
-      target.dispatchEvent(new WheelEvent('wheel', { deltaY: dy, deltaMode: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
+      // 마우스를 안 받는 프로그램은 휠이 PgUp/PgDn 이 된다. 손가락으로 터미널 높이의 80% 를 쓸면 한 쪽 넘어가게 맞춘다
+      const scale = term.modes.mouseTrackingMode === 'none' ? WHEEL_PAGE_PX / Math.max(1, el.clientHeight * 0.8) : 1;
+      target.dispatchEvent(new WheelEvent('wheel', { deltaY: dy * scale, deltaMode: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
     };
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
