@@ -207,6 +207,23 @@ export async function newSession(name: string, cwd: string, size: TermSize = DEF
   return r.code === 0 ? null : r.stderr.trim() || 'tmux new-session 실패';
 }
 
+/** 세션의 첫 pane 에 한 줄을 치고 Enter (새 세션에서 에이전트를 띄울 때만 쓴다). 실패하면 오류 메시지 */
+export async function typeLine(session: string, line: string): Promise<string | null> {
+  const target = `=${session}:`;
+  const r = await run('tmux', ['send-keys', '-t', target, '-l', line]);
+  if (r.code !== 0) return r.stderr.trim() || 'tmux send-keys 실패';
+  const e = await run('tmux', ['send-keys', '-t', target, 'Enter']);
+  return e.code === 0 ? null : e.stderr.trim() || 'tmux send-keys 실패';
+}
+
+/** 세션을 끝낸다. 실패하면 오류 메시지 */
+export async function killSession(session: string): Promise<string | null> {
+  const r = await run('tmux', ['kill-session', '-t', `=${session}`]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux kill-session 실패';
+}
+
+export const hasSession = async (session: string) => (await run('tmux', ['has-session', '-t', `=${session}`])).code === 0;
+
 /** pane 이 속한 윈도우의 크기를 바꾼다. 프로그램에는 터미널 크기 변경 신호만 간다. 실패하면 오류 메시지. */
 export async function resizeWindow(paneId: string, size: TermSize): Promise<string | null> {
   const wh = `${size.cols}x${size.rows}`;

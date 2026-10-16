@@ -466,6 +466,34 @@ export function QuickAnswers({ project: p }: { project: ProjectSnapshot }) {
   );
 }
 
+/** 세션 끝내기: 안에서 돌던 에이전트도 같이 끝나므로 한 번 묻는다 */
+function EndSession({ projectId, session }: { projectId: string; session: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const end = () => {
+    if (!window.confirm(`"${session}" 세션을 끝낼까요?\n안에서 돌던 프로그램(에이전트 포함)도 종료됩니다.`)) return;
+    setBusy(true);
+    setError(null);
+    api
+      .killSession(projectId)
+      .catch((e: unknown) => setError(errorMessage(e)))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <p>
+      <button type="button" className="danger" disabled={busy} onClick={end}>
+        {busy ? '끝내는 중…' : '세션 종료'}
+      </button>
+      {error && (
+        <span className="err" role="alert">
+          {' '}
+          {error}
+        </span>
+      )}
+    </p>
+  );
+}
+
 const onVisibility = (cb: () => void) => {
   document.addEventListener('visibilitychange', cb);
   return () => document.removeEventListener('visibilitychange', cb);
@@ -626,6 +654,7 @@ export function TerminalTab({ project: p, now }: Props) {
             <span className="dim"> ({dateTime(t.lastOutputChangeAt ?? t.lastActivityAt)})</span>
           </dd>
         </dl>
+        {p.allowInput && <EndSession projectId={p.id} session={p.tmuxSession ?? ''} />}
       </div>
       {t.error && <p className="err mono wrap">{t.error}</p>}
       <div className={full ? 'term-frame full' : 'term-frame'} ref={frameRef}>
