@@ -91,6 +91,17 @@ describe('logInput', () => {
     expect(lines).toMatchObject([{ project: 'app', pane: '%3', text: 'hi', enter: true }, { project: 'app', pane: '%3', key: 'C-c' }]);
     await rm(dir, { recursive: true });
   });
+
+  it('moves a full log aside to .1 before writing more', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-input-'));
+    const file = path.join(dir, 'input.log');
+    await logInput(file, 'app', { pane: '%3', text: 'old', enter: false }, 10);
+    await logInput(file, 'app', { pane: '%3', text: 'new', enter: false }, 10); // 이미 10바이트를 넘었다
+    expect(await readFile(`${file}.1`, 'utf8')).toContain('"old"');
+    expect(await readFile(file, 'utf8')).not.toContain('"old"');
+    expect(await readFile(file, 'utf8')).toContain('"new"');
+    await rm(dir, { recursive: true });
+  });
 });
 
 describe('terminal API', () => {

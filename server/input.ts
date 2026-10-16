@@ -1,5 +1,5 @@
 // UI → tmux 키 입력. allowInput 을 켠 프로젝트에만, loopback·Tailscale 바인딩일 때만 허용된다 (app.ts).
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, rename, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import type { InputKey } from '../shared/types.ts';
@@ -39,9 +39,13 @@ export async function sendInput(input: ParsedInput): Promise<string | null> {
 }
 
 /** 보낸 입력을 한 줄 JSON 으로 남긴다. 기록 실패가 입력을 막지는 않는다. */
-export async function logInput(file: string, project: string, input: ParsedInput): Promise<void> {
+/** 입력 기록이 이보다 커지면 .1 로 한 번 돌린다 (터미널에 치는 글이 모두 쌓이므로) */
+export const INPUT_LOG_MAX_BYTES = 5 * 1024 * 1024;
+
+export async function logInput(file: string, project: string, input: ParsedInput, maxBytes = INPUT_LOG_MAX_BYTES): Promise<void> {
   try {
     await mkdir(path.dirname(file), { recursive: true });
+    if (((await stat(file).catch(() => null))?.size ?? 0) > maxBytes) await rename(file, `${file}.1`);
     await appendFile(file, `${JSON.stringify({ at: new Date().toISOString(), project, ...input })}\n`);
   } catch (e) {
     console.error(`입력 기록 실패: ${(e as Error).message}`);
