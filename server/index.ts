@@ -69,8 +69,10 @@ async function main() {
   // 휴대폰에서 눌러 열 수 있는 주소. loopback 은 휴대폰에서 닿지 않으므로 붙이지 않는다.
   const reachable = !['127.0.0.1', 'localhost', '::1'].includes(config.host);
   const hostForUrl = config.host.includes(':') ? `[${config.host}]` : config.host;
+  // tailscale serve 로 https 를 열어 두었으면(allowedHosts 의 *.ts.net) 알림도 그 주소로 연다: 클립보드 등 보안 출처 기능이 된다
+  const httpsName = config.allowedHosts.find((h) => h.endsWith('.ts.net'));
   const clickFor = (projectId?: string) =>
-    reachable ? { click: `http://${hostForUrl}:${config.port}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
+    reachable || httpsName ? { click: `${httpsName ? `https://${httpsName}` : `http://${hostForUrl}:${config.port}`}/${projectId ? `#/project/${encodeURIComponent(projectId)}` : ''}` } : {};
   const testPush = async () => {
     const url = monitor.config.ntfyUrl;
     if (!url) return 'ntfy 주소가 설정되어 있지 않습니다. 먼저 저장하세요.';

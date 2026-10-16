@@ -289,6 +289,12 @@ tailscale serve --bg 4477          # https://<기기이름>.<tailnet>.ts.net 으
 
 이때 접속은 그 주소(`http://100.101.102.103:4477`)나 MagicDNS 이름(`http://my-mac:4477`, `*.ts.net`)으로만 받습니다. 다른 이름으로 들어오는 요청은 DNS rebinding 방어를 위해 거부하므로, 다른 이름을 쓰려면 `allowedHosts`에 적으세요.
 
+방법 2에서도 HTTPS가 필요하면(우클릭 한 번 붙여넣기 등 브라우저의 클립보드 기능은 HTTPS에서만 동작) Tailscale이 그 주소로 중계하게 하고, 이름을 `allowedHosts`에 적습니다. 휴대폰 알림의 링크도 이 HTTPS 주소로 바뀝니다.
+
+```bash
+tailscale serve --bg --https=443 http://100.101.102.103:4477   # https://<기기>.<tailnet>.ts.net
+```
+
 `host`와 `allowedHosts`는 파일에서만 바꿀 수 있고 재시작해야 적용됩니다. `tailscale funnel`(인터넷 공개)로는 절대 노출하지 마세요.
 
 ## 상태 판정
