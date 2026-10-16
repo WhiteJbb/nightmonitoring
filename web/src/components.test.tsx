@@ -123,6 +123,15 @@ test('numbered choices under a waiting prompt are answer buttons that send the n
   expect(screen.queryByRole('group', { name: '바로 답하기' })).toBeNull();
 });
 
+test('the Git tab fetches the full since-baseline lists when the live snapshot only has a summary', async () => {
+  const baseline = { at: NOW, branch: 'main', head: 'abc1234' };
+  const fullSince = { baseline, commits: [{ hash: 'abc1234def', subject: 'feat: full list', author: 'me', date: NOW }], files: [], additions: 1, deletions: 0 };
+  respond(200, { ...project(), since: fullSince });
+  render(<GitTab project={project({ since: { ...fullSince, commits: [], partial: true } })} now={NOW} />);
+  expect(await screen.findByText('feat: full list')).toBeTruthy();
+  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api', expect.anything());
+});
+
 test('run panel shows 취소 while running and calls DELETE', async () => {
   respond(202, { ok: true });
   const p = project({ runs: { test: run({ running: true, finishedAt: null, exitCode: null, durationMs: null }), build: null } });
