@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
+import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
+import { NOT_A_REPO } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
 import { Term } from './Term.tsx';
@@ -29,6 +30,9 @@ const TABS = [
   ['runs', '테스트·빌드'],
 ] as const;
 type Tab = (typeof TABS)[number][0];
+const TAB_IDS = TABS.map(([id]) => id);
+// 고른 탭은 주소에 남긴다: #/project/<id>/<탭>. 새로고침·뒤로 가기에도 그대로다
+const hashTab = (): Tab => TAB_IDS.find((id) => id === window.location.hash.split('/')[3]) ?? 'terminal';
 
 interface Props {
   project: ProjectSnapshot;
@@ -37,8 +41,27 @@ interface Props {
   refreshSec?: number;
 }
 
+const failed = (r: RunResult | null) => r !== null && !r.running && (r.timedOut || (!r.canceled && r.exitCode !== 0));
+
 export function ProjectDetail({ project: p, now, refreshSec }: Props) {
-  const [tab, setTab] = useState<Tab>('terminal');
+  const [tab, setTabState] = useState<Tab>(hashTab);
+  const setTab = (id: Tab) => {
+    setTabState(id);
+    // 탭마다 기록이 쌓이지 않게 지금 주소만 바꾼다
+    history.replaceState(null, '', `#/project/${encodeURIComponent(p.id)}/${id}`);
+  };
+  // 화살표·Home·End 로 탭을 옮긴다. 고른 탭만 Tab 순서에 들어간다 (roving tabindex)
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const i = TAB_IDS.indexOf(tab);
+    const n = TAB_IDS.length;
+    const next = ({ ArrowRight: (i + 1) % n, ArrowLeft: (i + n - 1) % n, Home: 0, End: n - 1 } as Record<string, number>)[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    setTab(TAB_IDS[next]!);
+    document.getElementById(`tab-${TAB_IDS[next]}`)?.focus();
+  };
+  // 탭에 붙이는 오류 수: Git 은 로그 오류, 테스트·빌드는 마지막 실행이 실패한 것
+  const counts: Record<Tab, number> = { terminal: 0, git: p.logErrors.length, runs: [p.runs.test, p.runs.build].filter(failed).length };
   return (
     <>
       <p className="crumb">
@@ -47,18 +70,31 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
       <div className="detail-head">
         <h1>{p.name}</h1>
         <Badge state={p.status.state} />
+        {p.id.startsWith('tmux:') && <Register project={p} />}
       </div>
       <Reasons reasons={p.status.reasons} />
+      <LogErrorsAck
+        project={p}
+        onShow={() => {
+          setTab('git');
+          setTimeout(() => document.getElementById('log-errors')?.scrollIntoView?.({ block: 'start' }));
+        }}
+      />
       <p className="mono dim wrap">{p.repoPath}</p>
 
-      <div className="tabs" role="tablist">
+      <div className="tabs" role="tablist" aria-label="프로젝트 정보" onKeyDown={onTabKey}>
         {TABS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}>
+          <button key={id} id={`tab-${id}`} type="button" role="tab" aria-selected={tab === id} aria-controls={tab === id ? `panel-${id}` : undefined} tabIndex={tab === id ? 0 : -1} onClick={() => setTab(id)}>
             {label}
+            {counts[id] > 0 && (
+              <span className="tab-count" title={`오류 ${counts[id]}건`}>
+                {counts[id]}
+              </span>
+            )}
           </button>
         ))}
       </div>
-      <div role="tabpanel">
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'terminal' && <TerminalTab project={p} now={now} refreshSec={refreshSec} />}
         {tab === 'git' && <GitTab project={p} now={now} />}
         {tab === 'runs' && (
@@ -70,6 +106,90 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
         )}
       </div>
     </>
+  );
+}
+
+/** 설정에 없는 tmux 세션을 지금 경로로 프로젝트에 등록한다 (대시보드의 "등록"과 같은 요청). 등록되면 새 프로젝트 화면으로 옮긴다 */
+function Register({ project: p }: { project: ProjectSnapshot }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const session = p.tmuxSession ?? p.name;
+  const register = () => {
+    setBusy(true);
+    setError(null);
+    api.createSession({ name: session, repoPath: p.repoPath, tmuxSession: session, allowInput: false }).then(
+      ({ id }) => {
+        window.location.hash = `#/project/${encodeURIComponent(id)}`;
+      },
+      (e: unknown) => {
+        setError(errorMessage(e));
+        setBusy(false);
+      },
+    );
+  };
+  return (
+    <>
+      <span className="dim" title="설정에 없는 tmux 세션. 세션이 닫히면 이 화면도 사라집니다">
+        미등록
+      </span>
+      <button type="button" disabled={busy} onClick={register} title="이 세션을 지금 경로로 프로젝트에 등록합니다">
+        {busy ? '등록하는 중…' : '프로젝트로 등록'}
+      </button>
+      {error && (
+        <span className="err" role="alert">
+          등록 실패: {error}
+        </span>
+      )}
+    </>
+  );
+}
+
+/** 로그 오류가 있으면 화면 위쪽에서 바로 보고 확인 처리한다 */
+function LogErrorsAck({ project: p, onShow }: { project: ProjectSnapshot; onShow: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ack = () => {
+    setBusy(true);
+    setError(null);
+    api
+      .ackErrors(p.id)
+      .then(
+        () => {
+          setDone(true);
+          setTimeout(() => setDone(false), 4000);
+        },
+        (e: unknown) => setError(errorMessage(e)),
+      )
+      .finally(() => setBusy(false));
+  };
+  if (done) {
+    return (
+      <p className="ok" role="status">
+        로그 오류 표시를 지웠습니다. 새 오류는 계속 감지합니다.
+      </p>
+    );
+  }
+  if (p.logErrors.length === 0) return null;
+  return (
+    <div className="notice error log-ack">
+      <strong>로그에서 오류 {p.logErrors.length}건을 감지했습니다.</strong>
+      <p className="mono wrap">{p.logErrors.at(-1)}</p>
+      <div className="actions">
+        <button type="button" onClick={onShow}>
+          로그 보기
+        </button>
+        <button type="button" onClick={ack} disabled={busy}>
+          로그 오류 확인 완료
+        </button>
+      </div>
+      <p className="hint">지금까지 감지한 오류 표시를 지웁니다. 새 오류는 계속 감지합니다.</p>
+      {error && (
+        <p className="err" role="alert">
+          확인 처리 실패: {error}
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -112,19 +232,22 @@ const FORWARD: Record<string, InputKey> = {
 // 빈 입력칸에서 Ctrl 조합은 pane 으로 간다. 컴퓨터에선 키 버튼이 숨겨져 있어 이게 유일한 길이다
 const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' };
 
-function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
+/** pane: 입력을 보낼 pane. 고른 pane 이 사라졌으면 null 이고, 다시 고를 때까지 보내지 않는다 */
+function InputBar({ projectId, pane: target }: { projectId: string; pane: TmuxPane | null }) {
+  const pane = target?.id ?? '';
   const [text, setText] = useState('');
   const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  // 올리는 중인 이미지 수. 다 올라가 경로가 입력에 들어가기 전엔 프롬프트를 보내지 않는다
+  const [uploading, setUploading] = useState(0);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // 이미지는 서버에 파일로 저장하고 그 경로를 입력 칸에 넣는다. Claude Code·Codex 는 프롬프트 안의 이미지 경로를 첨부로 읽는다.
   const attach = (file: File | undefined) => {
     if (!file || !file.type.startsWith('image/')) return;
-    setUploading(true);
+    setUploading((n) => n + 1);
     setError(null);
     const reader = new FileReader();
     reader.onload = () => {
@@ -137,11 +260,11 @@ function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
           },
           (e: unknown) => setError(errorMessage(e)),
         )
-        .finally(() => setUploading(false));
+        .finally(() => setUploading((n) => n - 1));
     };
     reader.onerror = () => {
       setError('이미지를 읽지 못했습니다');
-      setUploading(false);
+      setUploading((n) => n - 1);
     };
     reader.readAsDataURL(file);
   };
@@ -164,7 +287,8 @@ function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
     // 글을 보낸 뒤에는 이어서 칠 수 있게 입력 칸에 포커스를 둔다.
     // 키 버튼은 마우스 환경에서만 포커스를 되돌린다 (터치 화면에서 PgUp 을 누를 때마다 키보드가 뜨지 않게).
     if (body.text !== undefined || finePointer()) inputRef.current?.focus();
-    if (busy) return;
+    // 보낼 pane 이 없거나, 이미지 경로가 아직 안 들어왔는데 프롬프트를 제출하려 하면 보내지 않는다
+    if (busy || !target || (uploading > 0 && (body.text !== undefined || body.key === 'Enter'))) return;
     setBusy(true);
     const sent = body.text;
     if (sent !== undefined) setText('');
@@ -215,8 +339,19 @@ function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
     }
   };
 
+  const blocked = busy || !target || uploading > 0;
   return (
     <div className="input-bar">
+      {target ? (
+        <p className="input-target">
+          보낼 곳: <span className="mono">{target.window}:{target.windowName} · {target.index}</span> <span className="dim mono">{target.command}</span>
+          {uploading > 0 && <span className="warn"> · 이미지 올리는 중…</span>}
+        </p>
+      ) : (
+        <p className="err input-target" role="alert">
+          선택한 pane 이 사라졌습니다. 위에서 pane 을 다시 고르면 보낼 수 있습니다.
+        </p>
+      )}
       <div className="input-row">
         <textarea
           ref={inputRef}
@@ -235,14 +370,14 @@ function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
           onDrop={onDrop}
           onDragOver={(e) => e.preventDefault()}
         />
-        <button type="button" className="primary" disabled={busy} onClick={() => sendText(true)}>
+        <button type="button" className="primary" disabled={blocked} onClick={() => sendText(true)}>
           보내기
         </button>
-        <button type="button" disabled={busy || text === ''} onClick={() => sendText(false)}>
-          Enter 없이 입력
+        <button type="button" disabled={blocked || text === ''} title="Enter 를 누르지 않고 글만 pane 에 넣습니다 (아직 제출하지 않음)" onClick={() => sendText(false)}>
+          입력만 하기
         </button>
-        <button type="button" disabled={uploading} title="이미지를 골라 파일로 저장하고 경로를 입력에 넣습니다 (붙여넣기·끌어다 놓기도 됩니다)" onClick={() => fileRef.current?.click()}>
-          {uploading ? '올리는 중…' : '이미지'}
+        <button type="button" disabled={uploading > 0} title="이미지를 골라 파일로 저장하고 경로를 입력에 넣습니다 (붙여넣기·끌어다 놓기도 됩니다)" onClick={() => fileRef.current?.click()}>
+          {uploading > 0 ? '이미지 올리는 중…' : '이미지'}
         </button>
         <input
           ref={fileRef}
@@ -264,7 +399,7 @@ function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
             className={[CAUTION.includes(key) ? 'caution' : '', PRIMARY_KEYS.includes(key) ? '' : 'extra'].join(' ').trim() || undefined}
             title={title}
             aria-label={title}
-            disabled={busy}
+            disabled={busy || !target || (key === 'Enter' && uploading > 0)}
             onClick={() => {
               // 중단·종료 키는 되돌릴 수 없다. 버튼은 손가락이 미끄러지기 쉬우니 한 번 묻는다 (키보드의 Ctrl+C 는 그대로)
               if (CAUTION.includes(key) && !window.confirm(`${label} 를 보낼까요? 실행 중인 프로그램이 중단될 수 있습니다.`)) return;
@@ -295,8 +430,10 @@ export function TerminalTab({ project: p, now }: Props) {
   const viewRef = useRef<HTMLDivElement>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [paneId, setPaneId] = useState<string | null>(null);
-  // 고른 pane 이 사라지면 활성 pane 으로 돌아간다
-  const pane = t.panes.find((x) => x.id === paneId) ?? t.panes.find((x) => x.active) ?? t.panes[0];
+  // 고른 pane 이 사라지면 보기는 활성 pane 으로 돌아가지만, 입력은 다시 고를 때까지 막는다 (다른 pane 으로 새지 않게)
+  const chosen = t.panes.find((x) => x.id === paneId);
+  const lost = paneId !== null && !chosen;
+  const pane = chosen ?? t.panes.find((x) => x.active) ?? t.panes[0];
   const [showInfo, setShowInfo] = useState(false);
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
@@ -390,7 +527,7 @@ export function TerminalTab({ project: p, now }: Props) {
           <dd>{p.tmuxSession}</dd>
           <dt>생성 시각</dt>
           <dd>{dateTime(t.createdAt)}</dd>
-          <dt>attached</dt>
+          <dt>외부 터미널 연결</dt>
           <dd>{t.attached ? '예' : '아니오'}</dd>
           <dt>마지막 출력 변경</dt>
           <dd>
@@ -403,10 +540,10 @@ export function TerminalTab({ project: p, now }: Props) {
       <div className="term-frame">
         {pane && (
           <div className="term-bar">
-            {t.panes.length > 1 && (
+            {(t.panes.length > 1 || lost) && (
               <div className="panes" role="group" aria-label="pane 선택">
                 {t.panes.map((x) => (
-                  <button key={x.id} type="button" aria-pressed={x.id === pane.id} onClick={() => setPaneId(x.id)}>
+                  <button key={x.id} type="button" aria-pressed={!lost && x.id === pane.id} onClick={() => setPaneId(x.id)}>
                     {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
                   </button>
                 ))}
@@ -439,7 +576,7 @@ export function TerminalTab({ project: p, now }: Props) {
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            <Term key={pane.id} projectId={p.id} pane={pane.id} canInput={p.allowInput} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            <Term key={pane.id} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}
@@ -447,7 +584,12 @@ export function TerminalTab({ project: p, now }: Props) {
           )}
         </div>
       </div>
-      {pane && (p.allowInput ? <InputBar projectId={p.id} pane={pane.id} /> : <p className="hint">입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>)}
+      {pane &&
+        (p.allowInput ? (
+          <InputBar projectId={p.id} pane={lost ? null : pane} />
+        ) : (
+          <p className="hint">{p.id.startsWith('tmux:') ? '입력을 보내려면 먼저 위의 "프로젝트로 등록"으로 등록한 뒤, 설정에서 "터미널 입력 허용"을 켜세요.' : '입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.'}</p>
+        ))}
     </>
   );
 }
@@ -511,17 +653,6 @@ function Stats({ files, additions, deletions, empty }: { files: FileStat[]; addi
 
 export function GitTab({ project: p, now }: Props) {
   const { git, since } = p;
-  const [acking, setAcking] = useState(false);
-  const [ackError, setAckError] = useState<string | null>(null);
-
-  const ack = () => {
-    setAcking(true);
-    setAckError(null);
-    api
-      .ackErrors(p.id)
-      .catch((e: unknown) => setAckError(errorMessage(e)))
-      .finally(() => setAcking(false));
-  };
   return (
     <>
       {git.ok ? (
@@ -568,6 +699,12 @@ export function GitTab({ project: p, now }: Props) {
             <Commits commits={git.todayCommits} now={now} empty="오늘 커밋이 없습니다." />
           </section>
         </>
+      ) : git.error === NOT_A_REPO ? (
+        // tmux 만 감시하는 프로젝트도 있다. 오류가 아니다
+        <div className="notice">
+          <strong>연결된 Git 저장소가 없습니다.</strong>
+          <p>터미널 감시는 계속됩니다.</p>
+        </div>
       ) : (
         <div className="notice error">
           <strong>Git 정보를 읽을 수 없습니다.</strong>
@@ -594,18 +731,9 @@ export function GitTab({ project: p, now }: Props) {
       )}
 
       {p.logErrors.length > 0 && (
-        <section>
-          <h3 className="err with-action">
-            로그 오류 ({p.logErrors.length})
-            <button type="button" onClick={ack} disabled={acking}>
-              확인 처리
-            </button>
-          </h3>
-          {ackError && (
-            <p className="err" role="alert">
-              확인 처리 실패: {ackError}
-            </p>
-          )}
+        <section id="log-errors">
+          <h3 className="err">로그 오류 ({p.logErrors.length})</h3>
+          <p className="hint">확인 처리는 화면 위쪽의 "로그 오류 확인 완료"에서 합니다.</p>
           {p.logFile && <p className="mono dim wrap">{p.logFile}</p>}
           <pre className="output err-output">{p.logErrors.join('\n')}</pre>
         </section>
@@ -626,6 +754,14 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const running = run?.running ?? false;
+  // 요청이 받아들여진 뒤 다음 스냅샷이 오기 전까지의 표시. 실행 상태가 바뀌면(또는 10초 뒤) 지운다
+  const [pending, setPending] = useState<string | null>(null);
+  useEffect(() => setPending(null), [running, run?.startedAt]);
+  useEffect(() => {
+    if (!pending) return;
+    const timer = setTimeout(() => setPending(null), 10_000);
+    return () => clearTimeout(timer);
+  }, [pending]);
 
   const history = p.history[kind];
 
@@ -633,7 +769,10 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
     setBusy(true);
     setError(null);
     action(p.id, kind)
-      .catch((e: unknown) => setError(`${label} 요청 실패: ${errorMessage(e)}`))
+      .then(
+        () => setPending(`${label} 요청함…`),
+        (e: unknown) => setError(`${label} 요청 실패: ${errorMessage(e)}`),
+      )
       .finally(() => setBusy(false));
   };
 
@@ -642,15 +781,20 @@ export function RunPanel({ project: p, kind, title }: { project: ProjectSnapshot
       <h3>{title}</h3>
       <div className="cmdline">
         {command ? <code>{command}</code> : <span className="dim grow">명령이 설정되지 않았습니다</span>}
-        <button type="button" onClick={() => request(api.run, '실행')} disabled={!command || busy || running}>
+        <button type="button" onClick={() => request(api.run, '실행')} disabled={!command || busy || running || pending !== null}>
           {running ? '실행 중…' : '실행'}
         </button>
         {running && (
-          <button type="button" onClick={() => request(api.cancelRun, '취소')} disabled={busy}>
+          <button type="button" onClick={() => request(api.cancelRun, '취소')} disabled={busy || pending !== null}>
             취소
           </button>
         )}
       </div>
+      {(busy || pending) && (
+        <p className="hint" role="status">
+          {pending ?? '요청 보내는 중…'}
+        </p>
+      )}
       {!command && <p className="hint">설정 파일에 이 프로젝트의 {title} 명령을 등록하면 실행할 수 있습니다.</p>}
       {error && (
         <p className="err" role="alert">

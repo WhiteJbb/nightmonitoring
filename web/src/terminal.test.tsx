@@ -240,6 +240,11 @@ test('a read-only project gets a terminal without stdin, no input bar, and the c
   expect(posts()).toHaveLength(0);
 });
 
+test('an unregistered session points to registering first, not to settings', async () => {
+  await renderTab({ ...project(ONE, false), id: 'tmux:api' });
+  expect(screen.getByText(/입력을 보내려면/).textContent).toMatch(/^입력을 보내려면 먼저 위의 "프로젝트로 등록"/);
+});
+
 test('no panes: the snapshot output is shown as text and nothing is streamed', async () => {
   await renderTab(project([]));
   expect(FakeEventSource.all).toHaveLength(0);
@@ -258,17 +263,33 @@ test('switching the pane opens a new stream and disposes the old terminal', asyn
   expect(FakeEventSource.all[0]!.closed).toBe(true);
 });
 
-test('the pane selection survives a new snapshot and falls back to the active pane when it disappears', async () => {
+test('the pane selection survives a new snapshot; when it disappears the view falls back but input stops until a pane is chosen again', async () => {
   const { rerender } = await renderTab(project([pane('%1', 0, false, []), pane('%2', 1, true, [])]));
   expect(es().url).toBe('/api/projects/api/term/%252');
+  expect(screen.getByText(/^보낼 곳:/).textContent).toBe('보낼 곳: 0:zsh · 1 zsh');
   fireEvent.click(screen.getByRole('button', { name: /· 0/ }));
   await tick();
   expect(es().url).toBe('/api/projects/api/term/%251');
+  type('rm -rf build');
   rerender(<TerminalTab project={project([pane('%1', 0, false, []), pane('%2', 1, true, [])])} now={NOW} />);
   expect(es().url).toBe('/api/projects/api/term/%251');
-  rerender(<TerminalTab project={project([pane('%2', 1, true, []), pane('%3', 2, false, [])])} now={NOW} />);
+  // 남은 pane 이 하나여도 다시 고를 수 있게 목록이 남는다
+  rerender(<TerminalTab project={project([pane('%2', 1, true, [])])} now={NOW} />);
   await tick();
   expect(es().url).toBe('/api/projects/api/term/%252');
+  expect(screen.getByRole('alert').textContent).toContain('선택한 pane 이 사라졌습니다');
+  expect(xterm().options.disableStdin).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '보내기' }).disabled).toBe(true);
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  await tick();
+  expect(posts()).toHaveLength(0);
+  expect(box().value).toBe('rm -rf build');
+  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  await tick();
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  await tick();
+  expect(posts().map(([, body]) => body)).toEqual([{ pane: '%2', text: 'rm -rf build', enter: true }]);
 });
 
 test('the stream is closed and the terminal disposed on unmount', async () => {
@@ -343,9 +364,31 @@ test('empty Enter and the 보내기 button send just the Enter key', async () =>
   ]);
 });
 
-test('"Enter 없이 입력" omits enter and is disabled while empty', async () => {
+test('while an image is uploading, Enter and the send buttons do nothing', async () => {
+  let finish: (r: Response) => void = () => {};
+  fetchMock.mockImplementation((url, init) => (init?.method === 'POST' && String(url).endsWith('/upload') ? new Promise<Response>((r) => (finish = r)) : Promise.resolve(json(200, { ok: true }))));
   await renderTab(project(ONE));
-  const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Enter 없이 입력' });
+  type('이거 봐줘');
+  fireEvent.paste(box(), { clipboardData: { files: [new File(['png!'], 'a.png', { type: 'image/png' })], getData: () => '' } });
+  for (let i = 0; i < 20 && posts().length === 0; i++) await tick(10);
+  expect(screen.getByText(/이미지 올리는 중…/, { selector: '.input-target span' })).toBeTruthy();
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: '보내기' }).disabled).toBe(true);
+  expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Enter 보내기' }).disabled).toBe(true);
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  await tick();
+  expect(posts().map(([url]) => url)).toEqual(['/api/projects/api/upload']);
+  expect(box().value).toBe('이거 봐줘');
+  await act(async () => finish(json(200, { path: '/tmp/a.png' })));
+  await tick();
+  expect(box().value).toBe('이거 봐줘 /tmp/a.png ');
+  fireEvent.keyDown(box(), { key: 'Enter' });
+  await tick();
+  expect(posts().at(-1)![1]).toEqual({ pane: '%12', text: '이거 봐줘 /tmp/a.png ', enter: true });
+});
+
+test('"입력만 하기" omits enter and is disabled while empty', async () => {
+  await renderTab(project(ONE));
+  const button = screen.getByRole<HTMLButtonElement>('button', { name: '입력만 하기' });
   expect(button.disabled).toBe(true);
   type('y');
   expect(button.disabled).toBe(false);
