@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
@@ -303,6 +303,15 @@ export function TerminalTab({ project: p, now }: Props) {
   const [status, setStatus] = useState<TermStatus>('connecting');
   // 스트림이 알려 준 pane 크기 (칸·줄)
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
+  const autoFitted = useRef<string | null>(null);
+  const canFit = p.allowInput && t.exists && !t.attached;
+  // 붙어 있는 터미널이 없으면, 터미널을 연 화면(휴대폰·컴퓨터) 크기에 pane 을 한 번 맞춘다. 나중에 다른 화면에서 열면 거기에 맞춘다
+  useEffect(() => {
+    if (!canFit || !pane || !size || autoFitted.current === pane.id) return;
+    autoFitted.current = pane.id;
+    const want = fitSize(viewRef.current);
+    if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
+  }, [canFit, pane, size, p.id]);
 
   if (!t.configured) {
     return (
@@ -325,8 +334,9 @@ export function TerminalTab({ project: p, now }: Props) {
     );
   }
 
-  // pane 이 터미널 영역보다 넓어 글자가 작아졌는지
-  const tooWide = size !== null && size.cols > fitSize(viewRef.current).cols;
+  // pane 이 터미널 영역과 크기가 다른지
+  const want = fitSize(viewRef.current);
+  const misfit = size !== null && (size.cols !== want.cols || size.rows !== want.rows);
   const fit = () => {
     if (!pane) return;
     setFitting(true);
@@ -406,8 +416,8 @@ export function TerminalTab({ project: p, now }: Props) {
                 {size.cols}×{size.rows}
               </span>
             )}
-            {/* 붙어 있는 터미널이 없는 세션만: 화면보다 넓으면 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
-            {p.allowInput && !t.attached && tooWide && (
+            {/* 붙어 있는 터미널이 없는 세션만: 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
+            {canFit && misfit && (
               <button type="button" className="more-rows" disabled={fitting} onClick={fit} title="tmux 화면을 이 터미널 영역 크기로 바꿉니다">
                 화면에 맞추기
               </button>

@@ -1,5 +1,9 @@
 import type { TermSize } from '../../shared/types.ts';
 
+/** 터미널이 차지할 수 있는 화면 높이 비율 */
+export const TERM_MAX_VIEWPORT = 0.7;
+/** xterm 한 줄 높이 / 글자 크기 (lineHeight 1.2 × 글꼴 지표, 실측) */
+export const ROW_RATIO = 1.56;
 const FALLBACK_CHAR = 7.8; // 13px 고정폭 글꼴의 대략적인 글자 폭 (측정할 수 없는 환경용)
 
 /** 주어진 글꼴에서 고정폭 글자 하나의 폭(px). */
@@ -24,9 +28,9 @@ export function fitSize(el: HTMLElement | null): TermSize {
     const cs = getComputedStyle(el);
     const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
     const padY = (parseFloat(cs.paddingTop) || 0) + (parseFloat(cs.paddingBottom) || 0);
-    const line = parseFloat(cs.lineHeight) || (parseFloat(cs.fontSize) || 13) * 1.45;
     const cols = Math.floor((el.clientWidth - padX) / charWidth(cs.font || `${cs.fontSize} ${cs.fontFamily}`));
-    const rows = Math.floor((el.clientHeight - padY) / line);
+    // 높이는 터미널 내용을 따라 늘어나므로 요소가 아니라 화면 높이로 정한다 (Term 이 글자를 줄이는 기준과 같다)
+    const rows = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT - padY) / ((parseFloat(cs.fontSize) || 13) * ROW_RATIO));
     if (cols > 0 && rows > 0) return { cols, rows };
   }
   // main 의 최대 폭(1400px)과 좌우 여백(32px), 터미널 안쪽 여백·테두리(26px)를 뺀 폭
