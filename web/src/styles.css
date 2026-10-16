@@ -858,10 +858,18 @@ pre {
 .term-frame .terminal {
   border-radius: 0;
 }
+/* 터미널의 한글: JetBrains Mono 엔 한글이 없어 대체 글꼴로 그리는데, 그 한글(0.865em)이 두 칸(1.2em)보다 좁아
+   xterm 이 글자 뒤를 띄워 맞춘다. 한글 범위만 두 칸 너비로 키운 글꼴을 따로 둔다 */
+@font-face {
+  font-family: 'Term Hangul';
+  src: local('Apple SD Gothic Neo'), local('AppleSDGothicNeo-Regular');
+  unicode-range: U+1100-11FF, U+3130-318F, U+A960-A97F, U+AC00-D7AF, U+D7B0-D7FF;
+  size-adjust: 138.7%;
+}
 /* xterm 이 그리는 영역. 글꼴은 Term 의 옵션과 같아야 "화면에 맞추기"의 칸 수 계산이 맞는다 */
 .term-view {
   padding: 8px 10px;
-  font: 13px / 1.2 'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace;
+  font: 13px / 1.2 'JetBrains Mono Variable', 'Term Hangul', ui-monospace, 'SF Mono', Menlo, monospace;
   background: var(--term);
   overflow-x: auto;
 }

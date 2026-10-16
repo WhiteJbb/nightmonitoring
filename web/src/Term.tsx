@@ -8,7 +8,7 @@ import { charWidth } from './termsize.ts';
 /** 'connecting' | 'live' | 'down' | 'exit' 또는 서버가 보낸 오류 메시지 */
 export type TermStatus = string;
 
-export const TERM_FONT = "'JetBrains Mono Variable', ui-monospace, 'SF Mono', Menlo, monospace";
+export const TERM_FONT = "'JetBrains Mono Variable', 'Term Hangul', ui-monospace, 'SF Mono', Menlo, monospace";
 export const TERM_FONT_SIZE = 13;
 /** 한 요청에 넣는 raw 바이트 상한 (서버의 MAX_RAW_BYTES 와 같다) */
 const RAW_CHUNK = 4096;
@@ -136,15 +136,17 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       lastY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
     };
     const onTouchMove = (e: TouchEvent) => {
-      if (lastY === null || !canInput || term.buffer.active.type !== 'alternate') return;
+      // 일반 화면은 xterm 이 스크롤백을 손가락으로 직접 움직인다
+      if (lastY === null || term.buffer.active.type !== 'alternate') return;
       const t = e.touches[0]!;
       const dy = lastY - t.clientY;
       if (Math.abs(dy) < 8) return;
       lastY = t.clientY;
       e.preventDefault();
-      // 터미널 일부가 화면 밖이면 페이지를 움직여 보이게 한다. xterm 이 터치 이동을 막아 페이지가 저절로는 안 움직인다
+      // 컴퓨터의 휠처럼 쓸기는 터미널 안을 움직인다. 보기 전용이라 프로그램에 보낼 수 없거나, 터미널이 화면보다 커서
+      // 일부가 영영 안 보일 때만 페이지를 움직인다 (xterm 이 터치 이동을 막아 페이지가 저절로는 안 움직인다)
       const r = el.getBoundingClientRect();
-      if ((dy > 0 && r.bottom > window.innerHeight + 1) || (dy < 0 && r.top < -1)) {
+      if (!canInput || (r.height > window.innerHeight && ((dy > 0 && r.bottom > window.innerHeight + 1) || (dy < 0 && r.top < -1)))) {
         window.scrollBy(0, dy);
         return;
       }
