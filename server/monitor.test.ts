@@ -142,6 +142,42 @@ describe('restart', () => {
   });
 });
 
+describe('followRepo', () => {
+  it('follows the pane into a git repository when the configured path is not one, and keeps it', async () => {
+    const cfg = parseConfig({ projects: [{ name: 'home', repoPath: '/home/me', tmuxSession: 'home' }] }, '/base');
+    let cwd = '/home/me';
+    const seen: string[] = [];
+    const collector: Collector = {
+      async git(p) {
+        seen.push(p.repoPath);
+        return p.repoPath === '/home/me/repo' ? git() : { ...git(), ok: false, error: 'Git 저장소가 아닙니다' };
+      },
+      since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
+      tmux: async () => new Map([['home', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [{ id: '%1', window: 0, windowName: 'w', index: 0, command: 'zsh', active: true, cols: 80, lines: [], cwd }], waitingPrompt: null, attachCommand: 'x' }]]),
+      logErrors: async () => NO_LOG,
+    };
+    const m = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0 });
+    await m.tick();
+    expect(m.snapshot.projects[0]).toMatchObject({ repoPath: '/home/me', git: { ok: false } });
+
+    cwd = '/home/me/repo';
+    await m.tick();
+    expect(m.snapshot.projects[0]).toMatchObject({ repoPath: '/home/me/repo', git: { ok: true } });
+    expect(m.exportState().tracked.home?.repoPath).toBe('/home/me/repo');
+
+    // pane 이 저장소 밖으로 나가도 따라간 저장소는 유지한다
+    cwd = '/tmp';
+    await m.tick();
+    expect(m.snapshot.projects[0]!.repoPath).toBe('/home/me/repo');
+    expect(seen.at(-1)).toBe('/home/me/repo');
+
+    // 재시작해도 이어진다
+    const again = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0, restore: JSON.parse(JSON.stringify(m.exportState())) });
+    await again.tick();
+    expect(again.snapshot.projects[0]!.repoPath).toBe('/home/me/repo');
+  });
+});
+
 describe('discover', () => {
   it('shows unconfigured tmux sessions as temporary projects and drops them when they close', async () => {
     let found = [{ name: 'app', cwd: '/repo/app' }, { name: 'scratch', cwd: '/tmp/scratch' }];

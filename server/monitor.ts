@@ -1,4 +1,5 @@
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
+import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
 import { collectGit, collectSince } from './git.ts';
 import type { LogPos, LogScan } from './logs.ts';
@@ -86,7 +87,7 @@ interface Tracked {
   outputChangedAt: string | null;
 }
 
-type Collected = Pick<ProjectSnapshot, 'git' | 'since' | 'lastGitChangeAt' | 'tmux' | 'logErrors'>;
+type Collected = Pick<ProjectSnapshot, 'repoPath' | 'git' | 'since' | 'lastGitChangeAt' | 'tmux' | 'logErrors'>;
 
 const latest = (a: string | null, b: string | null): string | null => {
   if (!a || !b) return a ?? b;
@@ -128,7 +129,8 @@ export class Monitor {
     this.startedAt = opts.restore?.startedAt ?? new Date(this.now()).toISOString();
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
-      if (saved?.repoPath === p.repoPath) this.tracked.set(p.id, { ...newTracked(p.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, outputChangedAt: saved.outputChangedAt ?? null });
+      // 경로가 달라졌으면 collectOne 이 기준점을 버린다. 따라간 저장소(followRepo)는 여기서 그대로 이어받는다.
+      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, outputChangedAt: saved.outputChangedAt ?? null });
     }
     this.snapshot = this.build();
   }
@@ -176,7 +178,7 @@ export class Monitor {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: p.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, outputChangedAt: tr.outputChangedAt };
+      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, outputChangedAt: tr.outputChangedAt };
     }
     return { startedAt: this.startedAt, tracked };
   }
@@ -237,6 +239,7 @@ export class Monitor {
         } catch (e) {
           // 한 프로젝트의 수집 실패가 나머지를 막지 않게 오류 상태로 표시만 한다.
           this.collected.set(p.id, {
+            repoPath: p.repoPath,
             git: { ...EMPTY_GIT, error: `수집 실패: ${(e as Error).message}` },
             since: null,
             lastGitChangeAt: null,
@@ -249,14 +252,32 @@ export class Monitor {
     this.publish();
   }
 
-  private async collectOne(p: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {
+  /**
+   * 저장소가 아닌 경로로 등록된 프로젝트는 pane 이 Git 저장소 안으로 cd 하면 그 저장소를 따라간다 (config 는 바꾸지 않는다).
+   * 한 번 따라간 저장소는 pane 이 다른 곳으로 가도 저장소인 동안 유지한다.
+   */
+  private async followRepo(p: ProjectConfig, raw: RawTmux): Promise<{ project: ProjectConfig; git: GitInfo }> {
+    const git = await this.opts.collector.git(p);
+    if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
+    const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
+    for (const dir of new Set([cwd, this.tracked.get(p.id)?.repoPath])) {
+      if (!dir || dir === p.repoPath) continue;
+      const project = { ...p, repoPath: dir };
+      const found = await this.opts.collector.git(project);
+      if (found.ok) return { project, git: found };
+    }
+    return { project: p, git };
+  }
+
+  private async collectOne(config: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {
+    const { project: p, git } = await this.followRepo(config, raw);
     let tr = this.tracked.get(p.id);
     if (!tr || tr.repoPath !== p.repoPath) this.tracked.set(p.id, (tr = newTracked(p.repoPath)));
 
     // 로그 파일 설정이 바뀌면 이전 파일의 위치는 의미가 없다.
     if (tr.logFile !== p.logFile) Object.assign(tr, { logFile: p.logFile, logPos: null, logEnd: null, logErrors: [] });
     const scannedFrom = tr.logPos;
-    const [git, log] = await Promise.all([this.opts.collector.git(p), this.opts.collector.logErrors(p, scannedFrom)]);
+    const log = await this.opts.collector.logErrors(p, scannedFrom);
     // 스캔하는 사이 "확인 처리"로 위치가 옮겨졌으면 이 결과는 낡은 것이므로 버린다.
     if (tr.logPos === scannedFrom && scannedFrom !== null) tr.logErrors = [...new Set([...tr.logErrors, ...log.errors])].slice(-MAX_LOG_ERRORS);
     const logErrors = tr.logErrors;
@@ -295,6 +316,7 @@ export class Monitor {
     }
 
     return {
+      repoPath: p.repoPath,
       git,
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
