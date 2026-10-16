@@ -452,6 +452,10 @@ export function TerminalTab({ project: p, now }: Props) {
   const [status, setStatus] = useState<TermStatus>('connecting');
   // 스트림이 알려 준 pane 크기 (칸·줄)
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
+  // 늘리면 터미널을 새로 붙인다 (끊김·pane 종료 뒤 "다시 연결")
+  const [attempt, setAttempt] = useState(0);
+  const [answering, setAnswering] = useState<string | null>(null);
+  const [answerError, setAnswerError] = useState<string | null>(null);
   const autoFitted = useRef<string | null>(null);
   const canFit = p.allowInput && t.exists && !t.attached;
   // 붙어 있는 터미널이 없으면, 터미널을 연 화면(휴대폰·컴퓨터) 크기에 pane 을 한 번 맞춘다. 나중에 다른 화면에서 열면 거기에 맞춘다
@@ -517,6 +521,33 @@ export function TerminalTab({ project: p, now }: Props) {
         <div className="notice waiting" role="status">
           <strong>에이전트가 입력을 기다리고 있습니다.</strong>
           <p className="mono wrap">{t.waitingPrompt}</p>
+          {/* 번호 선택지는 버튼으로 바로 답한다: 그 번호 키를 프롬프트가 뜬 pane 에 보낸다 */}
+          {p.allowInput && t.waitingChoices && (
+            <div className="choices" role="group" aria-label="바로 답하기">
+              {t.waitingChoices.options.map((o) => (
+                <button
+                  key={o.key}
+                  type="button"
+                  disabled={answering !== null}
+                  onClick={() => {
+                    setAnswering(o.key);
+                    setAnswerError(null);
+                    api
+                      .sendInput(p.id, { pane: t.waitingChoices!.pane, text: o.key })
+                      .catch((e: unknown) => setAnswerError(errorMessage(e)))
+                      .finally(() => setAnswering(null));
+                  }}
+                >
+                  {o.key}. {o.label}
+                </button>
+              ))}
+            </div>
+          )}
+          {answerError && (
+            <p className="err" role="alert">
+              {answerError}
+            </p>
+          )}
         </div>
       )}
       {/* 좁은 화면에서는 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게 */}
@@ -584,11 +615,16 @@ export function TerminalTab({ project: p, now }: Props) {
               <span className="dot" />
               {statusLabel}
             </span>
+            {status !== 'live' && status !== 'connecting' && (
+              <button type="button" className="more-rows" onClick={() => setAttempt(attempt + 1)}>
+                다시 연결
+              </button>
+            )}
           </div>
         )}
         <div ref={viewRef} className="term-view">
           {pane ? (
-            <Term key={pane.id} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+            <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
           ) : (
             <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
               {t.output.join('\n')}

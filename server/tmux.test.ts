@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
-import { compileMatcher, findErrors, findPrompt, stripAnsi, stripVolatile } from './logs.ts';
+import { compileMatcher, findErrors, findPrompt, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
 import { capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
@@ -136,6 +136,17 @@ describe('pattern helpers', () => {
     expect(findPrompt(chat, patterns)).toBeNull();
     expect(findPrompt(['  Do you want to proceed?', '  ❯ 1. Yes', '    2. No'], patterns)).toBe('Do you want to proceed?');
     expect(findPrompt(['  ❯ 1. Yes', '    2. No'], patterns)).toBe('❯ 1. Yes');
+  });
+
+  it('collects numbered choices below the prompt', () => {
+    const screen = ['1. earlier list item', ' Do you want to proceed?', ' ❯ 1. Yes', '   2. Yes, and don\'t ask again for git commands', '   3. No, and tell Claude what to do differently (esc)', ''];
+    expect(promptChoices(screen, 'Do you want to proceed?')).toEqual([
+      { key: '1', label: 'Yes' },
+      { key: '2', label: "Yes, and don't ask again for git commands" },
+      { key: '3', label: 'No, and tell Claude what to do differently (esc)' },
+    ]);
+    expect(promptChoices(['Overwrite? (y/n)'], 'Overwrite? (y/n)')).toEqual([]);
+    expect(promptChoices(['x'], 'not on screen')).toEqual([]);
   });
 
   it('normalizes spinner and counter churn', () => {

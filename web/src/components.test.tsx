@@ -108,6 +108,21 @@ test('terminal falls back to plain output and shows the waiting prompt', () => {
   expect(screen.queryByRole('group', { name: 'pane 선택' })).toBeNull();
 });
 
+test('numbered choices under a waiting prompt are answer buttons that send the number to that pane', async () => {
+  respond(200, { ok: true });
+  const base = project();
+  const waiting = { ...base.tmux, waitingPrompt: 'Do you want to proceed?', waitingChoices: { pane: '%7', options: [{ key: '1', label: 'Yes' }, { key: '2', label: 'No' }] } };
+  const { unmount } = render(<TerminalTab project={project({ allowInput: true, tmux: waiting })} now={NOW} />);
+  fireEvent.click(screen.getByRole('button', { name: '1. Yes' }));
+  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/input', expect.objectContaining({ method: 'POST' })));
+  const call = fetchMock.mock.calls.find(([url]) => url === '/api/projects/api/input')!;
+  expect(JSON.parse(call[1]!.body as string)).toEqual({ pane: '%7', text: '1' });
+  unmount();
+  // 보기 전용 프로젝트에는 버튼이 없다
+  render(<TerminalTab project={project({ tmux: waiting })} now={NOW} />);
+  expect(screen.queryByRole('group', { name: '바로 답하기' })).toBeNull();
+});
+
 test('run panel shows 취소 while running and calls DELETE', async () => {
   respond(202, { ok: true });
   const p = project({ runs: { test: run({ running: true, finishedAt: null, exitCode: null, durationMs: null }), build: null } });
