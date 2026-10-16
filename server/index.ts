@@ -80,7 +80,7 @@ async function main() {
   };
 
   const streams = new TermStreams();
-  const deferred = new Map<string, { alert: Alert; at: number }>();
+  const deferred = new Map<string, { alert: Alert; at: number }>((saved?.deferred ?? []).map((d) => [d.alert.projectId, d]));
   // 재시작해도 이미 보낸 알림을 다시 보내지 않게 저장해 둔 기억에서 시작한다
   const alertMemory = restoreAlerts(saved?.alerts);
 
@@ -116,7 +116,7 @@ async function main() {
   if (stateFile) {
     let last = '';
     monitor.subscribe(() => {
-      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), alerts: exportAlerts(alertMemory) };
+      const state = { version: 2 as const, monitor: monitor.exportState(), runner: runner.exportState(), alerts: exportAlerts(alertMemory), deferred: [...deferred.values()] };
       const json = JSON.stringify(state);
       if (json === last) return;
       try {

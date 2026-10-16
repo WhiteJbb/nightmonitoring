@@ -180,11 +180,20 @@ export function Settings() {
     setDraft(back ?? toDraft(v));
     setRestored(back !== null);
   };
+  // 늦게 온 이전 요청의 응답은 버린다 (개발 모드의 두 번 실행 등): 되살린 초안을 저장된 값으로 덮지 않게
+  const request = useRef(0);
   const load = () => {
+    const n = ++request.current;
     setLoadError(null);
-    api.config().then(loaded, (e: unknown) => setLoadError(errorMessage(e)));
+    api.config().then(
+      (v) => n === request.current && loaded(v),
+      (e: unknown) => n === request.current && setLoadError(errorMessage(e)),
+    );
   };
-  useEffect(load, []); // 마운트 시 한 번만 불러온다
+  useEffect(() => {
+    load();
+    return () => void request.current++;
+  }, []); // 마운트 시 한 번만 불러온다
 
   const issues = saveError instanceof ApiError ? saveError.issues : [];
   // 저장이 검증에 걸리면 첫 번째 문제 칸으로 옮겨 간다

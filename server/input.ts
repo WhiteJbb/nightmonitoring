@@ -42,7 +42,16 @@ export async function sendInput(input: ParsedInput): Promise<string | null> {
 /** 입력 기록이 이보다 커지면 .1 로 한 번 돌린다 (터미널에 치는 글이 모두 쌓이므로) */
 export const INPUT_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
-export async function logInput(file: string, project: string, input: ParsedInput, maxBytes = INPUT_LOG_MAX_BYTES): Promise<void> {
+// 파일마다 한 줄로 세운다: 동시에 들어온 입력이 함께 크기를 보고 둘 다 돌리려다 기록을 잃지 않게
+const logQueue = new Map<string, Promise<void>>();
+
+export function logInput(file: string, project: string, input: ParsedInput, maxBytes = INPUT_LOG_MAX_BYTES): Promise<void> {
+  const next = (logQueue.get(file) ?? Promise.resolve()).then(() => writeLog(file, project, input, maxBytes));
+  logQueue.set(file, next);
+  return next;
+}
+
+async function writeLog(file: string, project: string, input: ParsedInput, maxBytes: number): Promise<void> {
   try {
     await mkdir(path.dirname(file), { recursive: true });
     if (((await stat(file).catch(() => null))?.size ?? 0) > maxBytes) await rename(file, `${file}.1`);
