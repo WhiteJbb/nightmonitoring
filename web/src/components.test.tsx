@@ -2,8 +2,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ProjectSnapshot, RunResult, Snapshot } from '../../shared/types.ts';
+import { NOT_A_REPO } from '../../shared/types.ts';
 import { ConfigErrorBanner, Dashboard, ProjectCard } from './App.tsx';
-import { GitTab, RunPanel, TerminalTab } from './ProjectDetail.tsx';
+import { GitTab, ProjectDetail, RunPanel, TerminalTab } from './ProjectDetail.tsx';
 
 const NOW = '2026-10-04T03:00:00.000Z';
 
@@ -166,17 +167,73 @@ test('git tab: renames, untracked marker, and ack button calls the endpoint', as
   render(<GitTab project={p} now={NOW} />);
   expect(screen.getByText('old.ts →').parentElement?.textContent).toBe('old.ts → new.ts');
   expect(screen.getByText('new')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: '확인 처리' }));
-  await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/ack-errors', { method: 'POST' }));
+  expect(screen.getByText('ERROR boom')).toBeTruthy();
 });
 
-test('git tab: ack failure shows an inline error; no button without log errors', async () => {
+test('detail: log errors are acknowledged from the top of the page, with feedback; no notice without errors', async () => {
+  respond(200, { ok: true });
+  render(<ProjectDetail project={project({ logErrors: ['ERROR x'] })} now={NOW} />);
+  expect(screen.getByRole('tab', { name: /Git/ }).textContent).toBe('Git1');
+  fireEvent.click(screen.getByRole('button', { name: '로그 보기' }));
+  expect(screen.getByRole('tab', { name: /Git/ }).getAttribute('aria-selected')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '로그 오류 확인 완료' }));
+  expect((await screen.findByRole('status')).textContent).toContain('로그 오류 표시를 지웠습니다');
+  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/ack-errors', { method: 'POST' });
+  window.location.hash = '';
+});
+
+test('detail: ack failure shows an inline error; no notice without log errors', async () => {
   respond(500, { error: 'boom' });
-  const { rerender } = render(<GitTab project={project({ logErrors: ['ERROR x'] })} now={NOW} />);
-  fireEvent.click(screen.getByRole('button', { name: '확인 처리' }));
+  const { rerender } = render(<ProjectDetail project={project({ logErrors: ['ERROR x'] })} now={NOW} />);
+  fireEvent.click(screen.getByRole('button', { name: '로그 오류 확인 완료' }));
   expect((await screen.findByRole('alert')).textContent).toBe('확인 처리 실패: boom');
-  rerender(<GitTab project={project()} now={NOW} />);
-  expect(screen.queryByRole('button', { name: '확인 처리' })).toBeNull();
+  rerender(<ProjectDetail project={project()} now={NOW} />);
+  expect(screen.queryByRole('button', { name: '로그 오류 확인 완료' })).toBeNull();
+});
+
+test('detail tabs: arrow keys move, only the selected tab is tabbable, tab and panel are linked, the hash keeps the tab', () => {
+  window.location.hash = '#/project/api/runs';
+  render(<ProjectDetail project={project()} now={NOW} />);
+  const tabs = screen.getAllByRole('tab');
+  expect(tabs.map((t) => t.tabIndex)).toEqual([-1, -1, 0]);
+  const panel = screen.getByRole('tabpanel');
+  expect(tabs[2]!.getAttribute('aria-controls')).toBe(panel.id);
+  expect(panel.getAttribute('aria-labelledby')).toBe(tabs[2]!.id);
+  fireEvent.keyDown(tabs[2]!, { key: 'ArrowRight' });
+  expect(document.activeElement).toBe(tabs[0]);
+  expect(tabs[0]!.getAttribute('aria-selected')).toBe('true');
+  expect(window.location.hash).toBe('#/project/api/terminal');
+  fireEvent.keyDown(tabs[0]!, { key: 'ArrowLeft' });
+  expect(window.location.hash).toBe('#/project/api/runs');
+  fireEvent.keyDown(tabs[2]!, { key: 'Home' });
+  expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe('tab-terminal');
+  window.location.hash = '';
+});
+
+test('git tab: a project without a repo shows a neutral empty state, not an error', () => {
+  const base = project();
+  render(<GitTab project={project({ git: { ...base.git, ok: false, error: NOT_A_REPO } })} now={NOW} />);
+  expect(screen.getByText('연결된 Git 저장소가 없습니다.').closest('.notice')!.className).not.toContain('error');
+  expect(screen.queryByText(/Git 정보를 읽을 수 없습니다/)).toBeNull();
+});
+
+test('discovered session detail: the register button registers it and moves to the new project', async () => {
+  respond(200, { id: 'scratch' });
+  render(<ProjectDetail project={project({ id: 'tmux:scratch', tmuxSession: 'scratch', name: 'scratch' })} now={NOW} />);
+  fireEvent.click(screen.getByRole('button', { name: '프로젝트로 등록' }));
+  await waitFor(() => expect(window.location.hash).toBe('#/project/scratch'));
+  expect(JSON.parse(fetchMock.mock.calls[0]![1]!.body as string)).toEqual({ name: 'scratch', repoPath: '/repos/api', tmuxSession: 'scratch', allowInput: false });
+  window.location.hash = '';
+});
+
+test('run panel: shows 실행 요청함… until the snapshot reflects the run', async () => {
+  respond(200, { ok: true });
+  const p = project({ testCommand: 'npm test' });
+  const { rerender } = render(<RunPanel project={p} kind="test" title="테스트" />);
+  fireEvent.click(screen.getByRole('button', { name: '실행' }));
+  expect((await screen.findByText('실행 요청함…')).getAttribute('role')).toBe('status');
+  rerender(<RunPanel project={{ ...p, runs: { test: run({ running: true }), build: null } }} kind="test" title="테스트" />);
+  await waitFor(() => expect(screen.queryByText('실행 요청함…')).toBeNull());
 });
 
 test('config error banner preserves the message', () => {
