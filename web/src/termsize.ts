@@ -3,7 +3,7 @@ import type { TermSize } from '../../shared/types.ts';
 const FALLBACK_CHAR = 7.8; // 13px 고정폭 글꼴의 대략적인 글자 폭 (측정할 수 없는 환경용)
 
 /** 주어진 글꼴에서 고정폭 글자 하나의 폭(px). */
-function charWidth(font: string): number {
+export function charWidth(font: string): number {
   try {
     const ctx = document.createElement('canvas').getContext('2d');
     if (!ctx) return FALLBACK_CHAR;

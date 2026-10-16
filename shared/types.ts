@@ -290,6 +290,28 @@ export interface InputRequest {
 }
 
 /**
+ * GET /api/projects/:id/term/:paneId — pane 출력을 SSE 로 흘려보낸다 (data: JSON 한 줄씩).
+ * init: 첫 화면(스크롤백 + 현재 화면 + 커서·모드, base64 바이트). 연결될 때마다 다시 온다.
+ * out: 이어지는 출력 바이트(base64). resize: pane 크기가 바뀜. error: 메시지. exit: pane·세션이 끝남.
+ */
+export type TermEvent =
+  | { type: 'init'; cols: number; rows: number; alt: boolean; data: string }
+  | { type: 'out'; data: string }
+  | { type: 'resize'; cols: number; rows: number }
+  | { type: 'error'; message: string }
+  | { type: 'exit' };
+
+/**
+ * POST /api/projects/:id/raw — 터미널이 만든 바이트(키·마우스 보고)를 pane 에 그대로 넣는다. 입력과 같은 조건·기록.
+ * 응답: 200 {ok:true} / 400 / 403 / 404 (input 과 같다)
+ */
+export interface RawInputRequest {
+  pane: string;
+  /** base64, 최대 4KB */
+  data: string;
+}
+
+/**
  * POST /api/projects/:id/upload — 이미지를 서버에 파일로 저장한다 (입력과 같은 조건에서만 허용).
  * 응답: 200 {path} — 이 절대 경로를 입력에 넣으면 에이전트가 첨부로 읽는다.
  */

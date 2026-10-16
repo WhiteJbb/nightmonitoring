@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunSummary } from '../../shared/types.ts';
 import { StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
-import { parseAnsi } from './ansi.ts';
+import { Term } from './Term.tsx';
+import type { TermStatus } from './Term.tsx';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
 
@@ -72,23 +73,6 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
   );
 }
 
-/**
- * 줄바꿈 보기용 정리. 넓은 화면 폭에 맞춰 그려진 출력을 좁은 화면에서 접으면
- * 가로줄 하나가 여러 줄로 감기고, 오른쪽 정렬용 공백이 빈 줄처럼 보인다.
- * 가로줄은 짧게 자르고 긴 공백은 줄인다. (색 시퀀스는 건드리지 않는다)
- */
-export function compactForWrap(text: string): string {
-  return text.replace(/([─━═_-])\1{23,}/g, (run) => run.slice(0, 24)).replace(/ {8,}/g, '  ');
-}
-
-const narrowScreen = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 720px)').matches;
-
-// 터미널 탭이 한 번에 가져오는 줄 수와, 더 보기로 늘릴 수 있는 한도 (서버 한도와 같다)
-const LIVE_LINES = 500;
-const MAX_LIVE_LINES = 5000;
-const POLL_MS = 700;
-const POLL_BACKOFF_MS = 3000;
-
 // [tmux 키, 버튼 글자, 설명]
 // 터치 화면에서는 이 키들만 늘 보이고 나머지는 "더보기" 뒤로 접힌다.
 const PRIMARY_KEYS: InputKey[] = ['PPage', 'NPage', 'Up', 'Down', 'Escape'];
@@ -128,7 +112,7 @@ const FORWARD: Record<string, InputKey> = {
 // 빈 입력칸에서 Ctrl 조합은 pane 으로 간다. 컴퓨터에선 키 버튼이 숨겨져 있어 이게 유일한 길이다
 const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' };
 
-function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string; onSent: () => void }) {
+function InputBar({ projectId, pane }: { projectId: string; pane: string }) {
   const [text, setText] = useState('');
   const [moreKeys, setMoreKeys] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -187,10 +171,7 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
     api
       .sendInput(projectId, body)
       .then(
-        () => {
-          setError(null);
-          onSent();
-        },
+        () => setError(null),
         (e: unknown) => {
           setError(errorMessage(e));
           // 보내지 못한 글은 되돌려 놓는다. 그사이 새로 친 글이 있으면 그 앞에 붙여 둘 다 남긴다
@@ -309,95 +290,19 @@ function InputBar({ projectId, pane, onSent }: { projectId: string; pane: string
   );
 }
 
-export function TerminalTab({ project: p, now, refreshSec }: Props) {
+export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
-  const preRef = useRef<HTMLPreElement>(null);
-  const stick = useRef(true);
+  const viewRef = useRef<HTMLDivElement>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [paneId, setPaneId] = useState<string | null>(null);
-  // 고른 pane 이 사라지면 활성 pane 으로 돌아간다. pane 정보가 없으면 output(색 없음)을 그대로 쓴다
+  // 고른 pane 이 사라지면 활성 pane 으로 돌아간다
   const pane = t.panes.find((x) => x.id === paneId) ?? t.panes.find((x) => x.active) ?? t.panes[0];
-  // 실시간으로 읽어 온 출력. 실패하면 null 로 돌려 스냅샷의 줄로 되돌아간다
-  const [live, setLive] = useState<{ pane: string; lines: string[] } | null>(null);
-  const pollNow = useRef(() => {});
-  // 올려 볼 수 있는 줄 수. "이전 출력 더 보기"로 늘린다
-  const [lines, setLines] = useState(LIVE_LINES);
-  // 위로 올려 읽는 동안에는 갱신을 멈춘다 (새 출력에 화면이 밀리지 않게)
-  const [scrolledUp, setScrolledUp] = useState(false);
-  const prevHeight = useRef(0);
-  // 좁은 화면에서는 긴 줄이 오른쪽으로 잘리므로 기본으로 접어 보여 준다
-  const [wrap, setWrap] = useState(narrowScreen);
   const [showInfo, setShowInfo] = useState(false);
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
-  const isLive = live !== null && live.pane === pane?.id;
-  const text = (isLive ? live.lines : pane ? pane.lines : t.output).join('\n');
-  const parsed = useMemo(() => parseAnsi((wrap ? compactForWrap(text) : text).split('\n')), [text, wrap]);
-
-  // 사용자가 위로 스크롤하지 않은 동안에는 새 출력에 맞춰 바닥에 붙인다
-  useLayoutEffect(() => {
-    const el = preRef.current;
-    if (!el) return;
-    if (stick.current) el.scrollTop = el.scrollHeight;
-    // 위쪽에 줄이 더 붙었을 때(더 보기) 보고 있던 자리가 그대로 있게 한다
-    else el.scrollTop += el.scrollHeight - prevHeight.current;
-    prevHeight.current = el.scrollHeight;
-  }, [text, pane?.id]);
-
-  // 고른 pane 을 짧은 주기로 다시 읽는다. 앞 요청이 끝난 뒤에만 다음 요청을 잡는다
-  const liveId = t.exists && pane ? pane.id : null;
-  useEffect(() => {
-    if (liveId === null) return;
-    let stopped = false;
-    let busy = false;
-    let again = false;
-    let first = true; // pane·줄 수가 바뀐 직후에는 올려 읽는 중이어도 한 번은 읽는다
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const poll = async () => {
-      clearTimeout(timer);
-      if (stopped || document.visibilityState !== 'visible') return;
-      if (!first && !stick.current) {
-        timer = setTimeout(wake, POLL_MS);
-        return;
-      }
-      first = false;
-      if (busy) {
-        again = true; // 진행 중인 요청은 입력 전의 화면일 수 있으니 끝나자마자 한 번 더 읽는다
-        return;
-      }
-      busy = true;
-      let delay = POLL_MS;
-      try {
-        const res = await api.paneLive(p.id, liveId, lines);
-        if (!Array.isArray(res.lines)) throw new Error('bad response');
-        if (!stopped) setLive({ pane: liveId, lines: res.lines });
-      } catch {
-        delay = POLL_BACKOFF_MS;
-        if (!stopped) setLive(null);
-      }
-      busy = false;
-      if (stopped) return;
-      if (again) {
-        again = false;
-        void poll();
-      } else timer = setTimeout(wake, delay);
-    };
-    const wake = () => void poll();
-    // 입력을 보낸 직후에는 올려 보는 중이어도 한 번 읽는다 (PgUp 을 눌렀는데 화면이 그대로면 안 된다)
-    pollNow.current = () => {
-      first = true;
-      wake();
-    };
-    document.addEventListener('visibilitychange', wake);
-    wake();
-    return () => {
-      stopped = true;
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', wake);
-      pollNow.current = () => {};
-      setLive(null);
-    };
-  }, [p.id, liveId, lines]);
+  const [status, setStatus] = useState<TermStatus>('connecting');
+  // 스트림이 알려 준 pane 크기 (칸·줄)
+  const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
 
   if (!t.configured) {
     return (
@@ -420,18 +325,15 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
     );
   }
 
-  // pane 이 터미널 영역보다 넓은지 (가로 스크롤이 생기는지). 줄바꿈 보기에서는 접혀 보이므로 묻지 않는다
-  const tooWide = !wrap && pane?.cols !== undefined && pane.cols > fitSize(preRef.current).cols;
+  // pane 이 터미널 영역보다 넓어 글자가 작아졌는지
+  const tooWide = size !== null && size.cols > fitSize(viewRef.current).cols;
   const fit = () => {
     if (!pane) return;
     setFitting(true);
     setFitError(null);
     api
-      .fitPane(p.id, pane.id, fitSize(preRef.current))
-      .then(
-        () => pollNow.current(),
-        (e: unknown) => setFitError(errorMessage(e)),
-      )
+      .fitPane(p.id, pane.id, fitSize(viewRef.current))
+      .catch((e: unknown) => setFitError(errorMessage(e)))
       .finally(() => setFitting(false));
   };
 
@@ -442,6 +344,9 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
     );
     setTimeout(() => setCopyMsg(null), 1500);
   };
+
+  const live = status === 'live';
+  const statusLabel = status === 'live' ? '실시간' : status === 'connecting' ? '연결 중' : status === 'down' ? '연결 끊김 · 재연결 중' : status === 'exit' ? 'pane 종료' : status;
 
   return (
     <>
@@ -487,17 +392,7 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
             {t.panes.length > 1 && (
               <div className="panes" role="group" aria-label="pane 선택">
                 {t.panes.map((x) => (
-                  <button
-                    key={x.id}
-                    type="button"
-                    aria-pressed={x.id === pane.id}
-                    onClick={() => {
-                      stick.current = true;
-                      setScrolledUp(false);
-                      setLines(LIVE_LINES);
-                      setPaneId(x.id);
-                    }}
-                  >
+                  <button key={x.id} type="button" aria-pressed={x.id === pane.id} onClick={() => setPaneId(x.id)}>
                     {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
                   </button>
                 ))}
@@ -506,13 +401,10 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
             <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
               세션 정보
             </button>
-            <button type="button" className="more-rows" aria-pressed={wrap} title="긴 줄을 화면 폭에 맞춰 접습니다" onClick={() => setWrap(!wrap)}>
-              줄바꿈
-            </button>
-            {isLive && lines < MAX_LIVE_LINES && (
-              <button type="button" className="more-rows" onClick={() => setLines(Math.min(MAX_LIVE_LINES, lines * 2))}>
-                이전 출력 더 보기
-              </button>
+            {size && (
+              <span className="dim mono" title="pane 크기 (칸 × 줄)">
+                {size.cols}×{size.rows}
+              </span>
             )}
             {/* 붙어 있는 터미널이 없는 세션만: 화면보다 넓으면 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
             {p.allowInput && !t.attached && tooWide && (
@@ -525,66 +417,28 @@ export function TerminalTab({ project: p, now, refreshSec }: Props) {
                 {fitError}
               </span>
             )}
-            {scrolledUp && (
-              <button
-                type="button"
-                className="more-rows"
-                onClick={() => {
-                  stick.current = true;
-                  setScrolledUp(false);
-                  const el = preRef.current;
-                  if (el) el.scrollTop = el.scrollHeight;
-                  pollNow.current();
-                }}
-              >
-                맨 아래로
-              </button>
-            )}
-            <span className={isLive && !scrolledUp ? 'conn conn-live' : 'conn'}>
+            <span className={live ? 'conn conn-live' : status === 'down' ? 'conn conn-down' : 'conn'} role="status">
               <span className="dot" />
-              {!isLive ? (refreshSec === undefined ? '스냅샷' : `${refreshSec}초 갱신`) : scrolledUp ? '올려 보는 중 · 갱신 멈춤' : '실시간'}
+              {statusLabel}
             </span>
           </div>
         )}
-        <pre
-          ref={preRef}
-          className={wrap ? 'terminal wrap-lines' : 'terminal'}
-          tabIndex={0}
-          aria-label="최근 터미널 출력"
-          onScroll={(e) => {
-            const el = e.currentTarget;
-            stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 24;
-            setScrolledUp(!stick.current);
-          }}
-        >
-          {text
-            ? parsed.map((spans, i) => (
-                <span key={i}>
-                  {spans.map((s, j) => (
-                    <span key={j} style={s.style}>
-                      {s.text}
-                    </span>
-                  ))}
-                  {i < parsed.length - 1 && '\n'}
-                </span>
-              ))
-            : '(출력 없음)'}
-        </pre>
+        <div ref={viewRef} className="term-view">
+          {pane ? (
+            <Term key={pane.id} projectId={p.id} pane={pane.id} canInput={p.allowInput} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+          ) : (
+            <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
+              {t.output.join('\n')}
+            </pre>
+          )}
+        </div>
       </div>
-      {p.allowInput ? (
-        pane && <InputBar projectId={p.id} pane={pane.id} onSent={() => pollNow.current()} />
-      ) : (
-        <p className="hint">
-          입력을 보내려면 <a href="#/settings">설정</a>에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.
-        </p>
-      )}
+      {pane && (p.allowInput ? <InputBar projectId={p.id} pane={pane.id} /> : <p className="hint">입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>)}
     </>
   );
 }
 
 const COMMITS_SHOWN = 10;
-
-/** 긴 목록은 처음 10개만 보여 주고 나머지는 펼쳐서 본다 (오늘 커밋이 수십 개면 탭이 끝없이 길어진다). */
 function Commits({ commits, now, empty }: { commits: Commit[]; now: string; empty: string }) {
   const [all, setAll] = useState(false);
   if (commits.length === 0) return <p className="dim">{empty}</p>;

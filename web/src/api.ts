@@ -1,4 +1,4 @@
-import type { ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, Report, ReportMeta, RunKind, Snapshot, UploadRequest } from '../../shared/types.ts';
+import type { ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, PaneLive, RawInputRequest, Report, ReportMeta, RunKind, Snapshot, UploadRequest } from '../../shared/types.ts';
 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
@@ -48,6 +48,7 @@ export const api = {
   fitPane: (id: string, paneId: string, size: TermSize) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', size),
   sendInput: (id: string, body: InputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/input`, 'POST', body),
+  sendRaw: (id: string, body: RawInputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/raw`, 'POST', body),
   upload: (id: string, body: UploadRequest) => req<{ path: string }>(`/api/projects/${encodeURIComponent(id)}/upload`, 'POST', body),
   resetSession: () => req<{ ok: true }>('/api/session/reset', 'POST'),
   testPush: () => req<{ ok: true }>('/api/notify/test', 'POST'),
