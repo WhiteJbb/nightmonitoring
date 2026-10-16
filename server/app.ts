@@ -206,7 +206,9 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '이름, 저장소 경로, 세션 이름을 모두 입력하세요' });
     }
-    if (view.projects.some((p) => p.tmuxSession === tmuxSession)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
+    if (!SESSION_RE.test(tmuxSession)) return void res.status(400).json({ error: '세션 이름이 올바르지 않습니다' });
+    const registered = (v: ConfigView) => v.projects.some((p) => p.tmuxSession === tmuxSession);
+    if (registered(view)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
 
     // 주소가 있으면 clone 부터. 주소 형식은 서버가 검증하고 명령은 고정이다 (git.ts).
     if (typeof gitUrl === 'string' && gitUrl.trim()) {
@@ -218,10 +220,13 @@ export function createApp({ config, monitor, runner, reportsDir, configEditor, t
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
     const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows));
     if (error) return void res.status(400).json({ error });
+    // clone 하는 동안 설정이 바뀌었을 수 있으니 쓰기 직전에 다시 읽는다.
+    const latest = configEditor.view();
+    if (registered(latest)) return void res.status(409).json({ error: `세션 "${tmuxSession}" 은 이미 프로젝트로 등록되어 있습니다` });
     const next = await configEditor.update({
-      version: view.version,
-      settings: view.settings,
-      projects: [...editableProjects(view), { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true }],
+      version: latest.version,
+      settings: latest.settings,
+      projects: [...editableProjects(latest), { id: null, name: name.trim(), repoPath: repoPath.trim(), tmuxSession, logFile: null, allowInput: allowInput === true }],
     });
     await monitor.tick();
     res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });
