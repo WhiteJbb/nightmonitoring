@@ -17,6 +17,9 @@ const RAW_CHUNK = 4096;
 // SGR 마우스 보고 중 버튼 없는 이동: 코드의 하위 2비트가 3(버튼 없음)이고 32(이동) 비트가 켜진 것
 // eslint-disable-next-line no-control-regex -- 터미널 이스케이프 시퀀스를 다룬다
 const MOTION_RE = /\x1b\[<(?:35|39|43|47|51|55|59|63);\d+;\d+[Mm]/g;
+// 오른쪽 버튼 누름·뗌 보고: 우클릭은 붙여넣기로 쓰므로 프로그램에 보내지 않는다 (https 일 때)
+// eslint-disable-next-line no-control-regex -- 터미널 이스케이프 시퀀스를 다룬다
+const RIGHT_BUTTON_RE = /\x1b\[<(?:2|6|10|14|18|22|26|30);\d+;\d+[Mm]/g;
 const LINE_HEIGHT = 1.2;
 /** 휠을 이만큼(px) 굴릴 때마다 PgUp/PgDn 한 번 */
 const WHEEL_PAGE_PX = 120;
@@ -136,6 +139,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     es.onerror = () => cb.current.onStatus('down');
 
     // 키·마우스 보고는 묶어서 한 번에 하나씩 보낸다. 보내는 동안 모인 것은 다음 요청에 합친다
+    const pasteOnRightClick = window.isSecureContext && typeof navigator.clipboard?.readText === 'function';
     const enc = new TextEncoder();
     let queue = '';
     let sending = false;
@@ -161,6 +165,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       if (!canInput) return; // disableStdin 이면 오지 않지만, 보기 전용 프로젝트의 바이트는 어떤 경우에도 보내지 않는다
       // 버튼을 누르지 않은 채 움직인 보고(SGR 버튼 코드 35·51·67…)는 버린다. 마우스를 스칠 때마다 요청이 나가지 않게
       d = d.replace(MOTION_RE, '');
+      if (pasteOnRightClick) d = d.replace(RIGHT_BUTTON_RE, '');
       if (d === '') return;
       queue += d;
       void flush();
@@ -221,14 +226,15 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     // 우클릭 붙여넣기: 클립보드를 읽을 수 있으면(https) 바로 붙인다. http 에선 브라우저가 막으므로
     // 기본 메뉴를 그대로 띄운다 (xterm 이 입력칸을 마우스 아래로 옮겨 두어 메뉴의 "붙여넣기"가 터미널로 간다)
     const onContextMenu = (e: MouseEvent) => {
-      if (!canInput || !window.isSecureContext || !navigator.clipboard?.readText || term.hasSelection()) return;
+      if (!canInput || !pasteOnRightClick || term.hasSelection()) return;
       e.preventDefault();
       navigator.clipboard.readText().then(
         (text) => text && term.paste(text),
         () => cb.current.onNotice?.('클립보드를 읽지 못했습니다. Cmd+V 로 붙여넣으세요'),
       );
     };
-    el.addEventListener('contextmenu', onContextMenu);
+    // xterm 이 먼저 받아 멈추지 않게 잡는 단계에서 듣는다
+    el.addEventListener('contextmenu', onContextMenu, { capture: true });
 
     // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램(Codex)엔
     // xterm 이 화살표 키로 바꿔 보내는데, 거기선 화살표가 입력 기록 탐색이다. 대신 PgUp/PgDn 으로 넘긴다
@@ -289,7 +295,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       queue = '';
       input.dispose();
       el.removeEventListener('paste', onPaste, { capture: true });
-      el.removeEventListener('contextmenu', onContextMenu);
+      el.removeEventListener('contextmenu', onContextMenu, { capture: true });
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
