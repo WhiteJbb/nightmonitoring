@@ -85,7 +85,14 @@ interface Tracked {
   logErrors: string[];
   output: string | null;
   outputChangedAt: string | null;
+  /** pane 크기 ("%1:120,%2:80"). 바뀌면 프로그램이 화면을 다시 그리는데, 그건 작업이 아니다 */
+  sizeKey: string | null;
+  /** 크기가 바뀐 뒤 출력 변화를 활동으로 치지 않을 남은 tick 수 */
+  settle: number;
 }
+
+/** 크기 변경 뒤 화면을 다시 그리는 데 걸리는 tick 수 (그동안의 출력 변화는 활동이 아니다) */
+export const RESIZE_SETTLE_TICKS = 2;
 
 type Collected = Pick<ProjectSnapshot, 'repoPath' | 'git' | 'since' | 'lastGitChangeAt' | 'tmux' | 'logErrors'>;
 
@@ -311,7 +318,12 @@ export class Monitor {
         const options = waitingPrompt !== null && pane ? promptChoices(lines, waitingPrompt) : [];
         if (pane && options.length) waitingChoices = { pane: pane.id, options };
       });
-      if (tr.output !== null && text !== tr.output) tr.outputChangedAt = nowIso;
+      // 보는 화면에 맞춰 pane 크기를 바꾸면 프로그램이 화면을 다시 그린다. 그 변화로 "실행 중"이 되지 않게 잠시 무시한다
+      const sizeKey = raw.panes.map((x) => `${x.id}:${x.cols ?? 0}`).join(',');
+      if (tr.sizeKey !== null && sizeKey !== tr.sizeKey) tr.settle = RESIZE_SETTLE_TICKS;
+      tr.sizeKey = sizeKey;
+      if (tr.output !== null && text !== tr.output && tr.settle === 0) tr.outputChangedAt = nowIso;
+      if (tr.settle > 0) tr.settle -= 1;
       tr.output = text;
       // tmux 의 활동 시각은 스피너 출력에도 갱신되므로 최초 관측의 초기값으로만 쓰고,
       // 이후에는 정규화한 출력 비교로만 갱신한다. demo 수집기는 이 값을 직접 제어한다.
@@ -401,7 +413,7 @@ const tailRun = (r: RunResult | null): RunResult | null => {
   if (!r || (r.stdout.length <= SNAPSHOT_OUTPUT_CHARS && r.stderr.length <= SNAPSHOT_OUTPUT_CHARS)) return r;
   return { ...r, stdout: r.stdout.slice(-SNAPSHOT_OUTPUT_CHARS), stderr: r.stderr.slice(-SNAPSHOT_OUTPUT_CHARS), truncated: true };
 };
-const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null });
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0 });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,

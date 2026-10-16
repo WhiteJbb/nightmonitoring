@@ -85,6 +85,29 @@ describe('Monitor', () => {
     expect(m.snapshot.projects[0]!.status).toEqual({ state: 'waiting', reasons: ['입력 대기: Overwrite file? (y/n)'] });
   });
 
+  it('does not count the redraw after a pane resize as activity', async () => {
+    let now = T0;
+    const pane = (cols: number, lines: string[]) => ({ id: '%1', window: 0, windowName: 'w', index: 0, command: 'claude', active: true, cols, lines });
+    const state = { panes: [pane(120, ['long line wrapped at 120'])] };
+    const collector = fakeCollector({ output: [], git: git() });
+    collector.tmux = async () => new Map([['app', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 60_000).toISOString(), output: [], panes: state.panes, waitingPrompt: null, attachCommand: 'x' }]]);
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
+    await m.tick();
+    const first = m.snapshot.projects[0]!.tmux.lastOutputChangeAt;
+    // 휴대폰에서 열어 43칸으로 맞춤 → 다시 그림 (두 tick 에 걸쳐)
+    for (const lines of [['long line', 'wrapped at 43'], ['long line', 'wrapped at 43', 'status']]) {
+      now += 5000;
+      state.panes = [pane(43, lines)];
+      await m.tick();
+      expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(first);
+    }
+    // 그 뒤의 출력 변화는 다시 활동이다
+    now += 5000;
+    state.panes = [pane(43, ['long line', 'wrapped at 43', 'status', 'new work'])];
+    await m.tick();
+    expect(m.snapshot.projects[0]!.tmux.lastOutputChangeAt).toBe(new Date(now).toISOString());
+  });
+
   it('isolates a failing project and notifies subscribers', async () => {
     const m = new Monitor({ config, collector: fakeCollector({ output: [], git: git(), gitThrows: true }), runs: noRuns, now: () => T0 });
     const seen: Snapshot[] = [];
