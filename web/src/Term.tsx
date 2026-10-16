@@ -19,6 +19,8 @@ const MOTION_RE = /\x1b\[<(?:35|39|43|47|51|55|59|63);\d+;\d+[Mm]/g;
 const LINE_HEIGHT = 1.2;
 /** 휠을 이만큼(px) 굴릴 때마다 PgUp/PgDn 한 번 */
 const WHEEL_PAGE_PX = 120;
+/** 터치로 한 줄 높이를 쓸 때 보내는 휠 횟수 (마우스를 받는 프로그램). 느리면 올린다. 전에는 약 0.3 이었다 */
+const TOUCH_SPEED = 0.7;
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
 
@@ -126,6 +128,7 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
     });
     // 터치: 대체 화면엔 xterm 스크롤백이 없어 손가락으로 쓸어도 아무 일이 없다. 쓴 거리만큼 휠 이벤트로 바꿔 위 경로를 탄다
     let lastY: number | null = null;
+    let touchAcc = 0;
     const onTouchStart = (e: TouchEvent) => {
       lastY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
     };
@@ -145,9 +148,17 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
         return;
       }
       const target = el.querySelector('.xterm-screen') ?? el;
-      // 마우스를 안 받는 프로그램은 휠이 PgUp/PgDn 이 된다. 손가락으로 터미널 높이의 80% 를 쓸면 한 쪽 넘어가게 맞춘다
-      const scale = term.modes.mouseTrackingMode === 'none' ? WHEEL_PAGE_PX / Math.max(1, el.clientHeight * 0.8) : 1;
-      target.dispatchEvent(new WheelEvent('wheel', { deltaY: dy * scale, deltaMode: 0, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
+      const wheel = (deltaY: number, deltaMode: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaY, deltaMode, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
+      // 마우스를 안 받는 프로그램은 휠이 PgUp/PgDn 이 된다. 손가락으로 터미널 높이의 절반을 쓸면 한 쪽 넘어가게 맞춘다
+      if (term.modes.mouseTrackingMode === 'none') return void wheel((dy * WHEEL_PAGE_PX) / Math.max(1, el.clientHeight * 0.5), 0);
+      // 마우스를 받는 프로그램(Claude Code)엔 쓴 거리 한 줄 높이마다 휠 TOUCH_SPEED 번을 보낸다.
+      // 픽셀 휠을 그대로 넘기면 xterm 이 작은 값을 트랙패드로 보고 0.3 배로 줄여 느리다
+      touchAcc += (dy * TOUCH_SPEED) / Math.max(1, el.clientHeight / term.rows);
+      while (Math.abs(touchAcc) >= 1) {
+        const step = Math.sign(touchAcc);
+        touchAcc -= step;
+        wheel(step, 1);
+      }
     };
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
