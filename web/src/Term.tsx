@@ -55,11 +55,7 @@ export function Term({ projectId, pane, canInput, onStatus, onSize }: { projectI
       if (!width) return;
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
       const byWidth = Math.floor(width / (term.cols * perPx));
-      // 줄 높이는 글꼴 지표에 따라 글자 크기의 1.2배보다 크다. 그려진 화면에서 실제 비율을 잰다
-      const screen = el.querySelector<HTMLElement>('.xterm-screen');
-      const size = Number(term.options.fontSize) || TERM_FONT_SIZE;
-      const ratio = screen && screen.clientHeight > 0 ? screen.clientHeight / term.rows / size : ROW_RATIO;
-      const byHeight = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT) / (term.rows * ratio));
+      const byHeight = Math.floor((window.innerHeight * TERM_MAX_VIEWPORT) / (term.rows * ROW_RATIO));
       term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
 

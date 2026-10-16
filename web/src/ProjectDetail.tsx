@@ -308,9 +308,13 @@ export function TerminalTab({ project: p, now }: Props) {
   // 붙어 있는 터미널이 없으면, 터미널을 연 화면(휴대폰·컴퓨터) 크기에 pane 을 한 번 맞춘다. 나중에 다른 화면에서 열면 거기에 맞춘다
   useEffect(() => {
     if (!canFit || !pane || !size || autoFitted.current === pane.id) return;
-    autoFitted.current = pane.id;
-    const want = fitSize(viewRef.current);
-    if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
+    // 첫 화면이 그려진 뒤에 재야 실제 칸 폭을 쓴다
+    const timer = setTimeout(() => {
+      autoFitted.current = pane.id;
+      const want = fitSize(viewRef.current);
+      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [canFit, pane, size, p.id]);
 
   if (!t.configured) {

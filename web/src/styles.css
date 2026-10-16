@@ -875,12 +875,16 @@ pre {
 }
 .xterm-host .xterm {
   padding: 0;
+  /* xterm 도 .terminal 클래스를 달아 아래 높이 제한이 걸린다. 높이는 줄 수를 따른다 */
+  height: auto;
 }
 .xterm-host .xterm-viewport {
   background: transparent !important;
 }
 .xterm-host .xterm .xterm-screen {
   max-width: 100%;
+  /* 칸 하나보다 작게 남는 폭은 양쪽으로 나눈다 */
+  margin: 0 auto;
 }
 .terminal {
   height: min(62vh, 680px);

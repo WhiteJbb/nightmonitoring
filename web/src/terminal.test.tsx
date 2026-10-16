@@ -439,13 +439,13 @@ test('fits an unattached session to the screen it is opened on, once; an attache
   const fits = () => fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/panes/%251/fit'));
   await renderTab(project(TWO));
   await init(200, 50);
-  await tick();
+  await tick(400);
   // 테스트 환경에서는 요소 크기를 잴 수 없어 화면 폭으로 어림한 칸 수(약 120칸)·40줄로 맞춘다
   expect(fits()).toHaveLength(1);
   expect(fits()[0]![1]?.method).toBe('POST');
   expect(JSON.parse(fits()[0]![1]?.body as string)).toMatchObject({ rows: 40 });
   await init(200, 50);
-  await tick();
+  await tick(400);
   expect(fits()).toHaveLength(1);
   fireEvent.click(screen.getByRole('button', { name: '화면에 맞추기' }));
   await tick();
@@ -457,7 +457,7 @@ test('fits an unattached session to the screen it is opened on, once; an attache
   attached.tmux.attached = true;
   await renderTab(attached);
   await init(200, 50);
-  await tick();
+  await tick(400);
   expect(fits()).toHaveLength(0);
   expect(screen.queryByRole('button', { name: '화면에 맞추기' })).toBeNull();
 });
