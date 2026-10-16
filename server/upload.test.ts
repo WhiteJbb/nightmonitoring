@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { MAX_UPLOAD_BYTES, parseUpload, saveUpload } from './upload.ts';
+import { MAX_UPLOAD_BYTES, parseUpload, saveUpload, UPLOAD_KEEP_MS } from './upload.ts';
 
 describe('upload', () => {
   it('accepts only known image types with non-empty base64 data within the size limit', () => {
@@ -23,6 +23,18 @@ describe('upload', () => {
       expect(path.dirname(file)).toBe(path.join(dir, 'uploads'));
       expect(path.basename(file)).toMatch(/^tmux_my_app-\d+\.png$/);
       expect((await readFile(file)).toString()).toBe('x');
+    } finally {
+      await rm(dir, { recursive: true });
+    }
+  });
+
+  it('drops uploads older than a week when a new one arrives', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-up-'));
+    try {
+      await saveUpload(dir, 'old', 'png', Buffer.from('old'));
+      // 일주일 넘게 지난 시점에 새로 올린다
+      const fresh = await saveUpload(dir, 'new', 'png', Buffer.from('new'), Date.now() + UPLOAD_KEEP_MS + 60_000);
+      expect(await readdir(dir)).toEqual([path.basename(fresh)]);
     } finally {
       await rm(dir, { recursive: true });
     }
