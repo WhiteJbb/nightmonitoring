@@ -47,6 +47,9 @@ export const api = {
   unhideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'DELETE'),
   killSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'DELETE'),
   newWindow: (id: string, agent?: AgentKind) => req<{ pane: string }>(`/api/projects/${encodeURIComponent(id)}/windows`, 'POST', agent ? { agent } : {}),
+  files: (id: string) => req<{ files: string[] }>(`/api/projects/${encodeURIComponent(id)}/files`),
+  file: (id: string, path: string) => req<{ content: string; version: string }>(`/api/projects/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
+  saveFile: (id: string, body: { path: string; content: string; version: string }) => req<{ version: string }>(`/api/projects/${encodeURIComponent(id)}/file`, 'PUT', body),
   closePane: (id: string, paneId: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}`, 'DELETE'),
   startSession: (id: string, size: TermSize & { agent?: AgentKind }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
   fitPane: (id: string, paneId: string, size: TermSize) =>

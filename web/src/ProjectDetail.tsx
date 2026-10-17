@@ -3,6 +3,7 @@ import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TermEvent, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { AGENTS, StartSession } from './NewSession.tsx';
+import { FilesTab } from './Files.tsx';
 import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
@@ -27,6 +28,7 @@ export function Reasons({ reasons }: { reasons: string[] }) {
 
 const TABS = [
   ['terminal', '터미널'],
+  ['files', '파일'],
   ['git', 'Git'],
   ['runs', '테스트·빌드'],
 ] as const;
@@ -62,7 +64,7 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
     document.getElementById(`tab-${TAB_IDS[next]}`)?.focus();
   };
   // 탭에 붙이는 오류 수: Git 은 로그 오류, 테스트·빌드는 마지막 실행이 실패한 것
-  const counts: Record<Tab, number> = { terminal: 0, git: p.logErrors.length, runs: [p.runs.test, p.runs.build].filter(failed).length };
+  const counts: Record<Tab, number> = { terminal: 0, files: 0, git: p.logErrors.length, runs: [p.runs.test, p.runs.build].filter(failed).length };
   return (
     <>
       <p className="crumb">
@@ -99,6 +101,7 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
       </div>
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
         {tab === 'terminal' && <TerminalTab project={p} now={now} refreshSec={refreshSec} />}
+        {tab === 'files' && <FilesTab project={p} />}
         {tab === 'git' && <GitTab project={p} now={now} />}
         {tab === 'runs' && (
           <>

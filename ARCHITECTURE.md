@@ -22,6 +22,7 @@ server/
   control.ts           tmux 컨트롤 모드 프로토콜 파서 (%output 이스케이프 해제)
   termstream.ts        세션마다 `tmux -C attach` 하나를 띄워 pane 출력을 구독자에게 흘려보냄
   upload.ts            터미널에 붙여넣은 이미지 저장 (.nightshift/uploads)
+  files.ts             파일 탭: Git 이 아는 파일만 목록·읽기·저장 (연 뒤 바뀌었으면 409)
   logs.ts              로그 위치 추적 스캔, 패턴 매처, ANSI 처리, 프롬프트·스피너 판별
   status.ts            상태 판정 (순수 함수)
   monitor.ts           폴링 루프, 기준점·변경 시각·로그 위치 추적, 구독자 알림
@@ -135,6 +136,9 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | GET | `/api/snapshot` | 현재 스냅샷 |
 | GET | `/api/events` | SSE, 폴링마다·실행 상태 변경 시 스냅샷 푸시 (pane 화면 사본·기준점 이후 목록을 뺀 요약) |
 | GET | `/api/projects/:id` | 한 프로젝트의 전체 상태 (Git 탭이 기준점 이후 목록을 받을 때) |
+| GET | `/api/projects/:id/files` | Git 이 아는 파일 목록 (`ls-files --cached --others --exclude-standard`) |
+| GET | `/api/projects/:id/file?path=` | 글 파일 내용과 지문(sha1). 400 / 404 / 413 / 415 |
+| PUT | `/api/projects/:id/file` | `{path, content, version}` 저장 (입력과 같은 조건). 지문이 다르면 409 |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
 | GET | `/api/projects/:id/run/:kind` | 마지막 실행의 전체 출력 |

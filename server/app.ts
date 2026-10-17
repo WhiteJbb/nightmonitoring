@@ -5,6 +5,7 @@ import { AGENT_COMMANDS } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
+import { FileError, listFiles, readText, writeText } from './files.ts';
 import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
@@ -367,6 +368,22 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     res.json({ ok: true });
   });
 
+  // 파일 보기·고치기 (files.ts). 보기는 모든 프로젝트, 저장은 입력과 같은 조건이다 (셸에서 고치는 것과 같은 일)
+  const projectOf = (id: string) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === id);
+    if (!project) throw new FileError('프로젝트를 찾을 수 없습니다', 404);
+    return project;
+  };
+  api.get('/projects/:id/files', async (req, res) => void res.json({ files: await listFiles(projectOf(req.params.id).repoPath) }));
+  api.get('/projects/:id/file', async (req, res) => void res.json(await readText(projectOf(req.params.id).repoPath, req.query.path)));
+  api.put('/projects/:id/file', express.json({ limit: '4mb' }), async (req, res) => {
+    const project = projectOf(req.params.id);
+    const blocked = inputBlocked(project);
+    if (blocked) return void res.status(403).json({ error: blocked });
+    const { path, content, version } = (req.body ?? {}) as Record<string, unknown>;
+    res.json({ version: await writeText(project.repoPath, path, content, version) });
+  });
+
   const editableProjects = (view: ConfigView): EditableProject[] =>
     view.projects.map(({ id, name, repoPath, tmuxSession, logFile, allowInput }) => ({ id, name, repoPath, tmuxSession, logFile, allowInput }));
 
@@ -462,6 +479,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   api.use((err: Error & { status?: number }, _req: Request, res: Response, _next: NextFunction) => {
     if (err instanceof ConfigConflict) return void res.status(409).json({ error: err.message });
+    if (err instanceof FileError) return void res.status(err.status).json({ error: err.message });
     if (err instanceof ConfigError) return void res.status(400).json({ error: 'config 가 올바르지 않습니다', issues: err.issues });
     // 잘못된 JSON 본문 등 클라이언트 오류는 그 상태 코드로 돌려준다.
     if (err.status && err.status >= 400 && err.status < 500) return void res.status(err.status).json({ error: err.message });

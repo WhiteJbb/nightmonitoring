@@ -1104,6 +1104,60 @@ pre {
 .term-bar .panes .pane-tab .close:hover:not(:disabled) {
   color: #fff;
 }
+/* 파일 탭: 목록과 편집기 */
+.file-search {
+  margin-bottom: 8px;
+}
+.rows .file-link {
+  flex: 1;
+  min-width: 0;
+  justify-content: flex-start;
+  padding: 0;
+  min-height: 0;
+  font: inherit;
+  color: var(--text);
+  text-align: left;
+  overflow-wrap: anywhere;
+  background: none;
+}
+.rows .file-link:hover:not(:disabled) {
+  background: none;
+  text-decoration: underline;
+  transform: none;
+}
+.editor-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.editor-text {
+  display: block;
+  width: 100%;
+  min-height: 65vh;
+  padding: 14px 16px;
+  font: var(--fs-code) / 1.55 var(--mono);
+  color: #e8ebf2;
+  background: var(--term);
+  border: none;
+  border-radius: 20px;
+  resize: vertical;
+  tab-size: 4;
+  white-space: pre;
+  overflow: auto;
+}
+@media (max-width: 720px) {
+  /* 휴대폰: 경로는 버튼 위 한 줄로 */
+  .editor-path {
+    order: -1;
+    flex-basis: 100%;
+  }
+}
+.editor-text:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
 /* 나란히 보기: 칸마다 이름·상태 띠와 터미널. 고른 칸(입력 대상)은 테두리로 표시 */
 .split {
   display: grid;
@@ -1411,7 +1465,8 @@ fieldset.checks legend {
 }
 .settings input:not([type='checkbox']),
 .settings textarea,
-.input-row textarea {
+.input-row textarea,
+.file-search {
   display: block;
   width: 100%;
   font: inherit;
@@ -1430,7 +1485,8 @@ fieldset.checks legend {
 }
 .settings input:not([type='checkbox']):focus-visible,
 .settings textarea:focus-visible,
-.input-row textarea:focus-visible {
+.input-row textarea:focus-visible,
+.file-search:focus-visible {
   outline: none;
   background: var(--s3);
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 30%, transparent);

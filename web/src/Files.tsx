@@ -1,0 +1,214 @@
+import { useEffect, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import type { ProjectSnapshot } from '../../shared/types.ts';
+import { api, ApiError, errorMessage } from './api.ts';
+
+/** 목록에 한 번에 그리는 파일 수 (더 많으면 이름으로 찾아 좁힌다) */
+const SHOWN = 200;
+
+// 저장하지 않은 내용은 이 브라우저 탭에 남겨 둔다: 다른 탭을 보고 와도, 새로고침해도 이어서 고친다.
+// 그 내용이 기댄 지문(version)도 같이 둬서, 그 사이 파일이 바뀌었으면 저장할 때 서버가 알린다
+interface Draft {
+  text: string;
+  version: string;
+}
+const draftKey = (projectId: string, path: string) => `draft:${projectId}:${path}`;
+const store = {
+  get: (key: string): string | null => {
+    try {
+      return sessionStorage.getItem(key);
+    } catch {
+      return null;
+    }
+  },
+  set: (key: string, value: string | null) => {
+    try {
+      if (value === null) sessionStorage.removeItem(key);
+      else sessionStorage.setItem(key, value);
+    } catch {
+      // 기억만 못 한다
+    }
+  },
+};
+const loadDraft = (key: string): Draft | null => {
+  try {
+    return JSON.parse(store.get(key) ?? 'null') as Draft | null;
+  } catch {
+    return null;
+  }
+};
+
+/** 파일 탭: 저장소 파일을 골라 열고 고친다 (서버: files.ts). 마지막에 연 파일은 탭을 다시 열면 그대로 열린다 */
+export function FilesTab({ project: p }: { project: ProjectSnapshot }) {
+  const openKey = `open:${p.id}`;
+  const [open, setOpen] = useState(() => store.get(openKey));
+  const choose = (path: string | null) => {
+    store.set(openKey, path);
+    setOpen(path);
+  };
+  return open ? <Editor project={p} path={open} onClose={() => choose(null)} /> : <FileList project={p} onOpen={choose} />;
+}
+
+function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (path: string) => void }) {
+  const [files, setFiles] = useState<string[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  useEffect(() => {
+    api.files(p.id).then(
+      (r) => setFiles(r.files),
+      (e: unknown) => setError(errorMessage(e)),
+    );
+  }, [p.id]);
+  if (error) {
+    return (
+      <p className="err" role="alert">
+        {error}
+      </p>
+    );
+  }
+  if (!files) return <p className="dim">불러오는 중…</p>;
+  const q = query.trim().toLowerCase();
+  const matches = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
+  // 지운 파일은 열 수 없으니 뺀다
+  const changed = p.git.changedFiles.filter((f) => files.includes(f.path));
+  const unsaved = (path: string) => store.get(draftKey(p.id, path)) !== null;
+  const item = (path: string, status?: string) => (
+    <li key={path}>
+      {status !== undefined && <span className="xy">{status}</span>}
+      <button type="button" className="file-link" onClick={() => onOpen(path)}>
+        {path}
+      </button>
+      {unsaved(path) && <span className="warn">저장 안 함</span>}
+    </li>
+  );
+  return (
+    <>
+      <input type="search" className="file-search" placeholder="파일 이름으로 찾기" aria-label="파일 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+      {!q && changed.length > 0 && (
+        <section>
+          <h3>바뀐 파일 ({changed.length})</h3>
+          <ul className="rows">{changed.map((f) => item(f.path, f.status))}</ul>
+        </section>
+      )}
+      <section>
+        <h3>{q ? `찾은 파일 (${matches.length})` : `모든 파일 (${files.length})`}</h3>
+        <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f))}</ul>
+        {matches.length > SHOWN && <p className="hint">{matches.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
+      </section>
+    </>
+  );
+}
+
+function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path: string; onClose: () => void }) {
+  const key = draftKey(p.id, path);
+  // 디스크의 내용과 지문
+  const [file, setFile] = useState<{ content: string; version: string } | null>(null);
+  const [text, setText] = useState('');
+  // 지금 고치는 내용이 기댄 지문 (되살린 내용이면 그때의 것)
+  const [base, setBase] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const load = (keepDraft: boolean) =>
+    api.file(p.id, path).then(
+      (f) => {
+        const draft = keepDraft ? loadDraft(key) : null;
+        if (!keepDraft) store.set(key, null);
+        setFile(f);
+        setText(draft?.text ?? f.content);
+        setBase(draft?.version ?? f.version);
+        setNotice(draft ? '저장하지 않은 내용을 되살렸습니다' : null);
+        setError(null);
+        setConflict(false);
+      },
+      (e: unknown) => setError(errorMessage(e)),
+    );
+  useEffect(() => {
+    void load(true);
+  }, [p.id, path]);
+
+  const dirty = file !== null && text !== file.content;
+  const edit = (value: string) => {
+    setText(value);
+    setNotice(null);
+    store.set(key, file && value === file.content && base === file.version ? null : JSON.stringify({ text: value, version: base } satisfies Draft));
+  };
+  const save = () => {
+    if (!file || saving || !p.allowInput) return;
+    setSaving(true);
+    setError(null);
+    api
+      .saveFile(p.id, { path, content: text, version: base })
+      .then(
+        ({ version }) => {
+          setFile({ content: text, version });
+          setBase(version);
+          store.set(key, null);
+          setNotice('저장했습니다');
+        },
+        (e: unknown) => {
+          setError(errorMessage(e));
+          setConflict(e instanceof ApiError && e.status === 409);
+        },
+      )
+      .finally(() => setSaving(false));
+  };
+  const reload = () => {
+    if (dirty && !window.confirm('고친 내용을 버리고 디스크의 내용을 다시 불러올까요?')) return;
+    void load(false);
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      e.preventDefault();
+      save();
+    }
+  };
+
+  return (
+    <div className="editor">
+      <div className="editor-bar">
+        <button type="button" className="more-rows" onClick={onClose}>
+          ← 목록
+        </button>
+        <span className="mono grow wrap editor-path">{path}</span>
+        {dirty && <span className="warn">저장 안 함</span>}
+        <button type="button" className="more-rows" onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
+          다시 불러오기
+        </button>
+        {p.allowInput && (
+          <button type="button" className="primary" disabled={!dirty || saving} onClick={save} title="⌘S / Ctrl+S">
+            {saving ? '저장하는 중…' : '저장'}
+          </button>
+        )}
+      </div>
+      {error && (
+        <p className="err" role="alert">
+          {error}
+        </p>
+      )}
+      {conflict && <p className="hint">고친 내용이 필요하면 복사해 둔 뒤 "다시 불러오기"를 누르세요.</p>}
+      {notice && (
+        <p className="dim" role="status">
+          {notice}
+        </p>
+      )}
+      {!p.allowInput && <p className="hint">보기만 할 수 있습니다. 고치려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>}
+      {file && (
+        <textarea
+          className="editor-text"
+          aria-label={`${path} 내용`}
+          value={text}
+          readOnly={!p.allowInput}
+          wrap="off"
+          spellCheck={false}
+          autoCapitalize="off"
+          autoCorrect="off"
+          onChange={(e) => edit(e.target.value)}
+          onKeyDown={onKeyDown}
+        />
+      )}
+    </div>
+  );
+}
