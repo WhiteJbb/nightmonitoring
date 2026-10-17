@@ -144,6 +144,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     let queue = '';
     let sending = false;
     let closed = false; // 탭·pane 을 바꾼 뒤에는 남은 입력을 이전 pane 으로 보내지 않는다
+    let failures = 0;
     const flush = async () => {
       if (closed || sending || queue === '') return;
       sending = true;
@@ -153,7 +154,9 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
         for (let i = 0; i < bytes.length && !closed; i += RAW_CHUNK) await api.sendRaw(projectId, { pane, data: encode(bytes.subarray(i, i + RAW_CHUNK)) });
       } catch (e) {
         // 일부가 갔을 수도 있다. 뒤에 쌓인 입력(Enter 등)까지 이어 보내면 반쪽 명령이 실행될 수 있으니 버리고 알린다
+        // (붙여넣는 중에 모아 둔 키도 버린다)
         queue = '';
+        failures++;
         cb.current.onNotice?.(`입력을 보내지 못했습니다 (${errorMessage(e)}). 화면을 확인한 뒤 다시 입력하세요`);
         sending = false;
         return;
@@ -172,8 +175,9 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     };
     const holdUntil = (work: Promise<string>) => {
       held = '';
+      const before = failures;
       void work.then((text) => {
-        queue += text + (held ?? '');
+        if (failures === before) queue += text + (held ?? '');
         held = null;
         void flush();
       });
@@ -204,6 +208,10 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
               resolve('');
             },
           );
+        };
+        reader.onerror = () => {
+          cb.current.onNotice?.('이미지를 읽지 못했습니다');
+          resolve('');
         };
         reader.readAsDataURL(file);
       });
