@@ -252,6 +252,14 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   // 파일 다루기: 입력 허용 프로젝트만 (서버도 같은 조건으로 막는다)
   const canEdit = p.allowInput;
   const [menu, setMenu] = useState<string | null>(null);
+  // 화면 아래쪽 반에 있는 행은 메뉴를 위로 연다 (아래로 열면 화면 밖으로 나가 휴대폰에서 '열기'만 보인다).
+  // 위로 열 때는 행 위에 남은 높이까지만 쓰고 나머지는 메뉴 안에서 스크롤한다 (페이지 맨 위를 넘으면 스크롤로도 못 닿는다). null 이면 아래로
+  const [menuUp, setMenuUp] = useState<number | null>(null);
+  const openMenu = (id: string, row: Element) => {
+    const { top } = row.getBoundingClientRect();
+    setMenuUp(top > window.innerHeight / 2 ? top - 8 : null);
+    setMenu(id);
+  };
   const menuRef = useRef<HTMLSpanElement>(null);
   useDismiss(menuRef, menu !== null, () => setMenu(null));
   const [clip, setClip] = useState(clipboard?.scope === scopeOf(p) ? clipboard : null);
@@ -423,9 +431,19 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       ['지우기…', () => void remove(path)],
     ];
     return (
-      <div className="menu row-menu" role="menu">
+      <div className={menuUp === null ? 'menu row-menu' : 'menu row-menu up'} style={menuUp === null ? undefined : { maxHeight: menuUp }} role="menu">
         {items.map(([label, run]) => (
-          <button key={label} type="button" role="menuitem" className={label.startsWith('지우기') ? 'danger' : undefined} onClick={run}>
+          // 메뉴부터 닫는다: 묻는 창에서 취소해도 메뉴가 열린 채 남지 않게
+          <button
+            key={label}
+            type="button"
+            role="menuitem"
+            className={label.startsWith('지우기') ? 'danger' : undefined}
+            onClick={() => {
+              setMenu(null);
+              run();
+            }}
+          >
             {label}
           </button>
         ))}
@@ -437,7 +455,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     canEdit && (
       // ⋯ 와 메뉴를 함께 감싼다: ⋯ 를 다시 누르면 '바깥'이 아니라 닫기다
       <span ref={menu === where + path ? menuRef : undefined}>
-        <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === where + path} onClick={() => setMenu(menu === where + path ? null : where + path)}>
+        <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === where + path} onClick={(e) => (menu === where + path ? setMenu(null) : openMenu(where + path, e.currentTarget))}>
           ⋯
         </button>
         {menu === where + path && menuFor(path)}
@@ -446,7 +464,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const onContext = (path: string, where: string) => (e: MouseEvent) => {
     if (!canEdit) return;
     e.preventDefault();
-    setMenu(where + path);
+    openMenu(where + path, e.currentTarget);
   };
 
   const q = query.trim().toLowerCase();

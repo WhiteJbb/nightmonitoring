@@ -1226,11 +1226,6 @@ pre {
 .rows .row-more:focus-visible {
   opacity: 1;
 }
-@media (pointer: coarse) {
-  .rows .row-more {
-    opacity: 1;
-  }
-}
 .row-menu {
   position: absolute;
   top: calc(100% - 4px);
@@ -1246,6 +1241,11 @@ pre {
   border-radius: 16px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
 }
+.row-menu.up {
+  top: auto;
+  bottom: calc(100% - 4px);
+  overflow-y: auto;
+}
 .row-menu button {
   justify-content: flex-start;
   min-height: 32px;
@@ -1256,6 +1256,21 @@ pre {
 .row-menu button:hover:not(:disabled) {
   background: var(--s2);
   transform: none;
+}
+@media (pointer: coarse) {
+  /* 손가락으로 누를 자리: 행 높이는 그대로 두고 위아래 여백까지 누를 수 있게 넓힌다 */
+  .rows .file-link,
+  .rows .row-more {
+    padding-block: 7px;
+    margin-block: -7px;
+  }
+  .rows .row-more {
+    min-width: 44px;
+    opacity: 1;
+  }
+  .row-menu button {
+    min-height: 44px;
+  }
 }
 .rows li.drop,
 .drop-root.drop {
@@ -2020,7 +2035,8 @@ fieldset.checks legend {
   }
   .settings input:not([type='checkbox']),
   .settings textarea,
-  .input-row textarea {
+  .input-row textarea,
+  .file-search {
     font-size: 16px;
     padding: 11px 16px;
   }
@@ -2197,9 +2213,13 @@ fieldset.checks legend {
 .md-preview th,
 .md-preview td {
   padding: 6px 12px;
+  /* 좁은 칸에서 한글 낱말이 글자마다 끊기지 않게 ("열" / "2") */
+  word-break: keep-all;
   border: 1px solid rgba(255, 255, 255, 0.14);
 }
 .md-preview th {
+  /* 머리글은 짧으니 한 줄로 ("열2" 가 "열" / "2" 로 갈리지 않게). 넓으면 표가 옆으로 밀린다 */
+  white-space: nowrap;
   background: rgba(255, 255, 255, 0.05);
   font-weight: 600;
 }
