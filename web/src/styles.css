@@ -2022,6 +2022,10 @@ fieldset.checks legend {
     font-size: 16px;
     padding: 11px 16px;
   }
+  /* 터미널을 눌러 입력할 때 쓰는 숨은 입력칸. xterm 이 글자 크기(13px)를 직접 넣어 iOS 가 화면을 확대한다 */
+  .xterm .xterm-helper-textarea {
+    font-size: 16px !important;
+  }
   .settings input[type='checkbox'] {
     width: 20px;
     height: 20px;

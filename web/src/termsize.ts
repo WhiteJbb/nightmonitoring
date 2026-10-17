@@ -21,10 +21,24 @@ const MIN_HEIGHT = 240;
  * 휴대폰은 아래에 입력칸·키 버튼이 와야 해서 화면의 일정 비율만 쓴다
  */
 export function termHeight(full = false, share = 1): number {
-  if (full) return (window.innerHeight - FULL_CHROME) * share;
-  const area = window.matchMedia?.('(pointer: fine)').matches ? document.querySelector('.term-frame .split, .term-frame > .term-view') : null;
+  const fine = window.matchMedia?.('(pointer: fine)').matches;
+  const height = fine ? window.innerHeight : phoneHeight();
+  if (full) return (height - FULL_CHROME) * share;
+  const area = fine ? document.querySelector('.term-frame .split, .term-frame > .term-view') : null;
   if (area) return Math.max(MIN_HEIGHT, window.innerHeight - (area.getBoundingClientRect().top + window.scrollY) - BOTTOM_GAP) * share;
-  return window.innerHeight * TERM_MAX_VIEWPORT * share;
+  return height * TERM_MAX_VIEWPORT * share;
+}
+
+/**
+ * 휴대폰의 화면 높이. 화면 키보드가 뜨면 창 높이가 줄어드는데, 그대로 따르면 입력할 때마다 글자가 작아지고
+ * (그 사이 화면에 맞추면 tmux 창까지 줄어든다). 폭이 그대로면(회전이 아니면) 본 것 중 가장 큰 높이를 쓴다
+ */
+let tallest = { width: 0, height: 0 };
+function phoneHeight(): number {
+  // 확대해도 바뀌지 않는 레이아웃 폭으로 회전을 알아본다
+  const width = document.documentElement.clientWidth;
+  if (width !== tallest.width || window.innerHeight > tallest.height) tallest = { width, height: window.innerHeight };
+  return tallest.height;
 }
 const FALLBACK_CHAR = 7.8; // 13px 고정폭 글꼴의 대략적인 글자 폭 (측정할 수 없는 환경용)
 
