@@ -108,7 +108,8 @@ export default function CodeEditor({ value, onChange, path, readOnly, wrap, onSa
   }, [readOnly, wrap, ariaLabel]);
 
   useEffect(() => {
-    const desc = LanguageDescription.matchFilename(languages, path);
+    // 이름 규칙(Dockerfile 등)은 파일 이름에만 맞춘다: 폴더가 붙으면 docker/Dockerfile 이 안 잡힌다
+    const desc = LanguageDescription.matchFilename(languages, path.slice(path.lastIndexOf('/') + 1));
     // 이미 받아 둔 언어는 바로, 모르는 파일은 일반 텍스트로
     view.current?.dispatch({ effects: langPart.reconfigure(desc?.support ?? []) });
     if (!desc || desc.support) return;

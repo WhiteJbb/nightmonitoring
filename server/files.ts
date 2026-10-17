@@ -65,6 +65,25 @@ export async function listIgnored(repo: string): Promise<string[]> {
     .slice(0, MAX_FILES);
 }
 
+/** 디스크가 이름의 대소문자를 가리지 않는지 (맥 기본). 저장소 맨 위 폴더 이름의 대소문자를 바꿔 같은 것이 나오는지 본다 */
+const foldsCase = new Map<string, Promise<boolean>>();
+function caseInsensitive(realRoot: string): Promise<boolean> {
+  let known = foldsCase.get(realRoot);
+  if (!known) {
+    const base = path.basename(realRoot);
+    const swapped = [...base].map((c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase())).join('');
+    known =
+      swapped === base
+        ? Promise.resolve(false)
+        : Promise.all([lstat(realRoot), lstat(path.join(path.dirname(realRoot), swapped))]).then(
+            ([a, b]) => a.ino === b.ino && a.dev === b.dev,
+            () => false,
+          );
+    foldsCase.set(realRoot, known);
+  }
+  return known;
+}
+
 /** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
 async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
@@ -80,11 +99,10 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  // 맥에서 Foo.ts → foo.ts 로 바꾸면 Git 목록은 옛 이름으로 남는다: 파일 이름의 대소문자만 다른 것은 같은 파일로 본다.
-  // 폴더 부분은 정확히 같아야 한다 (대소문자를 가리는 디스크에서 폴더를 링크로 바꿔치기한 것은 폴더 경로가 달라져 걸린다)
+  // 맥에서 Foo.ts → foo.ts (폴더도) 로 바꾸면 Git 목록은 옛 이름으로 남는다: 대소문자를 가리지 않는 디스크에서만 대소문자 차이를 무시한다.
+  // 가리는 디스크에서는 정확히 같아야 한다 (거기선 Public → public 같은 링크 바꿔치기로 무시된 파일에 닿을 수 있다)
   const realRel = path.relative(realRoot, real).split(path.sep).join('/');
-  const sameName = async () =>
-    [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => path.posix.dirname(f) === path.posix.dirname(realRel) && f.toLowerCase() === realRel.toLowerCase());
+  const sameName = async () => (await caseInsensitive(realRoot)) && [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => f.toLowerCase() === realRel.toLowerCase());
   if (!(await known(realRel)) && !(await sameName())) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
