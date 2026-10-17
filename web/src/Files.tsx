@@ -100,7 +100,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       {!q && changed.length > 0 && (
         <section>
           <h3>바뀐 파일 ({changed.length})</h3>
-          <ul className="rows">{changed.map((f) => item(f.path, f.status))}</ul>
+          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, f.status))}</ul>
+          {changed.length > SHOWN && <p className="hint">{changed.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
         </section>
       )}
       <section>
@@ -119,6 +120,8 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const [text, setText] = useState('');
   // 입력칸은 줄바꿈을 LF 로 바꿔 돌려준다. CRLF 파일은 저장할 때 되돌려 놓는다 (안 그러면 한 글자만 고쳐도 모든 줄이 바뀐다)
   const [crlf, setCrlf] = useState(false);
+  // CRLF 와 LF 가 섞인 파일은 저장하면 고치지 않은 줄까지 바뀌므로 보기만 한다
+  const [mixed, setMixed] = useState(false);
   // 지금 고치는 내용이 기댄 지문 (되살린 내용이면 그때의 것)
   const [base, setBase] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +152,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         if (!keepDraft) store.set(key, null);
         const content = f.content.replace(/\r\n/g, '\n');
         setCrlf(content !== f.content);
+        setMixed(content !== f.content && /(^|[^\r])\n/.test(f.content));
         setFile({ content, version: f.version });
         setText(draft?.text ?? content);
         setBase(draft?.version ?? f.version);
@@ -184,7 +188,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   };
   const save = () => {
     // 불러오는 중에는 막는다: 늦게 온 응답이 저장한 것을 옛 내용으로 덮는다
-    if (!file || saving || loading || !p.allowInput) return;
+    if (!file || saving || loading || mixed || !p.allowInput) return;
     const sent = text;
     const sentBase = base;
     setSaving(true);
@@ -240,7 +244,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
           다시 불러오기
         </button>
         {p.allowInput && (
-          <button type="button" className="primary" disabled={!dirty || saving || loading} onClick={save} title="⌘S / Ctrl+S">
+          <button type="button" className="primary" disabled={!dirty || saving || loading || mixed} onClick={save} title="⌘S / Ctrl+S">
             {saving ? '저장하는 중…' : '저장'}
           </button>
         )}
@@ -257,13 +261,14 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </p>
       )}
       {!p.allowInput && <p className="hint">보기만 할 수 있습니다. 고치려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>}
+      {mixed && <p className="hint">줄바꿈(CRLF·LF)이 섞인 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
       {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
       {(file || orphan) && (
         <textarea
           className="editor-text"
           aria-label={`${path} 내용`}
           value={text}
-          readOnly={!p.allowInput || loading || orphan}
+          readOnly={!p.allowInput || loading || orphan || mixed}
           wrap="off"
           spellCheck={false}
           autoCapitalize="off"
