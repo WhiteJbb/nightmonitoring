@@ -180,6 +180,21 @@ async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: s
   }
 }
 
+/** 폴더 안 어딘가에 .git 이 있는지 (다른 저장소·서브모듈). 링크는 따라가지 않는다. 너무 크면 확인을 포기한다 */
+const SCAN_LIMIT = 50_000;
+async function holdsGit(dir: string): Promise<boolean | 'too-big'> {
+  const stack = [dir];
+  let seen = 0;
+  while (stack.length) {
+    for (const entry of await readdir(stack.pop()!, { withFileTypes: true })) {
+      if (entry.name.toLowerCase() === '.git') return true;
+      if (++seen > SCAN_LIMIT) return 'too-big';
+      if (entry.isDirectory()) stack.push(path.join(entry.parentPath, entry.name));
+    }
+  }
+  return false;
+}
+
 /** 옮기거나 복사할 곳이 자기 안이면 안 된다 (폴더를 제 하위 폴더로) */
 const inside = (child: string, parent: string) => child === parent || child.startsWith(`${parent}/`);
 
@@ -217,6 +232,12 @@ async function applyOp(repo: string, op: unknown, src: { abs: string; rel: strin
       return void (await writeFile(src.abs, '', { flag: 'wx' }));
     }
     if (!(await exists(src.abs))) throw new FileError('없는 파일입니다', 404);
+    // 폴더째 지우거나 옮기거나 복사할 때 안에 다른 저장소(.git)가 있으면 그 기록까지 휩쓸린다
+    if ((await lstat(src.abs)).isDirectory()) {
+      const git = await holdsGit(src.abs);
+      if (git === true) throw new FileError('안에 다른 Git 저장소(.git)가 있는 폴더는 여기서 다루지 않습니다. 터미널에서 하세요', 400);
+      if (git === 'too-big') throw new FileError('폴더가 너무 커서 안을 확인할 수 없습니다. 터미널에서 하세요', 400);
+    }
     if (op === 'delete') return void (await toTrash(repo, src.abs, src.rel));
     if (op !== 'move' && op !== 'copy') throw new FileError('알 수 없는 작업입니다', 400);
     const dst = await target(repo, to);

@@ -120,6 +120,10 @@ describe('files', () => {
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });
+    // 안에 다른 저장소가 든 폴더는 통째로 다루지 않는다
+    await mkdir(path.join(repo, 'vendor/inner/.git'), { recursive: true });
+    for (const [op, to] of [['delete'], ['move', 'vendor2'], ['copy', 'vendor3']] as const) await expect(fsOp(repo, op, 'vendor', to)).rejects.toMatchObject({ status: 400 });
+    await rm(path.join(repo, 'vendor'), { recursive: true });
     // 하위 저장소의 .git 을 가리키는 링크도 막는다
     await mkdir(path.join(repo, 'sub/.git'), { recursive: true });
     await symlink(path.join(repo, 'sub/.git'), path.join(repo, 'alias'));
