@@ -201,7 +201,8 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
           api.upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' }).then(
             ({ path }) => {
               cb.current.onNotice?.('이미지 경로를 넣었습니다');
-              resolve(term.modes.bracketedPasteMode ? `\x1b[200~${path}\x1b[201~` : path);
+              // 뒤의 공백은 셸에서 경로 여러 개가 붙지 않게. 붙여넣기 안에 넣어야 Claude Code 첨부 앞에 공백이 끼지 않는다
+              resolve(term.modes.bracketedPasteMode ? `\x1b[200~${path} \x1b[201~` : `${path} `);
             },
             (err: unknown) => {
               cb.current.onNotice?.(`이미지 올리기 실패: ${errorMessage(err)}`);

@@ -258,7 +258,7 @@ test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and paste
     expect(posts()).toEqual([]); // 클립보드를 읽는 동안 친 키는 기다린다
     release();
     for (let i = 0; i < 20 && posts().length < 2; i++) await tick(10);
-    expect(posts().map(([url, body]) => (url.endsWith('/raw') ? atob(body.data!) : url))).toEqual(['/api/projects/api/upload', '\x1b[200~/up/api-1.png\x1b[201~hi']);
+    expect(posts().map(([url, body]) => (url.endsWith('/raw') ? atob(body.data!) : url))).toEqual(['/api/projects/api/upload', '\x1b[200~/up/api-1.png \x1b[201~hi']);
     items = [];
     ctrlV();
     act(() => xterm().type('\r'));
