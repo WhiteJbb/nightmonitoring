@@ -445,6 +445,14 @@ describe('session API', () => {
     expect(loadConfig(file, '/base').config.hiddenSessions).toEqual([]);
   });
 
+  it('deletes a project from the config (its tmux session is left alone)', async () => {
+    const { post, file, monitor } = await start();
+    expect((await post('/projects/nope', undefined, 'DELETE'))[0]).toBe(404);
+    expect(await post('/projects/old', undefined, 'DELETE')).toEqual([200, { ok: true }]);
+    expect(loadConfig(file, '/base').config.projects.map((p) => p.id)).toEqual(['nosession']);
+    expect(monitor.snapshot.projects.map((p) => p.id)).toEqual(['nosession']);
+  });
+
   it('restarts the session of a registered project', async () => {
     const { post, createSession } = await start();
     expect(await post('/projects/old/session')).toEqual([200, { ok: true }]);

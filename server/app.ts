@@ -453,6 +453,17 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     res.json({ id: next.projects.find((p) => p.tmuxSession === tmuxSession)?.id });
   });
 
+  // 프로젝트를 설정에서 지운다 (설정 화면의 삭제와 같다). tmux 세션은 건드리지 않으므로 돌고 있으면 미등록 세션으로 남는다
+  api.delete('/projects/:id', async (req, res) => {
+    if (!configEditor) return void res.status(403).json({ error: '설정을 수정할 수 없습니다' });
+    const view = configEditor.view();
+    if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
+    if (!view.projects.some((p) => p.id === req.params.id)) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    await configEditor.update({ version: view.version, settings: view.settings, projects: editableProjects(view).filter((p) => p.id !== req.params.id) });
+    await monitor.tick();
+    res.json({ ok: true });
+  });
+
   // 설정에 없는 tmux 세션을 대시보드에서 숨긴다 (config 의 hiddenSessions). DELETE 는 되돌리기(실행 취소)다. 설정 화면에서 지워도 다시 보인다.
   api.all('/sessions/:name/hide', async (req, res, next) => {
     if (req.method !== 'POST' && req.method !== 'DELETE') return void next();

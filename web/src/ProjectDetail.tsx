@@ -90,8 +90,8 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
         <Badge state={p.status.state} />
         {p.id.startsWith('tmux:') && <Register project={p} />}
         {tabs}
-        {/* 세션 끝내기는 드물고 되돌릴 수 없어 머리 오른쪽 끝에 따로 둔다 */}
-        {p.allowInput && p.tmux.exists && <EndSession projectId={p.id} session={p.tmuxSession ?? ''} />}
+        {/* 세션 끝내기·삭제는 드물고 되돌릴 수 없어 머리 오른쪽 끝에 따로 둔다. key 로 바뀔 때 오류 표시를 지운다 */}
+        {p.tmuxSession && !p.id.startsWith('tmux:') && (p.allowInput || !p.tmux.exists) && <EndSession key={String(p.tmux.exists)} project={p} />}
       </div>
       <div className="detail-meta">
         <Reasons reasons={p.status.reasons} />
@@ -486,23 +486,26 @@ export function QuickAnswers({ project: p }: { project: ProjectSnapshot }) {
   );
 }
 
-/** 세션 끝내기: 안에서 돌던 에이전트도 같이 끝나므로 한 번 묻는다 */
-function EndSession({ projectId, session }: { projectId: string; session: string }) {
+/** 세션 끝내기. 세션이 없으면 같은 자리에서 프로젝트 삭제(설정에서만 지운다). 둘 다 되돌릴 수 없어 한 번 묻는다 */
+function EndSession({ project: p }: { project: ProjectSnapshot }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const running = p.tmux.exists;
   const end = () => {
-    if (!window.confirm(`"${session}" 세션을 끝낼까요?\n안에서 돌던 프로그램(에이전트 포함)도 종료됩니다.`)) return;
+    const ask = running
+      ? `"${p.tmuxSession}" 세션을 끝낼까요?\n안에서 돌던 프로그램(에이전트 포함)도 종료됩니다.`
+      : `"${p.name}" 프로젝트를 목록에서 삭제할까요?\n폴더와 파일은 그대로 남습니다.`;
+    if (!window.confirm(ask)) return;
     setBusy(true);
     setError(null);
-    api
-      .killSession(projectId)
+    (running ? api.killSession(p.id) : api.deleteProject(p.id).then(() => void (window.location.hash = '#/')))
       .catch((e: unknown) => setError(errorMessage(e)))
       .finally(() => setBusy(false));
   };
   return (
     <p className="end-session">
       <button type="button" className="danger" disabled={busy} onClick={end}>
-        {busy ? '끝내는 중…' : '세션 종료'}
+        {running ? (busy ? '끝내는 중…' : '세션 종료') : busy ? '삭제하는 중…' : '삭제'}
       </button>
       {error && (
         <span className="err" role="alert">
