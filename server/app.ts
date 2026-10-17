@@ -93,8 +93,8 @@ export interface AppDeps {
     killPane: (paneId: string) => Promise<string | null>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
-    /** pane 이 속한 윈도우의 크기를 바꾼다. pin 이면 그 크기로 고정한다 (나란히 보기). 실패하면 오류 메시지 */
-    resize: (paneId: string, size: TermSize, pin?: boolean) => Promise<string | null>;
+    /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
+    resize: (paneId: string, size: TermSize) => Promise<string | null>;
     /** 올린 이미지를 저장하고 절대 경로를 돌려준다 */
     saveUpload: (projectId: string, ext: string, data: Buffer) => Promise<string>;
   };
@@ -244,6 +244,31 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     req.on('close', off);
   });
 
+  // 여러 pane 을 SSE 하나로 (나란히 보기). 브라우저는 http/1.1 에서 주소당 연결을 6개만 열어서, pane 마다 열면 입력 요청이 막힌다.
+  // 이벤트는 위와 같고 어느 pane 것인지 pane 필드가 붙는다
+  api.get('/projects/:id/terms', (req, res) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
+    const ids = typeof req.query.panes === 'string' ? req.query.panes.split(',') : [];
+    const panes = ids.map((id) => project?.tmux.panes.find((x) => x.id === id));
+    if (!project || !ids.length || ids.length > MAX_PANES || panes.some((x) => !x)) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    if (!terminal || !project.tmuxSession) return void res.status(403).json({ error: 'demo mode 에서는 터미널 스트림이 없습니다' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    const offs: (() => void)[] = [];
+    const stop = () => offs.splice(0).forEach((off) => off());
+    for (const id of ids) {
+      offs.push(
+        terminal.stream(project.tmuxSession, id, (e) => {
+          res.write(`data: ${JSON.stringify({ ...e, pane: id })}\n\n`);
+          if (res.writableLength > MAX_SSE_BUFFER) {
+            stop();
+            res.end();
+          }
+        }),
+      );
+    }
+    req.on('close', stop);
+  });
+
   // 이미지는 파일로 저장만 한다. 경로를 입력에 넣어 보내는 것은 평범한 글 입력과 같은 경로를 탄다.
   // base64 는 원본의 4/3 이라 10MB 이미지가 14MB 안에 들어온다.
   api.post('/projects/:id/upload', express.json({ limit: '14mb' }), async (req, res) => {
@@ -274,7 +299,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     if (project.tmux.attached) return void res.status(409).json({ error: '터미널이 붙어 있는 세션은 크기를 바꾸지 않습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows), body.pin === true);
+    const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows));
     if (error) return void res.status(500).json({ error });
     await monitor.tick();
     res.json({ ok: true });

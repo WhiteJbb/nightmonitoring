@@ -231,17 +231,12 @@ export async function killSession(session: string): Promise<string | null> {
 
 export const hasSession = async (session: string) => (await run('tmux', ['has-session', '-t', `=${session}`])).code === 0;
 
-/**
- * pane 이 속한 윈도우의 크기를 바꾼다. 프로그램에는 터미널 크기 변경 신호만 간다. 실패하면 오류 메시지.
- * pin: 나란히 보기처럼 한 세션의 윈도우들을 저마다 다른 크기로 둘 때. default-size 는 세션 옵션이라 윈도우마다 다르게 둘 수 없어서,
- * 풀어 두면 다른 윈도우를 맞출 때 같은 크기로 끌려간다. 이때는 manual 고정을 그대로 둔다 (나중에 붙는 터미널 크기는 따라가지 않는다).
- */
-export async function resizeWindow(paneId: string, size: TermSize, pin = false): Promise<string | null> {
+/** pane 이 속한 윈도우의 크기를 바꾼다. 프로그램에는 터미널 크기 변경 신호만 간다. 실패하면 오류 메시지. */
+export async function resizeWindow(paneId: string, size: TermSize): Promise<string | null> {
   const wh = `${size.cols}x${size.rows}`;
-  const resize = ['resize-window', '-t', paneId, '-x', String(size.cols), '-y', String(size.rows)];
   // resize-window 는 window-size 를 manual 로 고정해 나중에 붙는 터미널 크기를 따라가지 않는다. 고정을 풀고,
   // 붙은 터미널이 없을 때의 크기(default-size)를 이 크기로 둬서 되돌아가지 않게 한다.
-  for (const args of pin ? [resize] : [resize, ['set-option', '-w', '-t', paneId, '-u', 'window-size'], ['set-option', '-t', paneId, 'default-size', wh]]) {
+  for (const args of [['resize-window', '-t', paneId, '-x', String(size.cols), '-y', String(size.rows)], ['set-option', '-w', '-t', paneId, '-u', 'window-size'], ['set-option', '-t', paneId, 'default-size', wh]]) {
     const r = await run('tmux', args);
     if (r.code !== 0) return r.stderr.trim() || `tmux ${args[0]} 실패`;
   }

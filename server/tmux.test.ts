@@ -86,10 +86,6 @@ describe('resizeWindow', () => {
     ]);
     mockRun.mockResolvedValueOnce({ code: 1, stdout: '', stderr: "can't find pane", timedOut: false });
     expect(await resizeWindow('%9', { cols: 80, rows: 24 })).toBe("can't find pane");
-    // pin: 세션 default-size 를 건드리지 않고 manual 고정을 남긴다
-    mockRun.mockClear();
-    expect(await resizeWindow('%7', { cols: 60, rows: 20 }, true)).toBeNull();
-    expect(mockRun.mock.calls.map((c) => c[1])).toEqual([['resize-window', '-t', '%7', '-x', '60', '-y', '20']]);
   });
 });
 

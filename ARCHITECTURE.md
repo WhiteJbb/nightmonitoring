@@ -139,6 +139,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
 | GET | `/api/projects/:id/run/:kind` | 마지막 실행의 전체 출력 |
 | GET | `/api/projects/:id/term/:paneId` | SSE, pane 출력 바이트 스트림 (xterm.js) |
+| GET | `/api/projects/:id/terms?panes=%1,%2` | 나란히 보기: 여러 pane 의 스트림을 SSE 하나로 (이벤트에 `pane`). http/1.1 의 주소당 연결 6개 제한 때문 |
 | POST | `/api/projects/:id/input` | pane 에 글자 또는 허용된 특수 키 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/raw` | 터미널 에뮬레이터의 바이트를 그대로 전송. 200 / 400 / 403 / 404 |
 | POST | `/api/projects/:id/upload` | 이미지 저장 후 경로 반환. 200 / 400 / 403 / 404 |

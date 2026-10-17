@@ -1,12 +1,12 @@
-import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
+import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TermEvent, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { AGENTS, StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
-import type { TermStatus } from './Term.tsx';
+import type { TermFeed, TermStatus } from './Term.tsx';
 import { api, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
 
@@ -545,25 +545,49 @@ function useAway(): boolean {
   return away;
 }
 
+/**
+ * 나란히 보기: 터미널들의 출력을 SSE 하나로 받아 pane 별로 나눠 준다. 브라우저는 http/1.1 에서 주소당 연결을 6개만 열어서
+ * pane 마다 열면 입력 요청이 막힌다. 칸(Term)들이 먼저 등록하고, 연결은 그 뒤에 열린다 (자식 effect 가 먼저 돈다)
+ */
+function useSharedFeed(projectId: string, paneIds: string, on: boolean, attempt: number): TermFeed {
+  const listeners = useRef(new Map<string, { on: (e: TermEvent) => void; down: () => void }>());
+  useEffect(() => {
+    if (!on || !paneIds) return;
+    const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/terms?panes=${encodeURIComponent(paneIds)}`);
+    es.onmessage = (ev: MessageEvent<string>) => {
+      const e = JSON.parse(ev.data) as TermEvent & { pane: string };
+      listeners.current.get(e.pane)?.on(e);
+    };
+    es.onerror = () => listeners.current.forEach((l) => l.down());
+    return () => es.close();
+  }, [projectId, paneIds, on, attempt]);
+  return useCallback((pane, on, down) => {
+    const l = { on, down };
+    listeners.current.set(pane, l);
+    return () => {
+      if (listeners.current.get(pane) === l) listeners.current.delete(pane);
+    };
+  }, []);
+}
+
 /** 나란히 보기의 한 칸: 터미널 하나와 그 이름·연결 상태. 누르거나 키보드로 들어오면 입력 대상이 된다 */
-function SplitCell({ project: p, pane: x, no, selected, share, span, full, canFit, onSelect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; share: number; span: number; full: boolean; canFit: boolean; onSelect: () => void; onNotice: (msg: string) => void }) {
+function SplitCell({ project: p, pane: x, no, selected, share, span, full, canFit, feed, onSelect, onReconnect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; share: number; span: number; full: boolean; canFit: boolean; feed: TermFeed; onSelect: () => void; onReconnect: () => void; onNotice: (msg: string) => void }) {
   const viewRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<TermStatus>('connecting');
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
-  const [attempt, setAttempt] = useState(0);
   const [fitError, setFitError] = useState<string | null>(null);
-  // 붙어 있는 터미널이 없으면 이 칸 크기에 한 번 맞춘다 (전체 화면을 켜고 끄면 다시). 첫 화면이 그려진 뒤에 잰다
-  const fittedFull = useRef<boolean | null>(null);
+  // 붙어 있는 터미널이 없으면 이 칸 크기에 맞춘다. 칸 배치(전체 화면, 칸 수에 따른 높이·폭)가 바뀌면 다시. 첫 화면이 그려진 뒤에 잰다
+  const fittedFor = useRef<string | null>(null);
+  const layoutKey = `${full}:${share}:${span}`;
   useEffect(() => {
-    if (!canFit || !size || fittedFull.current === full) return;
+    if (!canFit || !size || fittedFor.current === layoutKey) return;
     const timer = setTimeout(() => {
-      fittedFull.current = full;
+      fittedFor.current = layoutKey;
       const want = fitSize(viewRef.current, full, share);
-      // 크기를 고정한다: 풀어 두면 다른 칸을 맞출 때 같은 크기로 끌려간다 (tmux.ts resizeWindow)
-      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, x.id, want, true).catch((e: unknown) => setFitError(errorMessage(e)));
+      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, x.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
     }, 300);
     return () => clearTimeout(timer);
-  }, [canFit, size, full, share, p.id, x.id]);
+  }, [canFit, size, full, share, layoutKey, p.id, x.id]);
   const live = status === 'live';
   return (
     <div className={selected ? 'split-cell selected' : 'split-cell'} style={span > 1 ? { gridColumn: `span ${span}` } : undefined} onPointerDown={onSelect} onFocusCapture={onSelect}>
@@ -575,13 +599,13 @@ function SplitCell({ project: p, pane: x, no, selected, share, span, full, canFi
           <span className="dot" />
         </span>
         {!live && status !== 'connecting' && (
-          <button type="button" className="more-rows" onClick={() => setAttempt(attempt + 1)}>
+          <button type="button" className="more-rows" onClick={onReconnect}>
             다시 연결
           </button>
         )}
       </div>
       <div ref={viewRef} className="term-view">
-        <Term key={`${x.id}:${attempt}`} projectId={p.id} pane={x.id} canInput={p.allowInput} full={full} focus={selected} heightShare={share} onNotice={onNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+        <Term projectId={p.id} pane={x.id} canInput={p.allowInput} full={full} focus={selected} heightShare={share} feed={feed} onNotice={onNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
       </div>
     </div>
   );
@@ -657,6 +681,9 @@ export function TerminalTab({ project: p, now }: Props) {
   const visible = useSyncExternalStore(onVisibility, () => document.visibilityState !== 'hidden');
   // 탭을 앞에 띄워 둔 채 자리를 비워도 마찬가지로 닫는다
   const away = useAway();
+  // 나란히 보기의 연결. 다시 연결하면 칸의 터미널도 새로 만들어 첫 화면부터 받는다
+  const [feedAttempt, setFeedAttempt] = useState(0);
+  const feed = useSharedFeed(p.id, t.panes.map((x) => x.id).join(','), splitOn && visible && !away, feedAttempt);
   // 터미널에서 복사·이미지 붙여넣기의 결과를 잠깐 보여 준다
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -669,7 +696,8 @@ export function TerminalTab({ project: p, now }: Props) {
   const canFit = p.allowInput && t.exists && !t.attached;
   // 붙어 있는 터미널이 없으면, 터미널을 연 화면(휴대폰·컴퓨터) 크기에 pane 을 한 번 맞춘다. 나중에 다른 화면에서 열면 거기에 맞춘다
   useEffect(() => {
-    if (!canFit || !pane || !size || autoFitted.current === pane.id) return;
+    // 나란히 보기에서는 칸마다 맞춘다 (여기서 재면 하나씩 보기 틀이 없어 엉뚱한 크기가 된다)
+    if (splitOn || !canFit || !pane || !size || autoFitted.current === pane.id) return;
     // 첫 화면이 그려진 뒤에 재야 실제 칸 폭을 쓴다
     const timer = setTimeout(() => {
       autoFitted.current = pane.id;
@@ -677,7 +705,7 @@ export function TerminalTab({ project: p, now }: Props) {
       if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
     }, 300);
     return () => clearTimeout(timer);
-  }, [canFit, pane, size, p.id]);
+  }, [splitOn, canFit, pane, size, p.id]);
 
   if (!t.configured) {
     return (
@@ -898,7 +926,7 @@ export function TerminalTab({ project: p, now }: Props) {
             {visible && !away ? (
               t.panes.map((x, i) => (
                 // 마지막 줄이 덜 차면 마지막 칸이 남은 자리를 채운다
-                <SplitCell key={x.id} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} onSelect={() => setPaneId(x.id)} onNotice={showNotice} />
+                <SplitCell key={`${x.id}:${feedAttempt}`} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} feed={feed} onSelect={() => setPaneId(x.id)} onReconnect={() => setFeedAttempt(feedAttempt + 1)} onNotice={showNotice} />
               ))
             ) : (
               <p className="dim term-paused">{pausedText}</p>

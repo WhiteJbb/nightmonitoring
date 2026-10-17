@@ -49,8 +49,8 @@ export const api = {
   newWindow: (id: string, agent?: AgentKind) => req<{ pane: string }>(`/api/projects/${encodeURIComponent(id)}/windows`, 'POST', agent ? { agent } : {}),
   closePane: (id: string, paneId: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}`, 'DELETE'),
   startSession: (id: string, size: TermSize & { agent?: AgentKind }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
-  fitPane: (id: string, paneId: string, size: TermSize, pin = false) =>
-    req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', pin ? { ...size, pin } : size),
+  fitPane: (id: string, paneId: string, size: TermSize) =>
+    req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', size),
   sendInput: (id: string, body: InputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/input`, 'POST', body),
   sendRaw: (id: string, body: RawInputRequest) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/raw`, 'POST', body),
   upload: (id: string, body: UploadRequest) => req<{ path: string }>(`/api/projects/${encodeURIComponent(id)}/upload`, 'POST', body),
