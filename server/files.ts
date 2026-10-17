@@ -1,5 +1,5 @@
-// 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)뿐이라,
-// .env 처럼 무시된 파일과 저장소 밖은 경로를 직접 줘도 열지 않는다.
+// 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)이고,
+// .env 처럼 무시된 파일은 호출부가 허락할 때만(터미널 입력이 허용된 프로젝트) 연다. 저장소 밖과 .git 안은 경로를 직접 줘도 열지 않는다.
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -38,11 +38,40 @@ export async function listFiles(repo: string): Promise<string[]> {
   return [...new Set(r.stdout.split('\0').filter((f) => f && !deleted.has(f)))].sort().slice(0, MAX_FILES);
 }
 
+/**
+ * .gitignore 에 걸린 파일 (.env, 로그 등). 무시된 폴더(node_modules/, dist/)는 통째로 한 줄로 나오므로 빼서
+ * 그 안의 수많은 파일은 담지 않는다.
+ */
+export async function listIgnored(repo: string): Promise<string[]> {
+  const root = await rootOf(repo);
+  const r = await run('git', ['-C', root, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']);
+  if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
+  // 따옴표·역슬래시·제어 문자가 든 경로는 check-ignore 가 따옴표로 감싸 돌려줘 맞춰 볼 수 없다: 안전하게 뺀다
+  // eslint-disable-next-line no-control-regex -- Git 이 따옴표로 감싸는 문자를 그대로 거른다
+  const files = r.stdout.split('\0').filter((f) => f && !f.endsWith('/') && !/["\\\x00-\x1f\x7f]/.test(f));
+  // 무시된 폴더라도 그 안에 추적 중인 파일이 있으면 접히지 않고 파일이 하나씩 나온다. 그런 폴더 안은 직접 걸러 낸다
+  const parents = (f: string) => f.split('/').slice(0, -1).map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`);
+  const dirs = [...new Set(files.flatMap(parents))];
+  const ignoredDirs = new Set<string>();
+  for (let i = 0; i < dirs.length; i += 500) {
+    // -z 는 --stdin 과만 된다. 줄 단위로 읽고, 한글 폴더 이름이 \355… 로 바뀌지 않게 quotePath 를 끈다
+    const c = await run('git', ['-C', root, '-c', 'core.quotePath=false', 'check-ignore', '--no-index', '--', ...dirs.slice(i, i + 500)]);
+    for (const d of c.stdout.split('\n')) if (d) ignoredDirs.add(d);
+  }
+  return files
+    .filter((f) => !parents(f).some((d) => ignoredDirs.has(d)))
+    .sort()
+    .slice(0, MAX_FILES);
+}
+
 /** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
-async function resolve(repo: string, rel: unknown): Promise<string> {
+async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
-  const files = await listFiles(repo);
-  if (!files.includes(rel)) throw new FileError('열 수 없는 파일입니다 (Git 이 모르는 파일이거나 .gitignore 에 걸린 파일)', 404);
+  // 무시된 파일 목록은 필요할 때만 받는다 (큰 빌드 결과물이 있으면 무겁거나 실패할 수 있다: 그래도 보통 파일은 열린다)
+  const tracked = await listFiles(repo);
+  let ignored: string[] | null = null;
+  const known = async (f: string) => tracked.includes(f) || (ignoredOk && (ignored ??= await listIgnored(repo).catch(() => [])).includes(f));
+  if (!(await known(rel))) throw new FileError(ignoredOk ? '열 수 없는 파일입니다' : '열 수 없는 파일입니다 (.gitignore 에 걸린 파일은 터미널 입력을 허용한 프로젝트에서만 엽니다)', 404);
   const root = await rootOf(repo);
   const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
@@ -50,7 +79,7 @@ async function resolve(repo: string, rel: unknown): Promise<string> {
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  if (!files.includes(path.relative(realRoot, real).split(path.sep).join('/'))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
+  if (!(await known(path.relative(realRoot, real).split(path.sep).join('/')))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
 
@@ -65,8 +94,9 @@ function asText(buf: Buffer): string {
   }
 }
 
-export async function readText(repo: string, rel: unknown): Promise<{ content: string; version: string }> {
-  const buf = await readFile(await resolve(repo, rel));
+/** ignoredOk: .gitignore 에 걸린 파일도 연다 */
+export async function readText(repo: string, rel: unknown, ignoredOk = false): Promise<{ content: string; version: string }> {
+  const buf = await readFile(await resolve(repo, rel, ignoredOk));
   return { content: asText(buf), version: versionOf(buf) };
 }
 
@@ -84,11 +114,11 @@ function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
 }
 
 /** version 은 연 때의 지문. 그 사이 바뀌었으면(에이전트가 고쳤을 수 있다) 덮어쓰지 않는다. 새 지문을 돌려준다 */
-export async function writeText(repo: string, rel: unknown, content: unknown, version: unknown): Promise<string> {
+export async function writeText(repo: string, rel: unknown, content: unknown, version: unknown, ignoredOk = false): Promise<string> {
   if (typeof content !== 'string' || typeof version !== 'string') throw new FileError('내용과 지문이 필요합니다', 400);
   const buf = Buffer.from(content, 'utf8');
   if (buf.length > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 저장하지 않습니다', 413);
-  const abs = await resolve(repo, rel);
+  const abs = await resolve(repo, rel, ignoredOk);
   const changed = async () => versionOf(await readFile(abs)) !== version;
   const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
   return oneAtATime(abs, async () => {

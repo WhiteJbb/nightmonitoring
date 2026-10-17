@@ -24,7 +24,7 @@ function serve() {
   let disk = { content: 'const a = 1;\n', version: 'v1' };
   fetchMock.mockImplementation(async (url, init) => {
     const u = String(url);
-    if (u.endsWith('/files')) return json(200, { files: ['README.md', 'src/app.ts'] });
+    if (u.endsWith('/files')) return json(200, { files: ['README.md', 'src/app.ts'], ignored: ['.env'] });
     if (u.includes('/file?path=')) return json(200, disk);
     const body = JSON.parse(init!.body as string) as { content: string; version: string };
     if (body.version !== disk.version) return json(409, { error: '연 뒤로 파일이 바뀌었습니다' });
@@ -53,6 +53,28 @@ test('lists changed files first, opens one, saves with ⌘S against the version 
   expect((await screen.findByRole('alert')).textContent).toContain('바뀌었습니다');
 });
 
+test('all files show as a folder tree that remembers what is open; ignored files are marked; search lists matches flat', async () => {
+  serve();
+  const { unmount } = render(<FilesTab project={project()} />);
+  const folder = await screen.findByRole('button', { name: '▸ src/' });
+  expect(screen.getByRole('button', { name: '.env' }).className).toContain('dim');
+  expect(screen.getByText('무시됨')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'app.ts' })).toBeNull();
+  fireEvent.click(folder);
+  expect(screen.getByRole('button', { name: 'app.ts' })).toBeTruthy();
+  unmount();
+  render(<FilesTab project={project()} />);
+  expect(await screen.findByRole('button', { name: '▾ src/' })).toBeTruthy(); // 펼친 채로 돌아온다
+  fireEvent.change(screen.getByLabelText('파일 찾기'), { target: { value: 'app' } });
+  expect(screen.getByRole('heading', { name: '찾은 파일 (1)' })).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: 'src/app.ts' })).toHaveLength(1);
+  // 새로 생긴 무시된 파일은 Git 변화가 아니라서 새로고침으로 받는다
+  const lists = () => fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/files')).length;
+  const before = lists();
+  fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+  await waitFor(() => expect(lists()).toBe(before + 1));
+});
+
 test('unsaved edits survive leaving the tab and come back with the version they were based on', async () => {
   serve();
   const { unmount } = render(<FilesTab project={project()} />);
@@ -70,7 +92,7 @@ test('unsaved edits survive leaving the tab and come back with the version they 
 test('a CRLF file is shown with LF and saved back with CRLF', async () => {
   fetchMock.mockImplementation(async (url) => {
     const u = String(url);
-    if (u.endsWith('/files')) return json(200, { files: ['src/app.ts'] });
+    if (u.endsWith('/files')) return json(200, { files: ['src/app.ts'], ignored: [] });
     if (u.includes('/file?path=')) return json(200, { content: 'a\r\nb\r\n', version: 'v1' });
     return json(200, { version: 'v2' });
   });

@@ -136,7 +136,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | GET | `/api/snapshot` | 현재 스냅샷 |
 | GET | `/api/events` | SSE, 폴링마다·실행 상태 변경 시 스냅샷 푸시 (pane 화면 사본·기준점 이후 목록을 뺀 요약) |
 | GET | `/api/projects/:id` | 한 프로젝트의 전체 상태 (Git 탭이 기준점 이후 목록을 받을 때) |
-| GET | `/api/projects/:id/files` | Git 이 아는 파일 목록 (`ls-files --cached --others --exclude-standard`) |
+| GET | `/api/projects/:id/files` | Git 이 아는 파일 목록 (`ls-files --cached --others --exclude-standard`). `ignored`: 입력 허용 프로젝트만, 무시된 파일(무시된 폴더 안은 제외) |
 | GET | `/api/projects/:id/file?path=` | 글 파일 내용과 지문(sha1). 400 / 404 / 413 / 415 |
 | PUT | `/api/projects/:id/file` | `{path, content, version}` 저장 (입력과 같은 조건). 지문이 다르면 409 |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
