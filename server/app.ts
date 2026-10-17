@@ -235,6 +235,8 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     // 출력은 건너뛸 수 없다 (한 조각이 빠지면 화면이 어긋난다). 느린 클라이언트에 너무 쌓이면 끊는다:
     // 브라우저 EventSource 가 다시 붙으면 첫 화면부터 새로 받는다
     const off = terminal.stream(project.tmuxSession, pane.id, (e) => {
+      // 끊은 뒤에도 기다리던 첫 화면이 올 수 있다. 끝난 응답에 쓰면 서버가 죽는다
+      if (res.writableEnded) return;
       res.write(`data: ${JSON.stringify(e)}\n\n`);
       if (res.writableLength > MAX_SSE_BUFFER) {
         off();
@@ -258,6 +260,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     for (const id of ids) {
       offs.push(
         terminal.stream(project.tmuxSession, id, (e) => {
+          if (res.writableEnded) return; // 위와 같다
           res.write(`data: ${JSON.stringify({ ...e, pane: id })}\n\n`);
           if (res.writableLength > MAX_SSE_BUFFER) {
             stop();
