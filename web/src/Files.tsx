@@ -82,6 +82,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const [list, setList] = useState<{ files: string[]; ignored: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // 무시된 파일(.env) 이 생기거나 지워진 것은 Git 변화로 잡히지 않아서 직접 다시 받는 버튼을 둔다
+  const [refresh, setRefresh] = useState(0);
   // 펼친 폴더 ("src/"꼴). 파일을 열었다 돌아와도 그대로다
   const treeKey = `tree:${scopeOf(p)}`;
   const [open, setOpen] = useState<Set<string>>(() => {
@@ -116,7 +118,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     return () => {
       current = false;
     };
-  }, [p.id, p.repoPath, p.lastGitChangeAt]);
+  }, [p.id, p.repoPath, p.lastGitChangeAt, refresh]);
   if (error) {
     return (
       <p className="err" role="alert">
@@ -154,11 +156,24 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
         ...(isOpen ? rows(dir.dirs.get(name)!, path, depth + 1) : []),
       ];
     }),
-    ...dir.files.map((f) => item(f, { label: baseName(f), depth })),
+    // 한 폴더에 파일이 아주 많으면 앞의 것만 (나머지는 이름으로 찾는다)
+    ...dir.files.slice(0, SHOWN).map((f) => item(f, { label: baseName(f), depth })),
+    ...(dir.files.length > SHOWN
+      ? [
+          <li key={`${prefix}…`} className="hint" style={{ paddingLeft: depth * 18 }}>
+            {dir.files.length - SHOWN}개 더 있습니다. 이름으로 찾으세요.
+          </li>,
+        ]
+      : []),
   ];
   return (
     <>
-      <input type="search" className="file-search" placeholder="파일 이름으로 찾기" aria-label="파일 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+      <div className="file-tools">
+        <input type="search" className="file-search" placeholder="파일 이름으로 찾기" aria-label="파일 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+        <button type="button" className="more-rows" onClick={() => setRefresh(refresh + 1)} title="파일 목록을 다시 받습니다">
+          새로고침
+        </button>
+      </div>
       {!q && changed.length > 0 && (
         <section>
           <h3>바뀐 파일 ({changed.length})</h3>

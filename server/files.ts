@@ -43,11 +43,21 @@ export async function listFiles(repo: string): Promise<string[]> {
  * 그 안의 수많은 파일은 담지 않는다.
  */
 export async function listIgnored(repo: string): Promise<string[]> {
-  const r = await run('git', ['-C', await rootOf(repo), 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']);
+  const root = await rootOf(repo);
+  const r = await run('git', ['-C', root, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
-  return r.stdout
-    .split('\0')
-    .filter((f) => f && !f.endsWith('/'))
+  const files = r.stdout.split('\0').filter((f) => f && !f.endsWith('/'));
+  // 무시된 폴더라도 그 안에 추적 중인 파일이 있으면 접히지 않고 파일이 하나씩 나온다. 그런 폴더 안은 직접 걸러 낸다
+  const parents = (f: string) => f.split('/').slice(0, -1).map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`);
+  const dirs = [...new Set(files.flatMap(parents))];
+  const ignoredDirs = new Set<string>();
+  for (let i = 0; i < dirs.length; i += 500) {
+    // -z 는 --stdin 과만 된다. 줄 단위로 읽고, 한글 폴더 이름이 \355… 로 바뀌지 않게 quotePath 를 끈다
+    const c = await run('git', ['-C', root, '-c', 'core.quotePath=false', 'check-ignore', '--no-index', '--', ...dirs.slice(i, i + 500)]);
+    for (const d of c.stdout.split('\n')) if (d) ignoredDirs.add(d);
+  }
+  return files
+    .filter((f) => !parents(f).some((d) => ignoredDirs.has(d)))
     .sort()
     .slice(0, MAX_FILES);
 }

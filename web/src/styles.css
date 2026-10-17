@@ -1105,8 +1105,14 @@ pre {
   color: #fff;
 }
 /* 파일 탭: 목록과 편집기 */
-.file-search {
+.file-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-bottom: 8px;
+}
+.file-tools .file-search {
+  flex: 1;
 }
 .rows .file-link {
   flex: 1;

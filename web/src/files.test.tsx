@@ -68,6 +68,11 @@ test('all files show as a folder tree that remembers what is open; ignored files
   fireEvent.change(screen.getByLabelText('파일 찾기'), { target: { value: 'app' } });
   expect(screen.getByRole('heading', { name: '찾은 파일 (1)' })).toBeTruthy();
   expect(screen.getAllByRole('button', { name: 'src/app.ts' })).toHaveLength(1);
+  // 새로 생긴 무시된 파일은 Git 변화가 아니라서 새로고침으로 받는다
+  const lists = () => fetchMock.mock.calls.filter(([u]) => String(u).endsWith('/files')).length;
+  const before = lists();
+  fireEvent.click(screen.getByRole('button', { name: '새로고침' }));
+  await waitFor(() => expect(lists()).toBe(before + 1));
 });
 
 test('unsaved edits survive leaving the tab and come back with the version they were based on', async () => {
