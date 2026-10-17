@@ -58,13 +58,28 @@ export async function readText(repo: string, rel: unknown): Promise<{ content: s
   return { content: asText(buf), version: versionOf(buf) };
 }
 
+// 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 파일마다 줄 세운다
+const saving = new Map<string, Promise<unknown>>();
+function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const next = (saving.get(key) ?? Promise.resolve()).catch(() => {}).then(work);
+  saving.set(key, next);
+  void next
+    .finally(() => {
+      if (saving.get(key) === next) saving.delete(key);
+    })
+    .catch(() => {});
+  return next;
+}
+
 /** version 은 연 때의 지문. 그 사이 바뀌었으면(에이전트가 고쳤을 수 있다) 덮어쓰지 않는다. 새 지문을 돌려준다 */
 export async function writeText(repo: string, rel: unknown, content: unknown, version: unknown): Promise<string> {
   if (typeof content !== 'string' || typeof version !== 'string') throw new FileError('내용과 지문이 필요합니다', 400);
-  const abs = await resolve(repo, rel);
-  if (versionOf(await readFile(abs)) !== version) throw new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
   const buf = Buffer.from(content, 'utf8');
   if (buf.length > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 저장하지 않습니다', 413);
-  await writeFile(abs, buf);
-  return versionOf(buf);
+  const abs = await resolve(repo, rel);
+  return oneAtATime(abs, async () => {
+    if (versionOf(await readFile(abs)) !== version) throw new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
+    await writeFile(abs, buf);
+    return versionOf(buf);
+  });
 }

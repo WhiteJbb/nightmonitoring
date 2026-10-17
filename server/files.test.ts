@@ -41,6 +41,12 @@ describe('files', () => {
     await writeFile(path.join(repo, 'src/app.ts'), 'export const a = 3;\n');
     await expect(writeText(repo, 'src/app.ts', 'mine', version)).rejects.toMatchObject({ status: 409 });
     expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe('export const a = 3;\n');
+    // 두 화면이 같은 내용을 열어 동시에 저장하면 하나만 된다
+    const both = (await readText(repo, 'src/app.ts')).version;
+    const texts = ['first\n', 'second, longer\n'];
+    const results = await Promise.allSettled(texts.map((t) => writeText(repo, 'src/app.ts', t, both)));
+    expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
+    expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe(texts[results.findIndex((r) => r.status === 'fulfilled')]);
   });
 
   it('refuses ignored files, paths outside the list, links, and binary files', async () => {
