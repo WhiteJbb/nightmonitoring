@@ -1075,12 +1075,29 @@ pre {
 .panes button {
   font-family: var(--mono);
 }
+/* 터미널 버튼과 닫기(✕)를 알약 하나로: 바탕은 감싼 쪽이 칠하고 안의 버튼은 투명 */
 .pane-tab {
   display: inline-flex;
-  gap: 2px;
+  border-radius: var(--r-pill);
+  background: rgba(255, 255, 255, 0.06);
+  transition: background-color 180ms ease;
 }
-.panes .close {
-  padding-inline: 8px;
+.pane-tab:has(> [aria-pressed='true']) {
+  background: rgba(255, 255, 255, 0.16);
+}
+.term-bar .panes .pane-tab button,
+.term-bar .panes .pane-tab button:hover:not(:disabled) {
+  background: transparent;
+  transform: none;
+}
+.term-bar .panes .pane-tab button:has(+ .close) {
+  padding-right: 4px;
+}
+.term-bar .panes .pane-tab .close {
+  padding-inline: 4px 10px;
+}
+.term-bar .panes .pane-tab .close:hover:not(:disabled) {
+  color: #fff;
 }
 .with-action {
   display: flex;
