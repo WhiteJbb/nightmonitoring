@@ -181,7 +181,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   // 파일 다루기: 입력 허용 프로젝트만 (서버도 같은 조건으로 막는다)
   const canEdit = p.allowInput;
   const [menu, setMenu] = useState<string | null>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLSpanElement>(null);
   useDismiss(menuRef, menu !== null, () => setMenu(null));
   const [clip, setClip] = useState(clipboard?.scope === scopeOf(p) ? clipboard : null);
   const [opError, setOpError] = useState<string | null>(null);
@@ -317,8 +317,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
             } catch {
               return;
             }
-            // 제자리나 자기 안으로는 옮기지 않는다
-            if (from && parentOf(from) !== dir && !dir.startsWith(from)) void act('move', from, dir + baseName(from));
+            // 제자리나 (폴더를) 자기 안으로는 옮기지 않는다
+            if (from && parentOf(from) !== dir && !(from.endsWith('/') && dir.startsWith(from))) void act('move', from, dir + baseName(from));
           },
         }
       : {};
@@ -340,7 +340,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       ['지우기…', () => void remove(path)],
     ];
     return (
-      <div className="menu row-menu" role="menu" ref={menuRef}>
+      <div className="menu row-menu" role="menu">
         {items.map(([label, run]) => (
           <button key={label} type="button" role="menuitem" className={label.startsWith('지우기') ? 'danger' : undefined} onClick={run}>
             {label}
@@ -352,12 +352,13 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   // 행 끝의 ⋯ 와 그 메뉴. 우클릭도 같은 메뉴를 연다. 같은 파일이 '바뀐 파일'과 트리에 다 있으니 어느 쪽 행인지(where)로 가른다
   const actions = (path: string, where: string) =>
     canEdit && (
-      <>
+      // ⋯ 와 메뉴를 함께 감싼다: ⋯ 를 다시 누르면 '바깥'이 아니라 닫기다
+      <span ref={menu === where + path ? menuRef : undefined}>
         <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === where + path} onClick={() => setMenu(menu === where + path ? null : where + path)}>
           ⋯
         </button>
         {menu === where + path && menuFor(path)}
-      </>
+      </span>
     );
   const onContext = (path: string, where: string) => (e: MouseEvent) => {
     if (!canEdit) return;
