@@ -308,7 +308,8 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     const blocked = inputBlocked(project);
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!project.tmuxSession || !project.tmux.exists) return void res.status(400).json({ error: 'tmux 세션이 실행 중이 아닙니다' });
-    // 그보다 많으면 스냅샷에서 잘려 새 터미널이 안 보인다
+    // 그보다 많으면 스냅샷에서 잘려 새 터미널이 안 보인다.
+    // ponytail: 스냅샷 기준이라 두 화면에서 동시에 누르면 하나 넘칠 수 있다 (tmux 에는 남고 목록에서만 빠진다). 문제되면 세션별로 줄 세운다
     if (project.tmux.panes.length >= MAX_PANES) return void res.status(409).json({ error: `터미널은 세션당 ${MAX_PANES}개까지 열 수 있습니다` });
     const r = await terminal.newWindow(project.tmuxSession, project.repoPath);
     if ('error' in r) return void res.status(400).json(r);
