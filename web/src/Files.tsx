@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
@@ -104,8 +104,8 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   // 디스크의 내용과 지문
   const [file, setFile] = useState<{ content: string; version: string } | null>(null);
   const [text, setText] = useState('');
-  // 저장 응답이 오는 사이에 더 친 내용을 알기 위해 (응답 콜백은 그때의 text 를 모른다)
-  const latest = useRef('');
+  // 입력칸은 줄바꿈을 LF 로 바꿔 돌려준다. CRLF 파일은 저장할 때 되돌려 놓는다 (안 그러면 한 글자만 고쳐도 모든 줄이 바뀐다)
+  const [crlf, setCrlf] = useState(false);
   // 지금 고치는 내용이 기댄 지문 (되살린 내용이면 그때의 것)
   const [base, setBase] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -118,9 +118,10 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       (f) => {
         const draft = keepDraft ? loadDraft(key) : null;
         if (!keepDraft) store.set(key, null);
-        setFile(f);
-        setText(draft?.text ?? f.content);
-        latest.current = draft?.text ?? f.content;
+        const content = f.content.replace(/\r\n/g, '\n');
+        setCrlf(content !== f.content);
+        setFile({ content, version: f.version });
+        setText(draft?.text ?? content);
         setBase(draft?.version ?? f.version);
         setNotice(draft ? '저장하지 않은 내용을 되살렸습니다' : null);
         setError(null);
@@ -135,23 +136,26 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const dirty = file !== null && text !== file.content;
   const edit = (value: string) => {
     setText(value);
-    latest.current = value;
     setNotice(null);
     store.set(key, file && value === file.content && base === file.version ? null : JSON.stringify({ text: value, version: base } satisfies Draft));
   };
   const save = () => {
     if (!file || saving || !p.allowInput) return;
     const sent = text;
+    const sentBase = base;
     setSaving(true);
     setError(null);
     api
-      .saveFile(p.id, { path, content: sent, version: base })
+      .saveFile(p.id, { path, content: crlf ? sent.replace(/\n/g, '\r\n') : sent, version: sentBase })
       .then(
         ({ version }) => {
+          // 남은 초안은 저장소에서 본다 (그 사이 탭을 나갔다 다시 열어 고쳤을 수도 있다):
+          // 이 저장이 남긴 것이면 지우고, 그 뒤에 더 고친 것이면 새 지문에 기대어 남겨 둔다
+          const draft = loadDraft(key);
+          if (draft?.text === sent) store.set(key, null);
+          else if (draft?.version === sentBase) store.set(key, JSON.stringify({ text: draft.text, version } satisfies Draft));
           setFile({ content: sent, version });
           setBase(version);
-          // 저장하는 사이에 더 고쳤으면 그 내용은 새 지문에 기대어 남겨 둔다
-          store.set(key, latest.current === sent ? null : JSON.stringify({ text: latest.current, version } satisfies Draft));
           setNotice('저장했습니다');
         },
         (e: unknown) => {

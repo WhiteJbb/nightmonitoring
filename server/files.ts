@@ -21,9 +21,16 @@ export class FileError extends Error {
 /** 내용의 지문. 저장할 때 연 뒤로 바뀌었는지 비교한다 */
 const versionOf = (buf: Buffer) => createHash('sha1').update(buf).digest('hex');
 
-/** 저장소 기준 상대 경로 목록 (정렬). 저장소가 아니면 FileError */
+/** 저장소의 맨 위 폴더. 프로젝트 경로가 저장소 안의 하위 폴더여도 경로는 Git 상태(바뀐 파일)처럼 맨 위 기준으로 쓴다 */
+async function rootOf(repo: string): Promise<string> {
+  const r = await run('git', ['-C', repo, 'rev-parse', '--show-toplevel']);
+  if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
+  return r.stdout.trim();
+}
+
+/** 저장소 맨 위 기준 상대 경로 목록 (정렬). 저장소가 아니면 FileError */
 export async function listFiles(repo: string): Promise<string[]> {
-  const r = await run('git', ['-C', repo, 'ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+  const r = await run('git', ['-C', await rootOf(repo), 'ls-files', '-z', '--cached', '--others', '--exclude-standard']);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
   // 충돌 중인 파일은 단계마다 한 번씩 나온다
   return [...new Set(r.stdout.split('\0').filter(Boolean))].sort().slice(0, MAX_FILES);
@@ -33,13 +40,14 @@ export async function listFiles(repo: string): Promise<string[]> {
 async function resolve(repo: string, rel: unknown): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
   if (!(await listFiles(repo)).includes(rel)) throw new FileError('열 수 없는 파일입니다 (Git 이 모르는 파일이거나 .gitignore 에 걸린 파일)', 404);
-  const abs = path.join(repo, rel);
+  const root = await rootOf(repo);
+  const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
   if (!st?.isFile()) throw new FileError('일반 파일만 열 수 있습니다 (지워졌거나 링크입니다)', 404);
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 링크된 상위 폴더를 거쳐 저장소 밖으로 나가지 않게
-  const [real, root] = await Promise.all([realpath(abs), realpath(repo)]);
-  if (!real.startsWith(root + path.sep)) throw new FileError('저장소 밖의 파일입니다', 404);
+  const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
+  if (!real.startsWith(realRoot + path.sep)) throw new FileError('저장소 밖의 파일입니다', 404);
   return abs;
 }
 
@@ -47,7 +55,8 @@ async function resolve(repo: string, rel: unknown): Promise<string> {
 function asText(buf: Buffer): string {
   try {
     if (buf.includes(0)) throw new Error('binary');
-    return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    // ignoreBOM: BOM 을 글에 남겨 저장할 때 그대로 돌려놓는다 (지우면 고치지 않아도 바이트가 바뀐다)
+    return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(buf);
   } catch {
     throw new FileError('글(UTF-8) 파일만 열 수 있습니다', 415);
   }

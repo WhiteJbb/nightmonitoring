@@ -67,6 +67,22 @@ test('unsaved edits survive leaving the tab and come back with the version they 
   expect(await screen.findAllByText('저장 안 함')).not.toHaveLength(0);
 });
 
+test('a CRLF file is shown with LF and saved back with CRLF', async () => {
+  fetchMock.mockImplementation(async (url) => {
+    const u = String(url);
+    if (u.endsWith('/files')) return json(200, { files: ['src/app.ts'] });
+    if (u.includes('/file?path=')) return json(200, { content: 'a\r\nb\r\n', version: 'v1' });
+    return json(200, { version: 'v2' });
+  });
+  render(<FilesTab project={project()} />);
+  fireEvent.click((await screen.findAllByRole('button', { name: 'src/app.ts' }))[0]!);
+  await waitFor(() => expect(editor().value).toBe('a\nb\n'));
+  fireEvent.change(editor(), { target: { value: 'a\nc\n' } });
+  fireEvent.click(screen.getByRole('button', { name: '저장' }));
+  await screen.findByText('저장했습니다');
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toMatchObject({ content: 'a\r\nc\r\n' });
+});
+
 test('a read-only project can look but not save', async () => {
   serve();
   render(<FilesTab project={project(false)} />);

@@ -20,6 +20,7 @@ describe('files', () => {
     await writeFile(path.join(repo, 'logo.bin'), Buffer.from([0x89, 0x50, 0x00, 0x01]));
     await writeFile(path.join(outside, 'secret.txt'), 'outside\n');
     await symlink(path.join(outside, 'secret.txt'), path.join(repo, 'link.txt'));
+    await writeFile(path.join(repo, 'win.txt'), '\ufeffa\r\nb\r\n');
     execFileSync('git', ['-C', repo, 'add', 'src/app.ts', '.gitignore']);
   });
   afterAll(async () => {
@@ -28,7 +29,10 @@ describe('files', () => {
   });
 
   it('lists tracked and new files, never ignored ones', async () => {
-    expect(await listFiles(repo)).toEqual(['.gitignore', 'link.txt', 'logo.bin', 'new.md', 'src/app.ts']);
+    expect(await listFiles(repo)).toEqual(['.gitignore', 'link.txt', 'logo.bin', 'new.md', 'src/app.ts', 'win.txt']);
+    // 프로젝트 경로가 하위 폴더여도 맨 위 기준 (Git 상태의 바뀐 파일 경로와 맞춘다)
+    expect(await listFiles(path.join(repo, 'src'))).toContain('src/app.ts');
+    expect((await readText(path.join(repo, 'src'), 'new.md')).content).toBe('# 새 파일\n');
     await expect(listFiles(outside)).rejects.toMatchObject({ status: 400 });
   });
 
@@ -47,6 +51,13 @@ describe('files', () => {
     const results = await Promise.allSettled(texts.map((t) => writeText(repo, 'src/app.ts', t, both)));
     expect(results.map((r) => r.status).sort()).toEqual(['fulfilled', 'rejected']);
     expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe(texts[results.findIndex((r) => r.status === 'fulfilled')]);
+  });
+
+  it('keeps the bytes it does not edit: a BOM and CRLF survive a round trip', async () => {
+    const f = await readText(repo, 'win.txt');
+    expect(f.content).toBe('\ufeffa\r\nb\r\n');
+    await writeText(repo, 'win.txt', f.content, f.version);
+    expect(await readFile(path.join(repo, 'win.txt'), 'utf8')).toBe('\ufeffa\r\nb\r\n');
   });
 
   it('refuses ignored files, paths outside the list, links, and binary files', async () => {
