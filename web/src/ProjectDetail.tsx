@@ -648,10 +648,9 @@ export function TerminalTab({ project: p, now }: Props) {
     if (!window.confirm(`터미널 ${x.window}:${x.windowName} (${x.command}) 을 닫을까요?\n안에서 돌던 프로그램도 종료됩니다.`)) return;
     api
       .closePane(p.id, x.id)
-      // 보던 터미널을 닫았으면 남은 것으로 옮긴다 (그대로 두면 "사라진 pane" 으로 입력이 막힌다)
-      .then(() => {
-        if (x.id === pane?.id) setPaneId(t.panes.find((y) => y.id !== x.id)?.id ?? null);
-      })
+      // 닫은 터미널을 아직 보고 있으면 남은 것으로 옮긴다 (그대로 두면 "사라진 pane" 으로 입력이 막힌다).
+      // 응답을 기다리는 사이에 다른 터미널을 골랐으면 그대로 둔다
+      .then(() => setPaneId((cur) => (cur === x.id ? (t.panes.find((y) => y.id !== x.id)?.id ?? null) : cur)))
       .catch((e: unknown) => showNotice(errorMessage(e)));
   };
 
