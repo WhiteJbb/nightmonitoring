@@ -56,6 +56,10 @@ const { FakeTerminal } = vi.hoisted(() => {
     type(d: string) {
       this.handlers.forEach((h) => h(d));
     }
+    /** 프로그램이 bracketed paste 를 켠 것처럼 (Claude Code) */
+    paste(d: string) {
+      this.type(`\x1b[200~${d}\x1b[201~`);
+    }
   }
   return { FakeTerminal };
 });
@@ -239,6 +243,28 @@ test('mac line-editing keys are sent like Terminal and iTerm do', async () => {
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))).toBe(true);
 });
 
+test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and pastes the path; without one it sends ^V', async () => {
+  let items = [{ types: ['text/plain', 'image/png'], getType: async (t: string) => new Blob(['png!'], { type: t }) }];
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => items } });
+  vi.stubGlobal('isSecureContext', true);
+  fetchMock.mockImplementation(async (url) => json(200, String(url).endsWith('/upload') ? { path: '/up/api-1.png' } : { ok: true }));
+  try {
+    await renderTab(project(ONE));
+    await init();
+    // 한글 입력 중이라 key 가 'ㅍ' 여도 자판 위치로 안다
+    const ctrlV = () => act(() => void xterm().key!(new KeyboardEvent('keydown', { key: 'ㅍ', code: 'KeyV', ctrlKey: true })));
+    ctrlV();
+    for (let i = 0; i < 20 && posts().length < 2; i++) await tick(10);
+    expect(posts().map(([url, body]) => (url.endsWith('/raw') ? atob(body.data!) : url))).toEqual(['/api/projects/api/upload', '\x1b[200~/up/api-1.png\x1b[201~']);
+    items = [];
+    ctrlV();
+    await tick();
+    expect(atob(posts().at(-1)![1].data!)).toBe('\x16');
+  } finally {
+    delete (navigator as { clipboard?: unknown }).clipboard;
+  }
+});
+
 test('OSC 52 from the program copies to the clipboard and says so', async () => {
   const exec = vi.fn(() => true);
   Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
@@ -323,7 +349,7 @@ test('switching the pane opens a new stream and disposes the old terminal', asyn
   await renderTab(project(TWO));
   expect(es().url).toBe('/api/projects/api/term/%251');
   const first = xterm();
-  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  fireEvent.click(screen.getByRole('button', { name: '0.1 zsh' }));
   await tick();
   expect(first.disposed).toBe(true);
   expect(es().url).toBe('/api/projects/api/term/%252');
@@ -333,8 +359,8 @@ test('switching the pane opens a new stream and disposes the old terminal', asyn
 test('the pane selection survives a new snapshot; when it disappears the view falls back but input stops until a pane is chosen again', async () => {
   const { rerender } = await renderTab(project([pane('%1', 0, false, []), pane('%2', 1, true, [])]));
   expect(es().url).toBe('/api/projects/api/term/%252');
-  expect(screen.getByText(/^보낼 곳:/).textContent).toBe('보낼 곳: 0:zsh · 1 zsh');
-  fireEvent.click(screen.getByRole('button', { name: /· 0/ }));
+  expect(screen.getByText(/^보낼 곳:/).textContent).toBe('보낼 곳: 0.1 zsh');
+  fireEvent.click(screen.getByRole('button', { name: '0.0 zsh' }));
   await tick();
   expect(es().url).toBe('/api/projects/api/term/%251');
   type('rm -rf build');
@@ -351,7 +377,7 @@ test('the pane selection survives a new snapshot; when it disappears the view fa
   await tick();
   expect(posts()).toHaveLength(0);
   expect(box().value).toBe('rm -rf build');
-  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  fireEvent.click(screen.getByRole('button', { name: '0 zsh' }));
   await tick();
   expect(screen.queryByRole('alert')).toBeNull();
   fireEvent.keyDown(box(), { key: 'Enter' });
@@ -380,16 +406,16 @@ test('✕ closes a terminal after asking; closing the one in view moves to anoth
   const confirm = vi.fn(() => true);
   vi.stubGlobal('confirm', confirm);
   await renderTab(project(TWO));
-  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  fireEvent.click(screen.getByRole('button', { name: '0.1 zsh' }));
   await tick();
   expect(es().url).toBe('/api/projects/api/term/%252');
-  fireEvent.click(screen.getByRole('button', { name: '터미널 0:1 닫기' }));
+  fireEvent.click(screen.getByRole('button', { name: '터미널 0.1 닫기' }));
   await tick();
   expect(confirm).toHaveBeenCalledOnce();
   expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/panes/%252', { method: 'DELETE' });
   expect(es().url).toBe('/api/projects/api/term/%251');
   confirm.mockReturnValue(false);
-  fireEvent.click(screen.getByRole('button', { name: '터미널 0:0 닫기' }));
+  fireEvent.click(screen.getByRole('button', { name: '터미널 0.0 닫기' }));
   await tick();
   expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
   cleanup();
@@ -531,7 +557,7 @@ test('"입력만 하기" omits enter and is disabled while empty', async () => {
 
 test('special-key buttons send { pane, key } to the selected pane; Ctrl+C asks first', async () => {
   await renderTab(project(TWO));
-  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  fireEvent.click(screen.getByRole('button', { name: '0.1 zsh' }));
   await tick();
   const group = screen.getByRole('group', { name: '특수 키' });
   const keys = group.querySelectorAll('button:not(.more)');

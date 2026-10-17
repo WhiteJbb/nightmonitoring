@@ -236,7 +236,14 @@ const FORWARD: Record<string, InputKey> = {
 const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' };
 
 /** pane: 입력을 보낼 pane. 고른 pane 이 사라졌으면 null 이고, 다시 고를 때까지 보내지 않는다 */
-function InputBar({ projectId, pane: target, showTarget }: { projectId: string; pane: TmuxPane | null; showTarget: boolean }) {
+/** 터미널 번호: 윈도우 번호, 윈도우가 나뉘어 있으면 pane 번호까지 (예: "1", "0.1") */
+const paneNo = (x: TmuxPane, panes: TmuxPane[]) => (panes.some((y) => y.window === x.window && y.id !== x.id) ? `${x.window}.${x.index}` : String(x.window));
+/** 도는 프로그램 이름 (Claude Code 네이티브 실행 파일은 claude.exe 로 보인다) */
+const progName = (x: TmuxPane) => x.command.replace(/\.exe$/, '');
+
+/** targetNo: 보낼 곳으로 보여 줄 터미널 번호. pane 이 하나뿐이면 null (보낼 곳이 뻔하다) */
+function InputBar({ projectId, pane: target, targetNo }: { projectId: string; pane: TmuxPane | null; targetNo: string | null }) {
+  const showTarget = targetNo !== null;
   const pane = target?.id ?? '';
   const [text, setText] = useState('');
   const [moreKeys, setMoreKeys] = useState(false);
@@ -351,7 +358,7 @@ function InputBar({ projectId, pane: target, showTarget }: { projectId: string; 
           <p className="input-target">
             {showTarget && (
               <>
-                보낼 곳: <span className="mono">{target.window}:{target.windowName} · {target.index}</span> <span className="dim mono">{target.command}</span>
+                보낼 곳: <span className="dim mono">{targetNo}</span> <span className="mono">{progName(target)}</span>
               </>
             )}
             {uploading > 0 && <span className="warn">{showTarget ? ' · ' : ''}이미지 올리는 중…</span>}
@@ -645,7 +652,7 @@ export function TerminalTab({ project: p, now }: Props) {
   };
 
   const closePane = (x: TmuxPane) => {
-    if (!window.confirm(`터미널 ${x.window}:${x.windowName} (${x.command}) 을 닫을까요?\n안에서 돌던 프로그램도 종료됩니다.`)) return;
+    if (!window.confirm(`터미널 ${paneNo(x, t.panes)} (${progName(x)}) 을 닫을까요?\n안에서 돌던 프로그램도 종료됩니다.`)) return;
     api
       .closePane(p.id, x.id)
       // 닫은 터미널을 아직 보고 있으면 남은 것으로 옮긴다 (그대로 두면 "사라진 pane" 으로 입력이 막힌다).
@@ -709,11 +716,11 @@ export function TerminalTab({ project: p, now }: Props) {
                 {t.panes.map((x) => (
                   <span key={x.id} className="pane-tab">
                     <button type="button" aria-pressed={!lost && x.id === pane.id} onClick={() => setPaneId(x.id)}>
-                      {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
+                      <span className="dim">{paneNo(x, t.panes)}</span> {progName(x)}
                     </button>
                     {/* 마지막 하나는 닫으면 세션이 끝나므로 세션 종료 버튼에 맡긴다 */}
                     {p.allowInput && t.panes.length > 1 && (
-                      <button type="button" className="close" aria-label={`터미널 ${x.window}:${x.index} 닫기`} title="이 터미널 닫기" onClick={() => closePane(x)}>
+                      <button type="button" className="close" aria-label={`터미널 ${paneNo(x, t.panes)} 닫기`} title="이 터미널 닫기" onClick={() => closePane(x)}>
                         ✕
                       </button>
                     )}
@@ -791,7 +798,7 @@ export function TerminalTab({ project: p, now }: Props) {
       </div>
       {pane &&
         (p.allowInput ? (
-          <InputBar projectId={p.id} pane={lost ? null : pane} showTarget={t.panes.length > 1} />
+          <InputBar projectId={p.id} pane={lost ? null : pane} targetNo={t.panes.length > 1 ? paneNo(pane, t.panes) : null} />
         ) : (
           <p className="hint">{p.id.startsWith('tmux:') ? '입력을 보내려면 먼저 위의 "프로젝트로 등록"으로 등록한 뒤, 설정에서 "터미널 입력 허용"을 켜세요.' : '입력을 보내려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.'}</p>
         ))}

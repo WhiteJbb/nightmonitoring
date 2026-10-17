@@ -171,25 +171,42 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       void flush();
     });
 
-    // 이미지 붙여넣기: 파일로 올리고 그 경로를 친다 (입력칸과 같은 방식. Claude Code·Codex 가 첨부로 읽는다)
-    const onPaste = (e: ClipboardEvent) => {
-      const file = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
-      if (!file || !canInput) return;
-      e.preventDefault();
-      e.stopPropagation();
+    // 이미지 붙여넣기: 파일로 올리고 그 경로를 붙여넣는다. 터미널에 파일을 끌어다 놓은 것과 같아서 Claude Code 가 [Image #1] 첨부로 바꾼다
+    const pasteImage = (file: Blob) => {
       cb.current.onNotice?.('이미지 올리는 중…');
       const reader = new FileReader();
       reader.onload = () => {
         api.upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' }).then(
           ({ path }) => {
-            queue += `${path} `;
-            void flush();
+            if (closed) return;
+            term.paste(path);
             cb.current.onNotice?.('이미지 경로를 넣었습니다');
           },
           (err: unknown) => cb.current.onNotice?.(`이미지 올리기 실패: ${errorMessage(err)}`),
         );
       };
       reader.readAsDataURL(file);
+    };
+    const onPaste = (e: ClipboardEvent) => {
+      const file = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
+      if (!file || !canInput) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pasteImage(file);
+    };
+    // Ctrl+V 는 Claude Code 의 이미지 붙여넣기 키인데, 클립보드는 서버가 아니라 이 브라우저 쪽에 있다.
+    // 여기서 읽어 이미지가 있으면 올리고, 없거나 읽지 못하면(http, 권한 거부) 원래대로 ^V 를 보낸다
+    const readClipboard = window.isSecureContext && typeof navigator.clipboard?.read === 'function';
+    const clipboardImage = async (): Promise<Blob | null> => {
+      try {
+        for (const item of await navigator.clipboard.read()) {
+          const type = item.types.find((t) => t.startsWith('image/'));
+          if (type) return await item.getType(type);
+        }
+      } catch {
+        // 권한 거부 등은 이미지 없음과 같게 다룬다
+      }
+      return null;
     };
     el.addEventListener('paste', onPaste, { capture: true });
 
@@ -207,6 +224,19 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
     };
     term.attachCustomKeyEventHandler((ev) => {
       const mods = [ev.metaKey && 'meta', ev.ctrlKey && 'ctrl', ev.altKey && 'alt', ev.shiftKey && 'shift'].filter(Boolean).join('+');
+      // 한글 입력 중엔 key 가 'ㅍ' 이라 자판 위치(code)로 본다
+      if (mods === 'ctrl' && ev.code === 'KeyV' && canInput && readClipboard) {
+        if (ev.type === 'keydown')
+          void clipboardImage().then((image) => {
+            if (image) pasteImage(image);
+            else {
+              queue += '\x16';
+              void flush();
+            }
+          });
+        ev.preventDefault();
+        return false;
+      }
       const combo = `${mods}+${ev.key}`;
       if (combo === 'meta+k') {
         if (ev.type === 'keydown') term.clear();
