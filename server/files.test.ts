@@ -63,6 +63,14 @@ describe('files', () => {
     expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe(texts[results.findIndex((r) => r.status === 'fulfilled')]);
   });
 
+  it('saves different files in the same folder at the same time without mixing them', async () => {
+    const [a, b] = await Promise.all([readText(repo, 'new.md'), readText(repo, 'win.txt')]);
+    await Promise.all([writeText(repo, 'new.md', 'A\n', a.version), writeText(repo, 'win.txt', 'B\n', b.version)]);
+    expect(await readFile(path.join(repo, 'new.md'), 'utf8')).toBe('A\n');
+    expect(await readFile(path.join(repo, 'win.txt'), 'utf8')).toBe('B\n');
+    await writeFile(path.join(repo, 'win.txt'), '\ufeffa\r\nb\r\n'); // 다음 테스트용으로 되돌린다
+  });
+
   it('keeps the bytes it does not edit: a BOM and CRLF survive a round trip', async () => {
     const f = await readText(repo, 'win.txt');
     expect(f.content).toBe('\ufeffa\r\nb\r\n');

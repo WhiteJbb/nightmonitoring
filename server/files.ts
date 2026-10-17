@@ -1,6 +1,6 @@
 // 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)뿐이라,
 // .env 처럼 무시된 파일과 저장소 밖은 경로를 직접 줘도 열지 않는다.
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { chmod, lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { run } from './exec.ts';
@@ -97,11 +97,11 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
     const { mode } = await stat(abs);
     // 바꿔 끼우면 읽기 전용이어도 써지므로 직접 막는다
     if (!(mode & 0o200)) throw new FileError('읽기 전용 파일입니다', 403);
-    // 이름은 원래 파일과 무관하게 짧게 (긴 파일 이름에 붙이면 255바이트를 넘는다)
-    const tmp = path.join(path.dirname(abs), `.nightshift-${process.pid}-${Date.now()}.tmp`);
+    // 저장마다 다른 짧은 이름 (긴 파일 이름에 붙이면 255바이트를 넘는다). wx 로 남의 것을 덮지 않는다
+    const tmp = path.join(path.dirname(abs), `.nightshift-${randomUUID()}.tmp`);
     try {
       // 나만 읽을 수 있게 만든 뒤 원래 권한을 준다 (만들 때 mode 는 umask 에 깎이고, 넓게 만들면 잠깐 남이 읽을 수 있다)
-      await writeFile(tmp, buf, { mode: 0o600 });
+      await writeFile(tmp, buf, { mode: 0o600, flag: 'wx' });
       await chmod(tmp, mode & 0o7777);
       // 쓰는 사이 에이전트가 고쳤을 수 있다: 바꿔 끼우기 직전에 한 번 더 본다
       if (await changed()) throw conflict();
