@@ -4,6 +4,24 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { FilesTab } from './Files.tsx';
 
+// 편집기 자체는 codeeditor.test.tsx 가 본다. 여기서는 같은 약속(값·onChange·읽기 전용·⌘S)을 지키는 입력칸으로 바꿔 파일 탭의 흐름만 본다
+vi.mock('./CodeEditor.tsx', () => ({
+  default: ({ value, onChange, readOnly, onSave, ariaLabel }: { value: string; onChange: (v: string) => void; readOnly: boolean; onSave: () => void; ariaLabel: string }) => (
+    <textarea
+      aria-label={ariaLabel}
+      value={value}
+      readOnly={readOnly}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+          e.preventDefault();
+          onSave();
+        }
+      }}
+    />
+  ),
+}));
+
 const fetchMock = vi.fn<typeof fetch>();
 const json = (status: number, body: unknown) => new Response(JSON.stringify(body), { status });
 beforeEach(() => {

@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { DragEvent, KeyboardEvent, MouseEvent, ReactNode, RefObject } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { DragEvent, MouseEvent, ReactNode, RefObject } from 'react';
 import type { FsOp, ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
+
+// 코드 편집기(CodeMirror)는 파일을 열 때만 받는다: 대시보드 첫 화면이 무거워지지 않게
+const CodeEditor = lazy(() => import('./CodeEditor.tsx'));
+
+/** 줄바꿈 보기: 이 브라우저에 기억한다. 처음엔 좁은 화면(휴대폰)만 켠다 */
+const storedWrap = () => {
+  try {
+    const v = localStorage.getItem('editorWrap');
+    if (v !== null) return v === '1';
+  } catch {
+    // 기억을 못 읽으면 화면 폭으로 정한다
+  }
+  return window.matchMedia?.('(max-width: 720px)').matches ?? false;
+};
 
 /** 목록에 한 번에 그리는 파일 수 (더 많으면 이름으로 찾아 좁힌다) */
 const SHOWN = 200;
@@ -583,10 +597,13 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
     if (dirty && !window.confirm('고친 내용을 버리고 디스크의 내용을 다시 불러올까요?')) return;
     void load(false);
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-      e.preventDefault();
-      save();
+  const [wrap, setWrap] = useState(storedWrap);
+  const toggleWrap = () => {
+    setWrap(!wrap);
+    try {
+      localStorage.setItem('editorWrap', wrap ? '0' : '1');
+    } catch {
+      // 기억만 못 한다
     }
   };
 
@@ -598,6 +615,9 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </button>
         <span className="mono grow wrap editor-path">{path}</span>
         {dirty && <span className="warn">저장 안 함</span>}
+        <button type="button" className="more-rows" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄을 화면 폭에서 접어 보여 줍니다">
+          줄바꿈
+        </button>
         <button type="button" className="more-rows" disabled={loading || saving} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
           다시 불러오기
         </button>
@@ -622,18 +642,9 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       {mixed && <p className="hint">줄바꿈이 섞였거나(CRLF·LF) CR 만 쓰는 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
       {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
       {(file || orphan) && (
-        <textarea
-          className="editor-text"
-          aria-label={`${path} 내용`}
-          value={text}
-          readOnly={!p.allowInput || loading || orphan || mixed}
-          wrap="off"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={(e) => edit(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
+          <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
+        </Suspense>
       )}
     </div>
   );
