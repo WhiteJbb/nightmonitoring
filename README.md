@@ -10,9 +10,9 @@ tmux에서 도는 AI 코딩 에이전트를 실시간 터미널로 보고, 키�
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
-![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20WSL2-lightgrey)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20WSL2-lightgrey)
 
-*A self-hosted dashboard to watch and drive Claude Code / Codex tmux sessions from your phone. Real xterm.js terminal over tmux control mode, busy/idle/waiting detection, one-tap answers to agent prompts, and push notifications via ntfy. Runs on macOS or WSL2, reachable over Tailscale.*
+*A self-hosted dashboard to watch and drive Claude Code / Codex tmux sessions from your phone. Real xterm.js terminal over tmux control mode, busy/idle/waiting detection, one-tap answers to agent prompts, and push notifications via ntfy. Runs on macOS, Linux (including Raspberry Pi) or WSL2, reachable over Tailscale.*
 
 </div>
 
@@ -61,7 +61,7 @@ TypeScript · React · Vite · Express · xterm.js. 자세한 설계는 [ARCHITE
 
 ## 요구 사항
 
-- macOS, 또는 Windows의 WSL2 ([Windows에서 (WSL2)](#windows에서-wsl2))
+- macOS, Linux(Ubuntu·Debian·라즈베리파이, [Linux에서](#linux에서-ubuntu-라즈베리파이)), 또는 Windows의 WSL2 ([Windows에서 (WSL2)](#windows에서-wsl2))
 - Node.js **22.18 이상** (서버를 TypeScript 그대로 실행합니다)
 - `git`, `tmux` (demo mode에는 필요 없음)
 
@@ -140,6 +140,21 @@ tail -f .nightshift/server.log                                                 #
 ```
 
 서버가 죽으면 launchd가 다시 띄우고(`KeepAlive`), 모니터링 세션은 `.nightshift/state.json`에서 이어집니다. 같은 사용자로 로그인해 있는 동안만 돌고, tmux 세션도 그 사용자의 것을 봅니다.
+
+## Linux에서 (Ubuntu, 라즈베리파이)
+
+고칠 것 없이 그대로 돌아갑니다. 맥 데스크톱 알림만 빠지고, 휴대폰 알림(ntfy)은 그대로입니다. Ubuntu 24.04(x86_64·arm64)와 Debian bookworm arm64(라즈베리파이 OS와 같은 기반)에서 빌드·테스트·실시간 터미널까지 확인했습니다. 실제 라즈베리파이 기기에서는 아직 검증 전입니다.
+
+```bash
+sudo apt update && sudo apt install -y git tmux
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
+git clone <this-repo> ~/nightshift && cd ~/nightshift && npm install && npm run build && npm start
+```
+
+- **Node 버전:** 배포판 apt의 `nodejs`는 너무 오래됐습니다(Ubuntu 24.04는 18). 위처럼 NodeSource나 nvm으로 22.18 이상을 까세요.
+- **라즈베리파이:** 64비트 OS(arm64)가 필요하고, 라즈베리파이 4·5를 권합니다. 1세대 Pi Zero·Pi 1(armv6)용 Node 22는 없습니다. 같은 기기에서 Claude Code·Codex도 돌린다면 램 2GB 이상이 편합니다.
+- **휴대폰에서 접속:** Linux 기기에 Tailscale을 깔고 [다른 기기에서 접속 (Tailscale)](#다른-기기에서-접속-tailscale)을 그대로 따릅니다.
+- **자동 시작:** 아래 WSL2의 4번 systemd 서비스를 그대로 씁니다(`/etc/wsl.conf` 단계와 마지막 문단은 WSL 전용이라 빼세요).
 
 ## Windows에서 (WSL2)
 
