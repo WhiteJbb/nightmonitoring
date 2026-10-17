@@ -161,38 +161,58 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       sending = false;
       void flush();
     };
+    // 이미지를 붙여넣는 동안(클립보드 읽기·올리기) 친 키는 모아 두었다가 그 결과 뒤에 보낸다. 순서가 바뀌면 Enter 가 먼저 갈 수 있다
+    let held: string | null = null;
+    const send = (d: string) => {
+      if (held !== null) held += d;
+      else {
+        queue += d;
+        void flush();
+      }
+    };
+    const holdUntil = (work: Promise<string>) => {
+      held = '';
+      void work.then((text) => {
+        queue += text + (held ?? '');
+        held = null;
+        void flush();
+      });
+    };
     const input = term.onData((d) => {
       if (!canInput) return; // disableStdin 이면 오지 않지만, 보기 전용 프로젝트의 바이트는 어떤 경우에도 보내지 않는다
       // 버튼을 누르지 않은 채 움직인 보고(SGR 버튼 코드 35·51·67…)는 버린다. 마우스를 스칠 때마다 요청이 나가지 않게
       d = d.replace(MOTION_RE, '');
       if (pasteOnRightClick) d = d.replace(RIGHT_BUTTON_RE, '');
       if (d === '') return;
-      queue += d;
-      void flush();
+      send(d);
     });
 
     // 이미지 붙여넣기: 파일로 올리고 그 경로를 붙여넣는다. 터미널에 파일을 끌어다 놓은 것과 같아서 Claude Code 가 [Image #1] 첨부로 바꾼다
-    const pasteImage = (file: Blob) => {
-      cb.current.onNotice?.('이미지 올리는 중…');
-      const reader = new FileReader();
-      reader.onload = () => {
-        api.upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' }).then(
-          ({ path }) => {
-            if (closed) return;
-            term.paste(path);
-            cb.current.onNotice?.('이미지 경로를 넣었습니다');
-          },
-          (err: unknown) => cb.current.onNotice?.(`이미지 올리기 실패: ${errorMessage(err)}`),
-        );
-      };
-      reader.readAsDataURL(file);
-    };
+    // 돌려주는 것은 보낼 글 (실패하면 빈 글)
+    const uploadImage = (file: Blob) =>
+      new Promise<string>((resolve) => {
+        cb.current.onNotice?.('이미지 올리는 중…');
+        const reader = new FileReader();
+        reader.onload = () => {
+          api.upload(projectId, { type: file.type, data: String(reader.result).split(',')[1] ?? '' }).then(
+            ({ path }) => {
+              cb.current.onNotice?.('이미지 경로를 넣었습니다');
+              resolve(term.modes.bracketedPasteMode ? `\x1b[200~${path}\x1b[201~` : path);
+            },
+            (err: unknown) => {
+              cb.current.onNotice?.(`이미지 올리기 실패: ${errorMessage(err)}`);
+              resolve('');
+            },
+          );
+        };
+        reader.readAsDataURL(file);
+      });
     const onPaste = (e: ClipboardEvent) => {
       const file = Array.from(e.clipboardData?.items ?? []).find((i) => i.kind === 'file' && i.type.startsWith('image/'))?.getAsFile();
       if (!file || !canInput) return;
       e.preventDefault();
       e.stopPropagation();
-      pasteImage(file);
+      if (held === null) holdUntil(uploadImage(file));
     };
     // Ctrl+V 는 Claude Code 의 이미지 붙여넣기 키인데, 클립보드는 서버가 아니라 이 브라우저 쪽에 있다.
     // 여기서 읽어 이미지가 있으면 올리고, 없거나 읽지 못하면(http, 권한 거부) 원래대로 ^V 를 보낸다
@@ -226,14 +246,8 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       const mods = [ev.metaKey && 'meta', ev.ctrlKey && 'ctrl', ev.altKey && 'alt', ev.shiftKey && 'shift'].filter(Boolean).join('+');
       // 한글 입력 중엔 key 가 'ㅍ' 이라 자판 위치(code)로 본다
       if (mods === 'ctrl' && ev.code === 'KeyV' && canInput && readClipboard) {
-        if (ev.type === 'keydown')
-          void clipboardImage().then((image) => {
-            if (image) pasteImage(image);
-            else {
-              queue += '\x16';
-              void flush();
-            }
-          });
+        // 앞의 붙여넣기가 아직 끝나지 않았으면 이번 것은 무시한다
+        if (ev.type === 'keydown' && held === null) holdUntil(clipboardImage().then((image) => (image ? uploadImage(image) : '\x16')));
         ev.preventDefault();
         return false;
       }
@@ -245,10 +259,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       }
       const seq = MAC_KEYS[combo];
       if (seq === undefined || !canInput) return true;
-      if (ev.type === 'keydown') {
-        queue += seq;
-        void flush();
-      }
+      if (ev.type === 'keydown') send(seq);
       ev.preventDefault();
       return false;
     });

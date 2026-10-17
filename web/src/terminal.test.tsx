@@ -21,7 +21,8 @@ const { FakeTerminal } = vi.hoisted(() => {
     }
     open() {}
     buffer = { active: { type: 'normal' } };
-    modes = { mouseTrackingMode: 'none' };
+    // 프로그램이 bracketed paste 를 켠 것처럼 (Claude Code)
+    modes = { mouseTrackingMode: 'none', bracketedPasteMode: true };
     wheel: ((ev: WheelEvent) => boolean) | null = null;
     attachCustomWheelEventHandler(h: (ev: WheelEvent) => boolean) {
       this.wheel = h;
@@ -55,10 +56,6 @@ const { FakeTerminal } = vi.hoisted(() => {
     /** 사용자가 터미널에 친 것처럼 */
     type(d: string) {
       this.handlers.forEach((h) => h(d));
-    }
-    /** 프로그램이 bracketed paste 를 켠 것처럼 (Claude Code) */
-    paste(d: string) {
-      this.type(`\x1b[200~${d}\x1b[201~`);
     }
   }
   return { FakeTerminal };
@@ -243,9 +240,11 @@ test('mac line-editing keys are sent like Terminal and iTerm do', async () => {
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))).toBe(true);
 });
 
-test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and pastes the path; without one it sends ^V', async () => {
+test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and pastes the path; without one it sends ^V; keys typed meanwhile follow', async () => {
   let items = [{ types: ['text/plain', 'image/png'], getType: async (t: string) => new Blob(['png!'], { type: t }) }];
-  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => items } });
+  let release = () => {};
+  const read = () => new Promise<typeof items>((r) => (release = () => r(items)));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read } });
   vi.stubGlobal('isSecureContext', true);
   fetchMock.mockImplementation(async (url) => json(200, String(url).endsWith('/upload') ? { path: '/up/api-1.png' } : { ok: true }));
   try {
@@ -254,12 +253,18 @@ test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and paste
     // 한글 입력 중이라 key 가 'ㅍ' 여도 자판 위치로 안다
     const ctrlV = () => act(() => void xterm().key!(new KeyboardEvent('keydown', { key: 'ㅍ', code: 'KeyV', ctrlKey: true })));
     ctrlV();
+    act(() => xterm().type('hi'));
+    await tick();
+    expect(posts()).toEqual([]); // 클립보드를 읽는 동안 친 키는 기다린다
+    release();
     for (let i = 0; i < 20 && posts().length < 2; i++) await tick(10);
-    expect(posts().map(([url, body]) => (url.endsWith('/raw') ? atob(body.data!) : url))).toEqual(['/api/projects/api/upload', '\x1b[200~/up/api-1.png\x1b[201~']);
+    expect(posts().map(([url, body]) => (url.endsWith('/raw') ? atob(body.data!) : url))).toEqual(['/api/projects/api/upload', '\x1b[200~/up/api-1.png\x1b[201~hi']);
     items = [];
     ctrlV();
+    act(() => xterm().type('\r'));
+    release();
     await tick();
-    expect(atob(posts().at(-1)![1].data!)).toBe('\x16');
+    expect(atob(posts().at(-1)![1].data!)).toBe('\x16\r');
   } finally {
     delete (navigator as { clipboard?: unknown }).clipboard;
   }
