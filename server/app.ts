@@ -11,7 +11,7 @@ import { parseInput } from './input.ts';
 import type { Monitor } from './monitor.ts';
 import type { Runner } from './runner.ts';
 import type { TermSize } from './tmux.ts';
-import { clampSize } from './tmux.ts';
+import { clampSize, MAX_PANES } from './tmux.ts';
 import { parseUpload } from './upload.ts';
 
 /** 한 번에 받는 raw 입력의 최대 바이트 (키 몇 개나 마우스 보고 묶음이면 충분하다) */
@@ -87,6 +87,8 @@ export interface AppDeps {
     createSession: (name: string, repoPath: string, size: TermSize, agent?: AgentKind) => Promise<string | null>;
     /** 세션을 끝낸다. 실패하면 오류 메시지 */
     killSession: (name: string) => Promise<string | null>;
+    /** 세션에 repoPath(원문)에서 셸 윈도우를 하나 더 연다 */
+    newWindow: (session: string, repoPath: string) => Promise<{ pane: string } | { error: string }>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
     /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
@@ -297,6 +299,22 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (error) return void res.status(400).json({ error });
     await monitor.tick();
     res.json({ ok: true });
+  });
+
+  // 같은 세션에 터미널(셸 윈도우)을 하나 더 연다. 셸에 칠 수 있게 되는 일이라 입력과 같은 조건이다
+  api.post('/projects/:id/windows', async (req, res) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!project.tmuxSession || !project.tmux.exists) return void res.status(400).json({ error: 'tmux 세션이 실행 중이 아닙니다' });
+    // 그보다 많으면 스냅샷에서 잘려 새 터미널이 안 보인다.
+    // ponytail: 스냅샷 기준이라 두 화면에서 동시에 누르면 하나 넘칠 수 있다 (tmux 에는 남고 목록에서만 빠진다). 문제되면 세션별로 줄 세운다
+    if (project.tmux.panes.length >= MAX_PANES) return void res.status(409).json({ error: `터미널은 세션당 ${MAX_PANES}개까지 열 수 있습니다` });
+    const r = await terminal.newWindow(project.tmuxSession, project.repoPath);
+    if ('error' in r) return void res.status(400).json(r);
+    await monitor.tick();
+    res.json(r);
   });
 
   const editableProjects = (view: ConfigView): EditableProject[] =>
