@@ -46,6 +46,7 @@ export const api = {
   hideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'POST'),
   unhideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'DELETE'),
   killSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'DELETE'),
+  newWindow: (id: string) => req<{ pane: string }>(`/api/projects/${encodeURIComponent(id)}/windows`, 'POST'),
   startSession: (id: string, size: TermSize & { agent?: AgentKind }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
   fitPane: (id: string, paneId: string, size: TermSize) =>
     req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}/fit`, 'POST', size),

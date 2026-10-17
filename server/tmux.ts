@@ -199,6 +199,16 @@ export async function newSession(name: string, cwd: string, size: TermSize = DEF
   return r.code === 0 ? null : r.stderr.trim() || 'tmux new-session 실패';
 }
 
+/**
+ * 세션에 셸만 띄운 윈도우를 하나 더 만들고 그 pane id 를 돌려준다. 실행할 명령은 받지 않는다.
+ * -d: 세션에 붙어 있는 터미널이 보던 윈도우는 그대로 둔다.
+ */
+export async function newWindow(session: string, cwd: string): Promise<{ pane: string } | { error: string }> {
+  const r = await run('tmux', ['new-window', '-d', '-t', `=${session}:`, '-c', cwd, '-P', '-F', '#{pane_id}']);
+  const pane = r.stdout.trim();
+  return r.code === 0 && /^%\d+$/.test(pane) ? { pane } : { error: r.stderr.trim() || 'tmux new-window 실패' };
+}
+
 /** 세션의 첫 pane 에 한 줄을 치고 Enter (새 세션에서 에이전트를 띄울 때만 쓴다). 실패하면 오류 메시지 */
 export async function typeLine(session: string, line: string): Promise<string | null> {
   const target = `=${session}:`;

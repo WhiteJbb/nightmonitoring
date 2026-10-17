@@ -359,6 +359,23 @@ test('the pane selection survives a new snapshot; when it disappears the view fa
   expect(posts().map(([, body]) => body)).toEqual([{ pane: '%2', text: 'rm -rf build', enter: true }]);
 });
 
+test('+ 새 터미널 opens a window and switches to it once the snapshot has it; read-only projects have no button', async () => {
+  serve(() => json(200, { pane: '%13' }));
+  const { rerender } = await renderTab(project(ONE));
+  fireEvent.click(screen.getByRole('button', { name: '+ 새 터미널' }));
+  await tick();
+  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/windows', { method: 'POST' });
+  // 스냅샷에 들어오기 전에는 보던 pane 그대로 ("사라진 pane" 경고 없이)
+  expect(es().url).toBe('/api/projects/api/term/%2512');
+  rerender(<TerminalTab project={project([...ONE, pane('%13', 0, false, [])])} now={NOW} />);
+  await tick();
+  expect(es().url).toBe('/api/projects/api/term/%2513');
+  expect(screen.queryByRole('alert')).toBeNull();
+  cleanup();
+  await renderTab(project(ONE, false));
+  expect(screen.queryByRole('button', { name: '+ 새 터미널' })).toBeNull();
+});
+
 test('the stream is closed and the terminal disposed on unmount', async () => {
   const { unmount } = await renderTab(project(ONE));
   unmount();

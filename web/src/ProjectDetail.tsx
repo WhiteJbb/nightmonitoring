@@ -556,6 +556,15 @@ export function TerminalTab({ project: p, now }: Props) {
   useEffect(() => {
     if (paneId === null && pane) setPaneId(pane.id);
   }, [paneId, pane]);
+  // 새 터미널: 만든 pane 이 스냅샷에 들어오면 그리로 옮긴다 (그 전에 고르면 "사라진 pane" 으로 보인다)
+  const [opening, setOpening] = useState(false);
+  const [opened, setOpened] = useState<string | null>(null);
+  useEffect(() => {
+    if (opened && t.panes.some((x) => x.id === opened)) {
+      setPaneId(opened);
+      setOpened(null);
+    }
+  }, [opened, t.panes]);
   const [showInfo, setShowInfo] = useState(false);
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
@@ -626,6 +635,15 @@ export function TerminalTab({ project: p, now }: Props) {
       .finally(() => setFitting(false));
   };
 
+  const openTerminal = () => {
+    setOpening(true);
+    api
+      .newWindow(p.id)
+      .then((r) => setOpened(r.pane))
+      .catch((e: unknown) => showNotice(errorMessage(e)))
+      .finally(() => setOpening(false));
+  };
+
   const copy = (cmd: string) => {
     setCopyMsg(copyText(cmd) ? '복사됨' : '복사 실패');
     setTimeout(() => setCopyMsg(null), 1500);
@@ -676,13 +694,18 @@ export function TerminalTab({ project: p, now }: Props) {
       <div className={full ? 'term-frame full' : 'term-frame'} ref={frameRef}>
         {pane && (
           <div className="term-bar">
-            {(t.panes.length > 1 || lost) && (
+            {(t.panes.length > 1 || lost || p.allowInput) && (
               <div className="panes" role="group" aria-label="pane 선택">
                 {t.panes.map((x) => (
                   <button key={x.id} type="button" aria-pressed={!lost && x.id === pane.id} onClick={() => setPaneId(x.id)}>
                     {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
                   </button>
                 ))}
+                {p.allowInput && (
+                  <button type="button" disabled={opening} onClick={openTerminal} title="이 세션에 셸 터미널을 하나 더 엽니다">
+                    + 새 터미널
+                  </button>
+                )}
               </div>
             )}
             <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
