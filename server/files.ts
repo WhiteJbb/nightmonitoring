@@ -67,8 +67,11 @@ export async function listIgnored(repo: string): Promise<string[]> {
 /** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
 async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
-  const files = [...(await listFiles(repo)), ...(ignoredOk ? await listIgnored(repo) : [])];
-  if (!files.includes(rel)) throw new FileError(ignoredOk ? '열 수 없는 파일입니다' : '열 수 없는 파일입니다 (.gitignore 에 걸린 파일은 터미널 입력을 허용한 프로젝트에서만 엽니다)', 404);
+  // 무시된 파일 목록은 필요할 때만 받는다 (큰 빌드 결과물이 있으면 무겁거나 실패할 수 있다: 그래도 보통 파일은 열린다)
+  const tracked = await listFiles(repo);
+  let ignored: string[] | null = null;
+  const known = async (f: string) => tracked.includes(f) || (ignoredOk && (ignored ??= await listIgnored(repo).catch(() => [])).includes(f));
+  if (!(await known(rel))) throw new FileError(ignoredOk ? '열 수 없는 파일입니다' : '열 수 없는 파일입니다 (.gitignore 에 걸린 파일은 터미널 입력을 허용한 프로젝트에서만 엽니다)', 404);
   const root = await rootOf(repo);
   const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
@@ -76,7 +79,7 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  if (!files.includes(path.relative(realRoot, real).split(path.sep).join('/'))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
+  if (!(await known(path.relative(realRoot, real).split(path.sep).join('/')))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
 

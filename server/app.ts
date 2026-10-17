@@ -377,7 +377,8 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   };
   api.get('/projects/:id/files', async (req, res) => {
     const project = projectOf(req.params.id);
-    res.json({ files: await listFiles(project.repoPath), ignored: inputBlocked(project) ? [] : await listIgnored(project.repoPath) });
+    // 무시된 파일 목록을 못 받아도(거대한 빌드 결과물 등) 보통 파일 목록은 보여 준다
+    res.json({ files: await listFiles(project.repoPath), ignored: inputBlocked(project) ? [] : await listIgnored(project.repoPath).catch(() => []) });
   });
   api.get('/projects/:id/file', async (req, res) => {
     const project = projectOf(req.params.id);
