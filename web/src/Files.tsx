@@ -52,8 +52,8 @@ const store = {
     }
   },
 };
-/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다. keepOld: 옛 이름에도 남긴다 */
-function moveDrafts(scope: string, from: string, to: string, keepOld = false) {
+/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다. keepOld: 옛 이름에도 남긴다. to 가 null 이면 버린다(지운 경우) */
+function moveDrafts(scope: string, from: string, to: string | null, keepOld = false) {
   const prefix = draftKey(scope, from);
   const keys = new Set(memory.keys());
   try {
@@ -64,9 +64,16 @@ function moveDrafts(scope: string, from: string, to: string, keepOld = false) {
   for (const key of keys) {
     const rest = key.slice(prefix.length);
     if (!key.startsWith(prefix) || (rest !== '' && !from.endsWith('/') && !rest.startsWith('/'))) continue;
+    if (to === null) {
+      store.set(key, null);
+      continue;
+    }
+    // 새 자리에 이미 다른 초안이 있으면(밖에서 지워진 파일의 것) 덮지 않고 둘 다 그대로 둔다
+    const dest = draftKey(scope, to + rest);
+    if (store.get(dest) !== null && dest !== key) continue;
     const value = store.get(key);
     if (!keepOld) store.set(key, null);
-    store.set(draftKey(scope, to + rest), value);
+    store.set(dest, value);
   }
 }
 const loadDraft = (key: string): Draft | null => {
@@ -248,6 +255,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     try {
       await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
       followDirs(op, path, to);
+      // 지운 파일의 저장 안 한 내용은 버린다 (편집기에서 파일을 지우면 닫히는 것과 같다)
+      if (op === 'delete') moveDrafts(scopeOf(p), path, null);
       // 저장 안 한 내용도 따라간다
       // 대소문자만 바꾼 이름은 맥에서 Git 목록이 옛 이름으로 남기도 해서 두 이름 다에 둔다
       if (op === 'move' && to) moveDrafts(scopeOf(p), path, path.endsWith('/') ? `${to.replace(/\/+$/, '')}/` : to, to.toLowerCase() === path.replace(/\/$/, '').toLowerCase());
@@ -281,7 +290,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     const untracked = [...ignored, ...p.git.changedFiles.filter((f) => f.status === '??').map((f) => f.path)].some((f) => f === path || (path.endsWith('/') && f.startsWith(path)))
       ? '\nGit 에 없는 파일이 있어 Git 으로는 되살릴 수 없습니다.'
       : '';
-    if (window.confirm(`"${path}" 을(를) 지울까요?\n지운 것은 .git/nightshift-trash 에 7일 동안 남습니다.${untracked}`)) await act('delete', path);
+    const drafts = unsaved(path) || (path.endsWith('/') && all.some((f) => f.startsWith(path) && unsaved(f))) ? '\n저장하지 않은 내용도 버립니다.' : '';
+    if (window.confirm(`"${path}" 을(를) 지울까요?\n지운 것은 .git/nightshift-trash 에 7일 동안 남습니다.${untracked}${drafts}`)) await act('delete', path);
   };
   const copy = (path: string, cut: boolean) => {
     clipboard = { scope: scopeOf(p), path, cut };
@@ -401,7 +411,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const changed = p.git.changedFiles.filter((f) => known.has(f.path));
   const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
   const item = (path: string, where: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
-    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, where)} {...dragProps(path)}>
+    // 파일 위에 놓으면 그 파일이 있는 폴더로 (IDE 처럼). 안 그러면 맨 위 영역까지 올라가 엉뚱하게 맨 위로 옮겨진다
+    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, where)} {...dragProps(path)} {...dropProps(parentOf(path))}>
       {status !== undefined && <span className="xy">{status}</span>}
       <button type="button" className={ignored.has(path) ? 'file-link dim' : 'file-link'} onClick={() => onOpen(path)}>
         {label}
