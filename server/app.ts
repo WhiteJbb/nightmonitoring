@@ -299,7 +299,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
     const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
-    if (!project.allowInput) return void res.status(403).json({ error: '이 프로젝트는 터미널 입력이 꺼져 있습니다. 설정 화면에서 켜세요.' });
+    // 입력 허용과는 상관없다: 크기만 바꾸고 프로그램에 글자를 보내지 않는다 (보기만 하는 프로젝트도 화면에 맞춰 보이게)
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     if (project.tmux.attached) return void res.status(409).json({ error: '터미널이 붙어 있는 세션은 크기를 바꾸지 않습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;

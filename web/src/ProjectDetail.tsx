@@ -8,7 +8,7 @@ import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
 import type { TermFeed, TermStatus } from './Term.tsx';
-import { api, errorMessage } from './api.ts';
+import { api, ApiError, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
 
 export function Badge({ state }: { state: ProjectState }) {
@@ -580,6 +580,11 @@ function useSharedFeed(projectId: string, paneIds: string, on: boolean, attempt:
   }, []);
 }
 
+/** 저절로 하는 크기 맞추기의 실패: 못 하게 막힌 서버(demo, 공개 주소에 열림)면 조용히 넘어가고, 그 밖의 오류만 알린다 */
+const quietFit = (e: unknown, show: (msg: string) => void) => {
+  if (!(e instanceof ApiError && e.status === 403)) show(errorMessage(e));
+};
+
 /** 나란히 보기의 한 칸: 터미널 하나와 그 이름·연결 상태. 누르거나 키보드로 들어오면 입력 대상이 된다 */
 function SplitCell({ project: p, pane: x, no, selected, cols, share, span, full, canFit, feed, onSelect, onReconnect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; cols: number; share: number; span: number; full: boolean; canFit: boolean; feed: TermFeed; onSelect: () => void; onReconnect: () => void; onNotice: (msg: string) => void }) {
   const viewRef = useRef<HTMLDivElement>(null);
@@ -594,7 +599,7 @@ function SplitCell({ project: p, pane: x, no, selected, cols, share, span, full,
     const timer = setTimeout(() => {
       fittedFor.current = layoutKey;
       const want = fitSize(viewRef.current, full, share);
-      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, x.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
+      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, x.id, want).catch((e: unknown) => quietFit(e, setFitError));
     }, 300);
     return () => clearTimeout(timer);
   }, [canFit, size, full, share, layoutKey, p.id, x.id]);
@@ -708,7 +713,8 @@ export function TerminalTab({ project: p, now }: Props) {
     noticeTimer.current = setTimeout(() => setNotice(null), 2500);
   };
   const autoFitted = useRef<string | null>(null);
-  const canFit = p.allowInput && t.exists && !t.attached;
+  // 크기 맞추기는 입력 허용과 상관없다 (글자를 보내지 않는다). 다른 터미널이 붙어 있으면 그 화면까지 바뀌므로 안 한다
+  const canFit = t.exists && !t.attached;
   // 붙어 있는 터미널이 없으면, 터미널을 연 화면(휴대폰·컴퓨터) 크기에 pane 을 한 번 맞춘다. 나중에 다른 화면에서 열면 거기에 맞춘다
   useEffect(() => {
     // 나란히 보기에서는 칸마다 맞춘다 (여기서 재면 하나씩 보기 틀이 없어 엉뚱한 크기가 된다)
@@ -717,7 +723,7 @@ export function TerminalTab({ project: p, now }: Props) {
     const timer = setTimeout(() => {
       autoFitted.current = pane.id;
       const want = fitSize(viewRef.current, full);
-      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
+      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => quietFit(e, setFitError));
     }, 300);
     return () => clearTimeout(timer);
   }, [splitOn, canFit, pane, size, full, p.id]);
@@ -894,7 +900,7 @@ export function TerminalTab({ project: p, now }: Props) {
               )}
               {/* 크기를 못 바꾸는 세션에서 tmux 창이 화면보다 크면 글자가 작아진 까닭을 알린다 */}
               {!splitOn && !canFit && size && (size.cols > want.cols || size.rows > want.rows) && (
-                <span className="dim" title={p.allowInput ? '다른 터미널이 붙어 있는 세션이라 tmux 창 크기를 바꾸지 않습니다' : '입력을 허용하지 않은 프로젝트라 tmux 창 크기를 바꾸지 않습니다. 설정에서 "터미널 입력 허용"을 켜면 화면에 맞춥니다'}>
+                <span className="dim" title="다른 터미널이 붙어 있는 세션이라 tmux 창 크기를 바꾸지 않습니다 (바꾸면 그 터미널 화면까지 바뀝니다)">
                   tmux 창 {size.cols}×{size.rows}이 화면보다 커서 글자를 줄여 보여 줍니다
                 </span>
               )}
