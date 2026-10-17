@@ -155,9 +155,11 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
     return api.file(p.id, path).then(
       (f) => {
         if (mine !== loads.current) return;
-        const draft = keepDraft ? loadDraft(key) : null;
-        if (!keepDraft) store.set(key, null);
         const content = f.content.replace(/\r\n/g, '\n');
+        // 디스크와 같은 초안은 이미 저장된 것이다 (응답 전에 새로고침한 경우): 지우고 지금 지문을 쓴다
+        const stored = keepDraft ? loadDraft(key) : null;
+        const draft = stored?.text === content ? null : stored;
+        if (!draft) store.set(key, null);
         setCrlf(content !== f.content);
         setMixed((content !== f.content && /(^|[^\r])\n/.test(f.content)) || content.includes('\r'));
         setFile({ content, version: f.version });
