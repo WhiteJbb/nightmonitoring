@@ -20,13 +20,15 @@ tmux에서 도는 AI 코딩 에이전트를 실시간 터미널로 보고, 키�
   <img src="docs/images/dashboard.png" alt="대시보드" width="100%">
 </p>
 
-<table>
-  <tr>
-    <td width="68%"><img src="docs/images/terminal.png" alt="컴퓨터에서 본 실시간 터미널"></td>
-    <td width="16%"><img src="docs/images/phone-terminal.png" alt="휴대폰 터미널"></td>
-    <td width="16%"><img src="docs/images/phone-dashboard.png" alt="휴대폰 대시보드"></td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/images/terminal.png" alt="컴퓨터에서 본 실시간 터미널" width="100%">
+</p>
+
+<p align="center">
+  <img src="docs/images/phone-terminal.png" alt="휴대폰 터미널" width="300">
+  &nbsp;&nbsp;
+  <img src="docs/images/phone-dashboard.png" alt="휴대폰 대시보드" width="300">
+</p>
 
 ## 왜 만들었나
 
