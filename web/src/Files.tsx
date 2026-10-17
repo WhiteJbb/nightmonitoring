@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
@@ -127,12 +127,23 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const [saving, setSaving] = useState(false);
   // 불러오는 동안은 고치지 못하게 한다 (응답이 그 사이 친 내용을 덮는다)
   const [loading, setLoading] = useState(true);
+  // 디스크에서 못 연 파일의 저장 안 한 내용: 보여만 준다 (복사해 두라고)
+  const [orphan, setOrphan] = useState(false);
+  // 닫은 편집기의 늦은 응답이 다시 연 편집기의 초안을 건드리지 않게
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   const load = async (keepDraft: boolean) => {
     setLoading(true);
     await pendingSaves.get(key)?.catch(() => {});
     return api.file(p.id, path).then(
       (f) => {
+        if (!alive.current) return;
         const draft = keepDraft ? loadDraft(key) : null;
         if (!keepDraft) store.set(key, null);
         const content = f.content.replace(/\r\n/g, '\n');
@@ -143,11 +154,19 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         setNotice(draft ? '저장하지 않은 내용을 되살렸습니다' : null);
         setError(null);
         setConflict(false);
+        setOrphan(false);
         setLoading(false);
       },
       (e: unknown) => {
+        if (!alive.current) return;
         setError(errorMessage(e));
         setLoading(false);
+        // 그 사이 파일이 지워졌거나 이름이 바뀌었어도 고친 내용은 꺼내 볼 수 있게
+        const draft = keepDraft ? loadDraft(key) : null;
+        if (draft) {
+          setText(draft.text);
+          setOrphan(true);
+        }
       },
     );
   };
@@ -236,12 +255,13 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </p>
       )}
       {!p.allowInput && <p className="hint">보기만 할 수 있습니다. 고치려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>}
-      {file && (
+      {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
+      {(file || orphan) && (
         <textarea
           className="editor-text"
           aria-label={`${path} 내용`}
           value={text}
-          readOnly={!p.allowInput || loading}
+          readOnly={!p.allowInput || loading || orphan}
           wrap="off"
           spellCheck={false}
           autoCapitalize="off"

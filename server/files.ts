@@ -36,7 +36,7 @@ export async function listFiles(repo: string): Promise<string[]> {
   return [...new Set(r.stdout.split('\0').filter(Boolean))].sort().slice(0, MAX_FILES);
 }
 
-/** 목록에 있는, 저장소 안의 일반 파일의 절대 경로. 너무 큰 파일은 읽기 전에 거른다 */
+/** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
 async function resolve(repo: string, rel: unknown): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
   const files = await listFiles(repo);
@@ -49,7 +49,7 @@ async function resolve(repo: string, rel: unknown): Promise<string> {
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
   if (!files.includes(path.relative(realRoot, real).split(path.sep).join('/'))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
-  return abs;
+  return real;
 }
 
 /** UTF-8 글 파일만. 그 밖의 것을 글로 고쳐 저장하면 깨진다 */
