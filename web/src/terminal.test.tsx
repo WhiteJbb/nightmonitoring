@@ -166,13 +166,11 @@ test('streams the pane: init resets, resizes and writes the seed; out appends; r
   expect(xterm().resizes).toEqual([[120, 30]]);
   expect(xterm().writes).toEqual(['hello']);
   expect(screen.getByRole('status').textContent).toContain('실시간');
-  expect(screen.getByTitle('pane 크기 (칸 × 줄)').textContent).toBe('120×30');
 
   act(() => es().emit({ type: 'out', data: b64(' more') }));
   expect(xterm().writes).toEqual(['hello', ' more']);
   act(() => es().emit({ type: 'resize', cols: 100, rows: 40 }));
   expect(xterm().resizes.at(-1)).toEqual([100, 40]);
-  expect(screen.getByTitle('pane 크기 (칸 × 줄)').textContent).toBe('100×40');
 
   // 다시 연결되면 첫 화면이 다시 온다: 지우고 새로 그린다
   await init(100, 40, 'again');
@@ -455,6 +453,12 @@ test('나란히 보기 streams every terminal side by side over one connection; 
   fireEvent.click(screen.getByRole('button', { name: '나란히 보기' }));
   await tick();
   expect(open()).toEqual(['/api/projects/api/term/%252']);
+  // 켠 상태는 이 브라우저에 기억한다: 다시 열면 나란히 보기로 시작
+  fireEvent.click(screen.getByRole('button', { name: '나란히 보기' }));
+  cleanup();
+  await renderTab(project(TWO));
+  expect(screen.getByRole('button', { name: '나란히 보기' }).getAttribute('aria-pressed')).toBe('true');
+  fireEvent.click(screen.getByRole('button', { name: '나란히 보기' }));
   cleanup();
   await renderTab(project(ONE));
   expect(screen.queryByRole('button', { name: '나란히 보기' })).toBeNull();

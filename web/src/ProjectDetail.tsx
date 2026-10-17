@@ -677,8 +677,16 @@ export function TerminalTab({ project: p, now }: Props) {
   const [attempt, setAttempt] = useState(0);
   // 전체 화면: 터미널이 창을 다 채우고, 붙은 터미널이 없으면 tmux 크기도 그 화면에 맞춘다
   const [full, setFull] = useState(false);
-  // 나란히 보기: 세션의 터미널을 한 화면에 칸으로 나눠 모두 띄운다 (터미널이 둘 이상일 때만)
-  const [split, setSplit] = useState(false);
+  // 나란히 보기: 세션의 터미널을 한 화면에 칸으로 나눠 모두 띄운다 (터미널이 둘 이상일 때만).
+  // 켠 상태는 프로젝트마다 이 브라우저에 기억한다 (저장소를 못 쓰는 창이면 기억만 안 된다)
+  const splitKey = `split:${p.id}`;
+  const [split, setSplit] = useState(() => {
+    try {
+      return localStorage.getItem(splitKey) === '1';
+    } catch {
+      return false;
+    }
+  });
   const splitOn = split && t.panes.length > 1;
   const grid = { cols: splitCols(t.panes.length), rows: Math.ceil(t.panes.length / splitCols(t.panes.length)) };
   // 탭이 뒤로 가거나 휴대폰 화면이 꺼지면 터미널 스트림을 닫는다. 서버는 "보고 있는 사람 없음"으로 보고 작업 끝남·입력 대기 알림을 보낸다
@@ -866,11 +874,6 @@ export function TerminalTab({ project: p, now }: Props) {
             <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
               세션 정보
             </button>
-            {!splitOn && size && (
-              <span className="dim mono" title="pane 크기 (칸 × 줄)">
-                {size.cols}×{size.rows}
-              </span>
-            )}
             {/* 붙어 있는 터미널이 없는 세션만: 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
             {!splitOn && canFit && misfit && (
               <button type="button" className="more-rows" disabled={fitting} onClick={fit} title="tmux 화면을 이 터미널 영역 크기로 바꿉니다">
@@ -902,6 +905,11 @@ export function TerminalTab({ project: p, now }: Props) {
                   // 하나씩 보기로 돌아가면 고른 터미널을 다시 이 화면 크기에 맞춘다
                   autoFitted.current = null;
                   setSplit(!splitOn);
+                  try {
+                    localStorage.setItem(splitKey, splitOn ? '0' : '1');
+                  } catch {
+                    // 기억하지 못해도 지금 화면은 바뀐다
+                  }
                 }}
               >
                 나란히 보기
