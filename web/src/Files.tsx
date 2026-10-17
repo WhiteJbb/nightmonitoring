@@ -120,7 +120,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const [text, setText] = useState('');
   // 입력칸은 줄바꿈을 LF 로 바꿔 돌려준다. CRLF 파일은 저장할 때 되돌려 놓는다 (안 그러면 한 글자만 고쳐도 모든 줄이 바뀐다)
   const [crlf, setCrlf] = useState(false);
-  // CRLF 와 LF 가 섞인 파일은 저장하면 고치지 않은 줄까지 바뀌므로 보기만 한다
+  // 입력칸은 줄바꿈을 LF 로만 돌려준다. CRLF 와 LF 가 섞였거나 CR 만 있는 파일은 저장하면 고치지 않은 줄까지 바뀌므로 보기만 한다
   const [mixed, setMixed] = useState(false);
   // 지금 고치는 내용이 기댄 지문 (되살린 내용이면 그때의 것)
   const [base, setBase] = useState('');
@@ -152,7 +152,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         if (!keepDraft) store.set(key, null);
         const content = f.content.replace(/\r\n/g, '\n');
         setCrlf(content !== f.content);
-        setMixed(content !== f.content && /(^|[^\r])\n/.test(f.content));
+        setMixed((content !== f.content && /(^|[^\r])\n/.test(f.content)) || content.includes('\r'));
         setFile({ content, version: f.version });
         setText(draft?.text ?? content);
         setBase(draft?.version ?? f.version);
@@ -220,6 +220,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       .finally(() => setSaving(false));
   };
   const reload = () => {
+    if (saving) return;
     // 처음 불러오기가 실패했으면 아직 되살린 내용이 없다: 다시 시도할 때도 되살린다
     if (!file) return void load(true);
     if (dirty && !window.confirm('고친 내용을 버리고 디스크의 내용을 다시 불러올까요?')) return;
@@ -240,7 +241,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </button>
         <span className="mono grow wrap editor-path">{path}</span>
         {dirty && <span className="warn">저장 안 함</span>}
-        <button type="button" className="more-rows" disabled={loading} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
+        <button type="button" className="more-rows" disabled={loading || saving} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
           다시 불러오기
         </button>
         {p.allowInput && (
@@ -261,7 +262,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </p>
       )}
       {!p.allowInput && <p className="hint">보기만 할 수 있습니다. 고치려면 설정에서 이 프로젝트의 "터미널 입력 허용"을 켜세요.</p>}
-      {mixed && <p className="hint">줄바꿈(CRLF·LF)이 섞인 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
+      {mixed && <p className="hint">줄바꿈이 섞였거나(CRLF·LF) CR 만 쓰는 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
       {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
       {(file || orphan) && (
         <textarea
