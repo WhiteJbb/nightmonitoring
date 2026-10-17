@@ -304,7 +304,12 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (project.tmux.attached) return void res.status(409).json({ error: '터미널이 붙어 있는 세션은 크기를 바꾸지 않습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;
     const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows));
-    if (error) return void res.status(500).json({ error });
+    if (error) {
+      // 맞추는 사이 세션·터미널이 닫혔으면(세션 종료 직후 도착한 자동 맞추기 등) 맞출 것이 없을 뿐 오류가 아니다
+      await monitor.tick();
+      if (!findPane(req.params.id, req.params.paneId).pane) return void res.json({ ok: true });
+      return void res.status(500).json({ error });
+    }
     await monitor.tick();
     res.json({ ok: true });
   });
@@ -324,11 +329,11 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     res.json({ ok: true });
   });
 
-  // 세션 끝내기: 입력과 같은 조건(입력 허용 프로젝트, loopback·Tailscale). 안에서 돌던 프로그램도 같이 끝난다
+  // 세션 끝내기: 세션 만들기와 같은 조건(loopback·Tailscale). 글자를 보내는 일이 아니라 입력 허용과는 상관없다. 안에서 돌던 프로그램도 같이 끝난다
   api.delete('/projects/:id/session', async (req, res) => {
     const project = monitor.config.projects.find((p) => p.id === req.params.id);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
-    const blocked = inputBlocked(project);
+    const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
     const error = await terminal.killSession(project.tmuxSession);
@@ -359,7 +364,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   api.delete('/projects/:id/panes/:paneId', async (req, res) => {
     const { project, pane } = findPane(req.params.id, req.params.paneId);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
-    const blocked = inputBlocked(project);
+    const blocked = sessionBlocked();
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     const error = await terminal.killPane(pane.id);
