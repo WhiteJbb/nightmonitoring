@@ -97,7 +97,8 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
     const { mode } = await stat(abs);
     // 바꿔 끼우면 읽기 전용이어도 써지므로 직접 막는다
     if (!(mode & 0o200)) throw new FileError('읽기 전용 파일입니다', 403);
-    const tmp = `${abs}.nightshift-${process.pid}-${Date.now()}`;
+    // 이름은 원래 파일과 무관하게 짧게 (긴 파일 이름에 붙이면 255바이트를 넘는다)
+    const tmp = path.join(path.dirname(abs), `.nightshift-${process.pid}-${Date.now()}.tmp`);
     try {
       // 나만 읽을 수 있게 만든 뒤 원래 권한을 준다 (만들 때 mode 는 umask 에 깎이고, 넓게 만들면 잠깐 남이 읽을 수 있다)
       await writeFile(tmp, buf, { mode: 0o600 });
