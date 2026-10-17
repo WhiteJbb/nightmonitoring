@@ -359,9 +359,8 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
 
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fitFont) : null;
     ro?.observe(el);
-    // 컴퓨터에선 높이를 '터미널이 시작하는 곳부터 화면 끝까지'로 잡는다(termsize.ts): 위에 안내(입력 대기)나 세션 정보가 펼쳐져
-    // 터미널이 밀려 내려가면 페이지 크기가 바뀌므로 그때도 다시 맞춘다
-    ro?.observe(document.body);
+    // 컴퓨터에선 높이를 '터미널이 시작하는 곳부터 화면 끝까지'로 잡는다(termsize.ts): 창 높이가 바뀌면 다시 맞춘다
+    window.addEventListener('resize', fitFont);
     return () => {
       closed = true;
       queue = '';
@@ -371,6 +370,7 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
+      window.removeEventListener('resize', fitFont);
       stopFeed();
       xterm.current = null;
       term.dispose();

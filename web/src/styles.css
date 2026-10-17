@@ -850,8 +850,46 @@ button.stat[aria-pressed='true'] {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 14px;
+  gap: 8px 14px;
   margin-bottom: 4px;
+}
+/* 머리는 짧게: 탭은 제목 줄에, 상태 설명과 경로는 그 아래 한 줄 (경로가 길면 줄임표) */
+.detail-head .tabs {
+  margin: 0;
+}
+.detail-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 14px;
+  margin: 4px 0 14px;
+  font-size: var(--fs-sm);
+  color: var(--dim);
+}
+.detail-meta .reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 12px;
+  margin: 0;
+}
+.detail-meta .path {
+  flex: 1 1 240px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* 컴퓨터에선 왼쪽 메뉴에 대시보드가 있으니 '← 대시보드'를 뺀다 */
+@media (min-width: 721px) {
+  .crumb {
+    display: none;
+  }
+}
+/* 휴대폰: 제목 줄에는 제목·상태·세션 종료, 탭은 그 아래 줄로 */
+@media (max-width: 720px) {
+  .detail-head .tabs {
+    order: 1;
+  }
 }
 /* 탭: 알약 안에서 고른 칸만 밝다 */
 .tabs {
@@ -971,6 +1009,8 @@ pre {
   color: var(--text);
 }
 .term-bar {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1068,9 +1108,24 @@ pre {
   overflow-wrap: anywhere;
   overflow-x: hidden;
 }
-/* 세션 정보(tmux attach 명령·생성 시각 등)는 접어 둔다: 터미널이 화면 위쪽부터 다 보이게 */
-.term-info:not(.open) {
-  display: none;
+/* 세션 정보(tmux attach 명령·생성 시각 등): 터미널 위에 떠서 펼친다. 터미널 크기·자리를 바꾸지 않게 */
+.term-wrap {
+  position: relative;
+}
+.term-info.pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 12px;
+  z-index: 30;
+  width: min(640px, calc(100% - 24px));
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+.term-info.pop .kv.inline {
+  margin-bottom: 0;
 }
 .panes {
   display: flex;
