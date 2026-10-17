@@ -1,6 +1,6 @@
 # NightShift
 
-tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰이나 다른 컴퓨터에서 실시간으로 보고 조종하는 **macOS용 로컬** 원격 개발 대시보드. 서버는 Mac에서 돌고, 밖에서는 Tailscale로 접속합니다.
+tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰이나 다른 컴퓨터에서 실시간으로 보고 조종하는 **로컬** 원격 개발 대시보드. 서버는 Mac(또는 Windows의 WSL2)에서 돌고, 밖에서는 Tailscale로 접속합니다.
 
 - **실시간 터미널**: 세션의 pane을 xterm.js로 그대로 그리고, 터미널에 바로 키를 칩니다. 복사·붙여넣기, 이미지 붙여넣기(파일로 올려 경로를 입력), 컴퓨터에서는 전체 화면. 휴대폰에서는 입력 줄과 특수 키 버튼
 - **상태 판정**: 정상 실행 / 입력 대기 / 유휴 / 정지 의심 / 오류. 에이전트 세션은 화면 아래의 `esc to interrupt`(작업 중 표시)로 일하는 중인지 판단
@@ -15,7 +15,7 @@ tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰�
 
 ## 요구 사항
 
-- macOS
+- macOS, 또는 Windows의 WSL2 ([Windows에서 (WSL2)](#windows에서-wsl2))
 - Node.js **22.18 이상** (서버를 TypeScript 그대로 실행합니다)
 - `git`, `tmux` (demo mode에는 필요 없음)
 
@@ -94,6 +94,74 @@ tail -f .nightshift/server.log                                                 #
 ```
 
 서버가 죽으면 launchd가 다시 띄우고(`KeepAlive`), 모니터링 세션은 `.nightshift/state.json`에서 이어집니다. 같은 사용자로 로그인해 있는 동안만 돌고, tmux 세션도 그 사용자의 것을 봅니다.
+
+## Windows에서 (WSL2)
+
+WSL2 안은 진짜 리눅스라 tmux·git·Claude Code·Codex를 Mac과 똑같이 씁니다. NightShift도 고칠 것 없이 WSL 안에서 그대로 돌립니다(맥 데스크톱 알림만 빠지고, 휴대폰 알림 ntfy는 그대로). Windows에서 바로(WSL 없이)는 tmux가 없어 돌지 않습니다.
+
+> 실제 Windows 기기에서는 아직 검증 전입니다. 막히는 곳이 있으면 이슈로 남겨 주세요.
+
+**1. WSL과 도구 설치** — PowerShell(관리자)에서:
+
+```powershell
+wsl --install -d Ubuntu      # 설치 후 재부팅, Ubuntu 사용자 만들기
+```
+
+Ubuntu 터미널에서:
+
+```bash
+sudo apt update && sudo apt install -y git tmux build-essential
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
+npm install -g @anthropic-ai/claude-code @openai/codex   # 쓰는 에이전트만
+git clone <this-repo> ~/nightshift && cd ~/nightshift && npm install && npm run build
+```
+
+저장소는 `/mnt/c/...`(Windows 드라이브)가 아니라 WSL 안(`~/repos/...`)에 두세요. Windows 드라이브 위에서는 git이 매우 느립니다.
+
+**2. 실행하고 Windows 브라우저에서 확인** — `npm start` 뒤 Windows 브라우저에서 <http://127.0.0.1:4477>. WSL2는 `127.0.0.1`을 Windows로 넘겨 줍니다.
+
+**3. 휴대폰에서 접속 (Tailscale)** — Tailscale은 **Windows에** 설치합니다. NightShift는 기본값(`127.0.0.1`)에 그대로 두고, Windows의 PowerShell에서 중계합니다.
+
+```powershell
+tailscale serve --bg --https=443 http://127.0.0.1:4477
+```
+
+그리고 WSL 쪽 `config/nightshift.json`에 Windows 기기의 이름을 적습니다(`tailscale status`로 확인).
+
+```json
+{ "allowedHosts": ["my-pc.tailnet-name.ts.net"] }
+```
+
+중계가 WSL까지 닿지 않으면 Windows 11에서는 `%UserProfile%\.wslconfig`에 아래를 넣고 `wsl --shutdown`으로 다시 켜면 WSL이 Windows와 같은 네트워크를 씁니다.
+
+```ini
+[wsl2]
+networkingMode=mirrored
+```
+
+**4. 자동 시작 (systemd)** — `/etc/wsl.conf`에 `[boot]` 아래 `systemd=true`를 넣고 PowerShell에서 `wsl --shutdown` 후 다시 엽니다. 그다음 `~/.config/systemd/user/nightshift.service`:
+
+```ini
+[Unit]
+Description=NightShift
+
+[Service]
+WorkingDirectory=%h/nightshift
+ExecStart=/usr/bin/node server/index.ts
+Restart=always
+
+[Install]
+WantedBy=default.target
+```
+
+```bash
+systemctl --user daemon-reload && systemctl --user enable --now nightshift
+sudo loginctl enable-linger $USER          # 로그인 창이 없어도 사용자 서비스 유지
+journalctl --user -u nightshift -f         # 로그
+systemctl --user restart nightshift        # 재시작 (npm run build 한 뒤)
+```
+
+WSL은 열린 창이 없으면 잠시 뒤 꺼질 수 있습니다. 계속 돌게 하려면 Windows 작업 스케줄러에 "로그온할 때 `wsl.exe -d Ubuntu --exec sleep infinity`"를 등록해 두세요. 밤새 돌릴 때는 Windows 절전도 꺼 둡니다.
 
 ## Demo mode
 
