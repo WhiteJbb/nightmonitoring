@@ -590,7 +590,11 @@ function SplitCell({ project: p, pane: x, no, selected, cols, share, span, full,
   }, [canFit, size, full, share, layoutKey, p.id, x.id]);
   const live = status === 'live';
   return (
-    <div className={selected ? 'split-cell selected' : 'split-cell'} style={span > 1 ? { gridColumn: `span ${span}` } : undefined} onPointerDown={onSelect} onFocusCapture={onSelect}>
+    <div className={selected ? 'split-cell selected' : 'split-cell'} style={span > 1 ? { gridColumn: `span ${span}` } : undefined} onPointerDown={onSelect} onFocusCapture={(e) => {
+        // 키보드로 터미널에 들어올 때만 고른다 (칸의 버튼으로 Tab 하면 그 버튼에 포커스를 둔다)
+        if (viewRef.current?.contains(e.target as Node)) onSelect();
+      }}
+    >
       <div className="split-head">
         <span className="dim mono">{no}</span>
         <span className="mono">{progName(x)}</span>

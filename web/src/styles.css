@@ -1142,6 +1142,9 @@ pre {
   .split {
     grid-template-columns: minmax(0, 1fr) !important;
   }
+  .split-cell {
+    grid-column: auto !important;
+  }
 }
 /* 새 터미널 메뉴: 버튼 아래로 펼쳐 터미널 위에 띄운다 */
 .new-term {
