@@ -182,7 +182,8 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
     store.set(key, !saving && file && value === file.content && base === file.version ? null : JSON.stringify({ text: value, version: base } satisfies Draft));
   };
   const save = () => {
-    if (!file || saving || !p.allowInput) return;
+    // 불러오는 중에는 막는다: 늦게 온 응답이 저장한 것을 옛 내용으로 덮는다
+    if (!file || saving || loading || !p.allowInput) return;
     const sent = text;
     const sentBase = base;
     setSaving(true);
@@ -238,7 +239,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
           다시 불러오기
         </button>
         {p.allowInput && (
-          <button type="button" className="primary" disabled={!dirty || saving} onClick={save} title="⌘S / Ctrl+S">
+          <button type="button" className="primary" disabled={!dirty || saving || loading} onClick={save} title="⌘S / Ctrl+S">
             {saving ? '저장하는 중…' : '저장'}
           </button>
         )}
