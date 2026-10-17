@@ -80,9 +80,11 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  // 대소문자만 다른 것은 같은 파일로 본다: 맥에서 Foo.ts → foo.ts 로 바꾸면 Git 목록은 옛 이름으로 남는다 (.git·저장소 밖은 어차피 목록에 없다)
+  // 맥에서 Foo.ts → foo.ts 로 바꾸면 Git 목록은 옛 이름으로 남는다: 파일 이름의 대소문자만 다른 것은 같은 파일로 본다.
+  // 폴더 부분은 정확히 같아야 한다 (대소문자를 가리는 디스크에서 폴더를 링크로 바꿔치기한 것은 폴더 경로가 달라져 걸린다)
   const realRel = path.relative(realRoot, real).split(path.sep).join('/');
-  const sameName = async () => [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => f.toLowerCase() === realRel.toLowerCase());
+  const sameName = async () =>
+    [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => path.posix.dirname(f) === path.posix.dirname(realRel) && f.toLowerCase() === realRel.toLowerCase());
   if (!(await known(realRel)) && !(await sameName())) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
@@ -127,6 +129,10 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
   return oneAtATime(`fs:${await rootOf(repo)}`, async () => {
     const abs = await resolve(repo, rel, ignoredOk);
+    // 같은 파일이 다른 프로젝트(겹친 저장소)에서도 열려 있을 수 있어 파일 줄에도 선다
+    return oneAtATime(abs, () => save(abs));
+  });
+  async function save(abs: string): Promise<string> {
     const changed = async () => versionOf(await readFile(abs)) !== version;
     if (await changed()) throw conflict();
     // 옆에 다 쓴 뒤 바꿔 끼운다: 쓰다 실패해도(디스크 가득 등) 원래 파일은 그대로다. 권한은 원래 것을 따른다
@@ -147,7 +153,7 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
       throw e;
     }
     return versionOf(buf);
-  });
+  }
 }
 
 // ── 파일 다루기 (새 파일·폴더, 이동, 복사, 삭제). 터미널 입력과 같은 조건에서만 부른다 (app.ts).
