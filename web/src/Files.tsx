@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
@@ -62,6 +62,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const [files, setFiles] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  const known = useMemo(() => new Set(files), [files]);
   // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
     api.files(p.id).then(
@@ -83,7 +84,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const q = query.trim().toLowerCase();
   const matches = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
   // 지운 파일은 열 수 없으니 뺀다
-  const changed = p.git.changedFiles.filter((f) => files.includes(f.path));
+  const changed = p.git.changedFiles.filter((f) => known.has(f.path));
   const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
   const item = (path: string, status?: string) => (
     <li key={path}>
