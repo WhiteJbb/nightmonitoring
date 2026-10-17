@@ -1,8 +1,9 @@
 // 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)이고,
 // .env 처럼 무시된 파일은 호출부가 허락할 때만(터미널 입력이 허용된 프로젝트) 연다. 저장소 밖과 .git 안은 경로를 직접 줘도 열지 않는다.
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { FsOp } from '../shared/types.ts';
 import { run } from './exec.ts';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
@@ -64,6 +65,25 @@ export async function listIgnored(repo: string): Promise<string[]> {
     .slice(0, MAX_FILES);
 }
 
+/** 디스크가 이름의 대소문자를 가리지 않는지 (맥 기본). 저장소 맨 위 폴더 이름의 대소문자를 바꿔 같은 것이 나오는지 본다 */
+const foldsCase = new Map<string, Promise<boolean>>();
+function caseInsensitive(realRoot: string): Promise<boolean> {
+  let known = foldsCase.get(realRoot);
+  if (!known) {
+    const base = path.basename(realRoot);
+    const swapped = [...base].map((c) => (c === c.toLowerCase() ? c.toUpperCase() : c.toLowerCase())).join('');
+    known =
+      swapped === base
+        ? Promise.resolve(false)
+        : Promise.all([lstat(realRoot), lstat(path.join(path.dirname(realRoot), swapped))]).then(
+            ([a, b]) => a.ino === b.ino && a.dev === b.dev,
+            () => false,
+          );
+    foldsCase.set(realRoot, known);
+  }
+  return known;
+}
+
 /** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
 async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
@@ -79,7 +99,11 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  if (!(await known(path.relative(realRoot, real).split(path.sep).join('/')))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
+  // 맥에서 Foo.ts → foo.ts (폴더도) 로 바꾸면 Git 목록은 옛 이름으로 남는다: 대소문자를 가리지 않는 디스크에서만 대소문자 차이를 무시한다.
+  // 가리는 디스크에서는 정확히 같아야 한다 (거기선 Public → public 같은 링크 바꿔치기로 무시된 파일에 닿을 수 있다)
+  const realRel = path.relative(realRoot, real).split(path.sep).join('/');
+  const sameName = async () => (await caseInsensitive(realRoot)) && [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => f.toLowerCase() === realRel.toLowerCase());
+  if (!(await known(realRel)) && !(await sameName())) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
 
@@ -100,7 +124,7 @@ export async function readText(repo: string, rel: unknown, ignoredOk = false): P
   return { content: asText(buf), version: versionOf(buf) };
 }
 
-// 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 파일마다 줄 세운다
+// 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 저장소마다 줄 세운다 (파일 다루기와 같은 줄)
 const saving = new Map<string, Promise<unknown>>();
 function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
   const next = (saving.get(key) ?? Promise.resolve()).catch(() => {}).then(work);
@@ -118,10 +142,16 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   if (typeof content !== 'string' || typeof version !== 'string') throw new FileError('내용과 지문이 필요합니다', 400);
   const buf = Buffer.from(content, 'utf8');
   if (buf.length > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 저장하지 않습니다', 413);
-  const abs = await resolve(repo, rel, ignoredOk);
-  const changed = async () => versionOf(await readFile(abs)) !== version;
   const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
-  return oneAtATime(abs, async () => {
+  // 파일 다루기(옮기기·지우기)와 같은 줄에 선다: 저장 직전 확인과 바꿔 끼우기 사이에 파일이 옮겨지면 옛 이름으로 되살아난다.
+  // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
+  return oneAtATime(`fs:${await rootOf(repo)}`, async () => {
+    const abs = await resolve(repo, rel, ignoredOk);
+    // 같은 파일이 다른 프로젝트(겹친 저장소)에서도 열려 있을 수 있어 파일 줄에도 선다
+    return oneAtATime(abs, () => save(abs));
+  });
+  async function save(abs: string): Promise<string> {
+    const changed = async () => versionOf(await readFile(abs)) !== version;
     if (await changed()) throw conflict();
     // 옆에 다 쓴 뒤 바꿔 끼운다: 쓰다 실패해도(디스크 가득 등) 원래 파일은 그대로다. 권한은 원래 것을 따른다
     const { mode } = await stat(abs);
@@ -141,5 +171,120 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
       throw e;
     }
     return versionOf(buf);
+  }
+}
+
+// ── 파일 다루기 (새 파일·폴더, 이동, 복사, 삭제). 터미널 입력과 같은 조건에서만 부른다 (app.ts).
+// 쓰기라서 목록 규칙 대신 "저장소 안, .git 밖"만 지킨다. 무시된 폴더 안이라도 셸로 할 수 있는 일이다.
+
+/** 지운 것은 .git 안 휴지통에 이만큼 둔다 (Git 에 없는 .env 같은 파일도 되살릴 수 있게) */
+export const TRASH_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
+const exists = (abs: string) => lstat(abs).then(() => true, () => false);
+
+/** 쓰기 대상 경로: 저장소 맨 위 기준의 정규화된 상대 경로. 실제 위치(가장 가까운 기존 상위 폴더의 링크를 푼 것)도 저장소 안, .git 밖이어야 한다 */
+async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: string }> {
+  if (typeof rel !== 'string' || !rel || rel.includes('\0') || rel.startsWith('/')) throw new FileError('경로가 올바르지 않습니다', 400);
+  const norm = rel.replace(/\/+$/, '');
+  if (path.posix.normalize(norm) !== norm || norm === '.' || norm === '..' || norm.startsWith('../')) throw new FileError('경로가 올바르지 않습니다', 400);
+  // 대소문자를 가리지 않는 디스크(맥)에서는 .GIT 도 .git 이다
+  if (norm.split('/').some((part) => part.toLowerCase() === '.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
+  const root = await rootOf(repo);
+  const realRoot = await realpath(root);
+  // 실제 경로의 어느 부분이든 .git 이면 (하위 저장소의 .git 을 가리키는 링크 포함) 안 된다
+  const inGit = (real: string) => path.relative(realRoot, real).split(path.sep).some((part) => part.toLowerCase() === '.git');
+  // 대상 자체가 링크로 .git 을 가리켜도 막는다
+  const realTarget = await realpath(path.join(root, norm)).catch(() => null);
+  if (realTarget && inGit(realTarget)) throw new FileError('.git 안은 건드리지 않습니다', 400);
+  let dir = path.dirname(path.join(root, norm));
+  for (;;) {
+    const real = await realpath(dir).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? null : Promise.reject(e)));
+    if (real === null) {
+      dir = path.dirname(dir);
+      continue;
+    }
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new FileError('저장소 밖입니다', 400);
+    if (inGit(real)) throw new FileError('.git 안은 건드리지 않습니다', 400);
+    return { abs: path.join(root, norm), rel: norm };
+  }
+}
+
+/** 폴더 안 어딘가에 .git 이 있는지 (다른 저장소·서브모듈). 링크는 따라가지 않는다. 너무 크면 확인을 포기한다 */
+const SCAN_LIMIT = 50_000;
+async function holdsGit(dir: string): Promise<boolean | 'too-big'> {
+  const stack = [dir];
+  let seen = 0;
+  while (stack.length) {
+    for (const entry of await readdir(stack.pop()!, { withFileTypes: true })) {
+      if (entry.name.toLowerCase() === '.git') return true;
+      if (++seen > SCAN_LIMIT) return 'too-big';
+      if (entry.isDirectory()) stack.push(path.join(entry.parentPath, entry.name));
+    }
+  }
+  return false;
+}
+
+/** 옮기거나 복사할 곳이 자기 안이면 안 된다 (폴더를 제 하위 폴더로) */
+const inside = (child: string, parent: string) => child === parent || child.startsWith(`${parent}/`);
+
+/** 지운 것을 .git/nightshift-trash/<시각>/<경로> 로 옮긴다. 오래된 것은 이때 비운다 */
+async function toTrash(repo: string, abs: string, rel: string, now = Date.now()): Promise<void> {
+  const r = await run('git', ['-C', repo, 'rev-parse', '--absolute-git-dir']);
+  if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
+  const trash = path.join(r.stdout.trim(), 'nightshift-trash');
+  for (const name of await readdir(trash).catch(() => [])) {
+    if (now - Number(name) > TRASH_KEEP_MS) await rm(path.join(trash, name), { recursive: true, force: true });
+  }
+  const dest = path.join(trash, String(now), rel);
+  await mkdir(path.dirname(dest), { recursive: true });
+  // 다른 디스크면 rename 이 안 된다: 복사한 뒤 지운다
+  await rename(abs, dest).catch(async (e: NodeJS.ErrnoException) => {
+    if (e.code !== 'EXDEV') throw e;
+    await cp(abs, dest, { recursive: true, verbatimSymlinks: true });
+    await rm(abs, { recursive: true, force: true });
   });
+}
+
+/** 파일 다루기 하나. to 는 move·copy 에서 새 경로 */
+export async function fsOp(repo: string, op: FsOp | unknown, rel: unknown, to?: unknown): Promise<void> {
+  // ponytail: 저장소 하나의 파일 다루기는 하나씩 (있는지 보고 옮기는 사이 다른 요청이 같은 자리를 덮지 않게). 드문 일이라 이걸로 충분하다.
+  // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
+  return oneAtATime(`fs:${await rootOf(repo)}`, async () => applyOp(repo, op, await target(repo, rel), to));
+}
+
+async function applyOp(repo: string, op: unknown, src: { abs: string; rel: string }, to: unknown): Promise<void> {
+  try {
+    if (op === 'newFile' || op === 'newDir') {
+      if (await exists(src.abs)) throw new FileError('이미 있습니다', 409);
+      if (op === 'newDir') return void (await mkdir(src.abs, { recursive: true }));
+      await mkdir(path.dirname(src.abs), { recursive: true });
+      return void (await writeFile(src.abs, '', { flag: 'wx' }));
+    }
+    if (!(await exists(src.abs))) throw new FileError('없는 파일입니다', 404);
+    // 폴더째 지우거나 옮기거나 복사할 때 안에 다른 저장소(.git)가 있으면 그 기록까지 휩쓸린다
+    if ((await lstat(src.abs)).isDirectory()) {
+      const git = await holdsGit(src.abs);
+      if (git === true) throw new FileError('안에 다른 Git 저장소(.git)가 있는 폴더는 여기서 다루지 않습니다. 터미널에서 하세요', 400);
+      if (git === 'too-big') throw new FileError('폴더가 너무 커서 안을 확인할 수 없습니다. 터미널에서 하세요', 400);
+    }
+    if (op === 'delete') return void (await toTrash(repo, src.abs, src.rel));
+    if (op !== 'move' && op !== 'copy') throw new FileError('알 수 없는 작업입니다', 400);
+    const dst = await target(repo, to);
+    // 같은 자리면 '이미 있음'(409): 붙여넣기는 그걸 보고 "이름 copy" 로 다시 시도한다.
+    // 단, 대소문자만 바꾸는 이름 바꾸기(맥에서 Foo.ts → foo.ts)는 같은 파일을 가리키므로 허용한다
+    const sameEntry = async () => {
+      const [a, b] = await Promise.all([lstat(src.abs), lstat(dst.abs)]);
+      return a.ino === b.ino && a.dev === b.dev;
+    };
+    const caseOnly = op === 'move' && dst.rel !== src.rel && dst.rel.toLowerCase() === src.rel.toLowerCase();
+    if ((await exists(dst.abs)) && !(caseOnly && (await sameEntry()))) throw new FileError(`이미 있습니다: ${dst.rel}`, 409);
+    if (inside(dst.rel, src.rel)) throw new FileError('자기 안으로는 옮기거나 복사할 수 없습니다', 400);
+    await mkdir(path.dirname(dst.abs), { recursive: true });
+    if (op === 'move') await rename(src.abs, dst.abs);
+    else await cp(src.abs, dst.abs, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
+  } catch (e) {
+    if (e instanceof FileError) throw e;
+    const code = (e as NodeJS.ErrnoException).code;
+    throw new FileError((e as Error).message, code === 'ENOENT' ? 404 : code === 'EEXIST' ? 409 : 400);
+  }
 }

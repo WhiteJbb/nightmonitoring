@@ -1107,12 +1107,14 @@ pre {
 /* 파일 탭: 목록과 편집기 */
 .file-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
+/* 좁으면 찾기 칸이 한 줄을 다 쓰고 버튼은 아래로 */
 .file-tools .file-search {
-  flex: 1;
+  flex: 1 1 220px;
 }
 .rows .file-link {
   flex: 1;
@@ -1134,6 +1136,58 @@ pre {
   text-decoration: underline;
   transform: none;
 }
+/* 파일 행의 ⋯ 메뉴 (우클릭도 같은 메뉴). 끌어 놓을 폴더는 밝게 */
+.rows li {
+  position: relative;
+}
+.rows .row-more {
+  min-height: 0;
+  padding: 0 8px;
+  color: var(--dim);
+  background: none;
+  opacity: 0.5;
+}
+.rows li:hover .row-more,
+.rows .row-more[aria-expanded='true'],
+.rows .row-more:focus-visible {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .rows .row-more {
+    opacity: 1;
+  }
+}
+.row-menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.row-menu button {
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  background: transparent;
+}
+.row-menu button:hover:not(:disabled) {
+  background: var(--s2);
+  transform: none;
+}
+.rows li.drop,
+.drop-root.drop {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 10px;
+}
 .editor-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1141,31 +1195,12 @@ pre {
   gap: 8px;
   margin-bottom: 8px;
 }
-.editor-text {
-  display: block;
-  width: 100%;
-  min-height: 65vh;
-  padding: 14px 16px;
-  font: var(--fs-code) / 1.55 var(--mono);
-  color: #e8ebf2;
-  background: var(--term);
-  border: none;
-  border-radius: 20px;
-  resize: vertical;
-  tab-size: 4;
-  white-space: pre;
-  overflow: auto;
-}
 @media (max-width: 720px) {
   /* 휴대폰: 경로는 버튼 위 한 줄로 */
   .editor-path {
     order: -1;
     flex-basis: 100%;
   }
-}
-.editor-text:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.3);
 }
 /* 나란히 보기: 칸마다 이름·상태 띠와 터미널. 고른 칸(입력 대상)은 테두리로 표시 */
 .split {

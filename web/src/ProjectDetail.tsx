@@ -3,7 +3,7 @@ import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
 import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TermEvent, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { AGENTS, StartSession } from './NewSession.tsx';
-import { FilesTab } from './Files.tsx';
+import { FilesTab, useDismiss } from './Files.tsx';
 import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
@@ -648,21 +648,7 @@ export function TerminalTab({ project: p, now }: Props) {
   // 버튼이 터미널 틀 오른쪽 끝 가까이 있으면 메뉴를 오른쪽에 맞춰 펼친다 (틀 밖은 잘린다)
   const [menuRight, setMenuRight] = useState(false);
   const menuRef = useRef<HTMLSpanElement>(null);
-  useEffect(() => {
-    if (!menuOpen) return;
-    const outside = (e: PointerEvent) => {
-      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
-    };
-    const esc = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape') setMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', esc);
-    return () => {
-      document.removeEventListener('pointerdown', outside);
-      document.removeEventListener('keydown', esc);
-    };
-  }, [menuOpen]);
+  useDismiss(menuRef, menuOpen, () => setMenuOpen(false));
   const [opened, setOpened] = useState<string | null>(null);
   useEffect(() => {
     if (opened && t.panes.some((x) => x.id === opened)) {

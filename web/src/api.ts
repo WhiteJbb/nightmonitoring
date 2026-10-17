@@ -1,4 +1,4 @@
-import type { AgentKind, ProjectSnapshot, ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
+import type { AgentKind, FsOp, ProjectSnapshot, ConfigUpdate, ConfigView, NewSessionRequest, TermSize, InputRequest, RawInputRequest, RunKind, RunResult, Snapshot, UploadRequest } from '../../shared/types.ts';
 
 /** 서버가 돌려준 오류. 검증 실패(400)면 issues 에 항목별 메시지가 들어 있다. */
 export class ApiError extends Error {
@@ -50,6 +50,7 @@ export const api = {
   files: (id: string) => req<{ files: string[]; ignored: string[] }>(`/api/projects/${encodeURIComponent(id)}/files`),
   file: (id: string, path: string) => req<{ content: string; version: string }>(`/api/projects/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
   saveFile: (id: string, body: { path: string; content: string; version: string }) => req<{ version: string }>(`/api/projects/${encodeURIComponent(id)}/file`, 'PUT', body),
+  fsOp: (id: string, body: { op: FsOp; path: string; to?: string }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/fs`, 'POST', body),
   closePane: (id: string, paneId: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}`, 'DELETE'),
   startSession: (id: string, size: TermSize & { agent?: AgentKind }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'POST', size),
   fitPane: (id: string, paneId: string, size: TermSize) =>

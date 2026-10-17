@@ -5,7 +5,7 @@ import { AGENT_COMMANDS } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
-import { FileError, listFiles, listIgnored, readText, writeText } from './files.ts';
+import { FileError, fsOp, listFiles, listIgnored, readText, writeText } from './files.ts';
 import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
@@ -390,6 +390,16 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (blocked) return void res.status(403).json({ error: blocked });
     const { path, content, version } = (req.body ?? {}) as Record<string, unknown>;
     res.json({ version: await writeText(project.repoPath, path, content, version, true) });
+  });
+
+  // 새 파일·폴더, 이동·이름 바꾸기, 복사, 삭제(.git 안 휴지통으로). 저장과 같은 조건
+  api.post('/projects/:id/fs', express.json({ limit: '16kb' }), async (req, res) => {
+    const project = projectOf(req.params.id);
+    const blocked = inputBlocked(project);
+    if (blocked) return void res.status(403).json({ error: blocked });
+    const { op, path, to } = (req.body ?? {}) as Record<string, unknown>;
+    await fsOp(project.repoPath, op, path, to);
+    res.json({ ok: true });
   });
 
   const editableProjects = (view: ConfigView): EditableProject[] =>

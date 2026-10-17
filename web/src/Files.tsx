@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent, ReactNode } from 'react';
-import type { ProjectSnapshot } from '../../shared/types.ts';
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import type { DragEvent, MouseEvent, ReactNode, RefObject } from 'react';
+import type { FsOp, ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
+
+// 코드 편집기(CodeMirror)는 파일을 열 때만 받는다: 대시보드 첫 화면이 무거워지지 않게
+const CodeEditor = lazy(() => import('./CodeEditor.tsx'));
+
+/** 줄바꿈 보기: 이 브라우저에 기억한다. 처음엔 좁은 화면(휴대폰)만 켠다 */
+const storedWrap = () => {
+  try {
+    const v = localStorage.getItem('editorWrap');
+    if (v !== null) return v === '1';
+  } catch {
+    // 기억을 못 읽으면 화면 폭으로 정한다
+  }
+  return window.matchMedia?.('(max-width: 720px)').matches ?? false;
+};
 
 /** 목록에 한 번에 그리는 파일 수 (더 많으면 이름으로 찾아 좁힌다) */
 const SHOWN = 200;
@@ -38,6 +52,30 @@ const store = {
     }
   },
 };
+/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다. keepOld: 옛 이름에도 남긴다. to 가 null 이면 버린다(지운 경우) */
+function moveDrafts(scope: string, from: string, to: string | null, keepOld = false) {
+  const prefix = draftKey(scope, from);
+  const keys = new Set(memory.keys());
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) keys.add(sessionStorage.key(i)!);
+  } catch {
+    // 저장소를 못 쓰면 메모리 것만
+  }
+  for (const key of keys) {
+    const rest = key.slice(prefix.length);
+    if (!key.startsWith(prefix) || (rest !== '' && !from.endsWith('/') && !rest.startsWith('/'))) continue;
+    if (to === null) {
+      store.set(key, null);
+      continue;
+    }
+    // 새 자리에 이미 다른 초안이 있으면(밖에서 지워진 파일의 것) 덮지 않고 둘 다 그대로 둔다
+    const dest = draftKey(scope, to + rest);
+    if (store.get(dest) !== null && dest !== key) continue;
+    const value = store.get(key);
+    if (!keepOld) store.set(key, null);
+    store.set(dest, value);
+  }
+}
 const loadDraft = (key: string): Draft | null => {
   try {
     return JSON.parse(store.get(key) ?? 'null') as Draft | null;
@@ -63,20 +101,57 @@ interface Dir {
   dirs: Map<string, Dir>;
   files: string[];
 }
-function buildTree(paths: string[]): Dir {
+/** dirs: 파일이 없어도 보여 줄 폴더 ("a/b/" 꼴, 여기서 만든 빈 폴더) */
+function buildTree(paths: string[], dirs: string[] = []): Dir {
   const root: Dir = { dirs: new Map(), files: [] };
-  for (const path of paths) {
+  const walk = (parts: string[]) => {
     let dir = root;
-    for (const part of path.split('/').slice(0, -1)) {
+    for (const part of parts) {
       let next = dir.dirs.get(part);
       if (!next) dir.dirs.set(part, (next = { dirs: new Map(), files: [] }));
       dir = next;
     }
-    dir.files.push(path);
-  }
+    return dir;
+  };
+  for (const path of paths) walk(path.split('/').slice(0, -1)).files.push(path);
+  for (const d of dirs) walk(d.split('/').filter(Boolean));
   return root;
 }
-const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+const baseName = (path: string) => path.replace(/\/$/, '').slice(path.replace(/\/$/, '').lastIndexOf('/') + 1);
+/** "a/b.txt" 의 폴더 "a/" (맨 위면 "") */
+const parentOf = (path: string) => path.replace(/\/$/, '').slice(0, path.replace(/\/$/, '').lastIndexOf('/') + 1);
+/** 복사본 이름: "b.txt" → "b copy.txt", "b copy 2.txt"… */
+const copyName = (name: string, n: number) => {
+  const dot = name.lastIndexOf('.');
+  const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ''];
+  return `${stem} copy${n > 1 ? ` ${n}` : ''}${ext}`;
+};
+
+/** 메뉴처럼 잠깐 펼치는 것: 바깥을 누르거나 Esc 면 닫는다 */
+export function useDismiss(ref: RefObject<HTMLElement | null>, open: boolean, close: () => void) {
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const outside = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) closeRef.current();
+    };
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') closeRef.current();
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [ref, open]);
+}
+
+// 복사·잘라내기 한 것. 편집기를 열었다 돌아와도 남게 모듈에 둔다. 다른 프로젝트에 붙이지 않게 어디 것인지(scope)도 둔다
+let clipboard: { scope: string; path: string; cut: boolean } | null = null;
+/** 끌어서 옮길 때 실어 보내는 종류 */
+const DRAG_TYPE = 'application/x-nightshift-path';
 
 function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (path: string) => void }) {
   const [list, setList] = useState<{ files: string[]; ignored: string[] } | null>(null);
@@ -93,16 +168,56 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       return new Set();
     }
   });
-  const toggle = (dir: string) => {
-    const next = new Set(open);
-    if (!next.delete(dir)) next.add(dir);
-    setOpen(next);
-    store.set(treeKey, JSON.stringify([...next]));
+  // 상태는 늘 최신 것에서 고친다: 작업 두 개가 겹쳐 끝나도 앞의 것이 사라지지 않게
+  const updateOpen = (change: (dirs: Set<string>) => Set<string>) =>
+    setOpen((prev) => {
+      const next = change(prev);
+      store.set(treeKey, JSON.stringify([...next]));
+      return next;
+    });
+  const toggle = (dir: string) =>
+    updateOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(dir)) next.add(dir);
+      return next;
+    });
+  // 여기서 만든 빈 폴더: Git 은 파일만 알아서 목록에 안 나온다
+  const emptyKey = `emptyDirs:${scopeOf(p)}`;
+  const [emptyDirs, setEmptyDirs] = useState<string[]>(() => {
+    try {
+      return JSON.parse(store.get(emptyKey) ?? '[]') as string[];
+    } catch {
+      return [];
+    }
+  });
+  const updateDirs = (change: (dirs: string[]) => string[]) =>
+    setEmptyDirs((prev) => {
+      const next = change(prev);
+      store.set(emptyKey, JSON.stringify(next));
+      return next;
+    });
+  /** 지우거나 옮기거나 복사한 뒤 빈 폴더 기억을 맞춘다 (Git 목록으로는 바로잡을 수 없다) */
+  const followDirs = (op: FsOp, path: string, to?: string) => {
+    const from = path.endsWith('/') ? path : `${path}/`;
+    const dest = to && `${to.replace(/\/+$/, '')}/`;
+    const under = (d: string) => d.startsWith(from);
+    if (op === 'delete') updateDirs((dirs) => dirs.filter((d) => !under(d)));
+    else if (op === 'move' && dest) updateDirs((dirs) => dirs.map((d) => (under(d) ? dest + d.slice(from.length) : d)));
+    else if (op === 'copy' && dest) updateDirs((dirs) => [...new Set([...dirs, ...dirs.filter(under).map((d) => dest + d.slice(from.length))])]);
   };
+  // 파일 다루기: 입력 허용 프로젝트만 (서버도 같은 조건으로 막는다)
+  const canEdit = p.allowInput;
+  const [menu, setMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLSpanElement>(null);
+  useDismiss(menuRef, menu !== null, () => setMenu(null));
+  const [clip, setClip] = useState(clipboard?.scope === scopeOf(p) ? clipboard : null);
+  const [opError, setOpError] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
+
   const known = useMemo(() => new Set(list?.files), [list]);
   const ignored = useMemo(() => new Set(list?.ignored), [list]);
   const all = useMemo(() => (list ? [...list.files, ...list.ignored].sort() : []), [list]);
-  const tree = useMemo(() => buildTree(all), [all]);
+  const tree = useMemo(() => buildTree(all, emptyDirs), [all, emptyDirs]);
   // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
     // 새로 받기 시작하면 앞의 응답은 버린다 (늦게 와도 새 목록을 덮지 않게)
@@ -127,19 +242,185 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     );
   }
   if (!list) return <p className="dim">불러오는 중…</p>;
+
+  /** 작업 하나를 보내고 목록을 다시 받는다. 실패하면 위에 알린다 */
+  const act = async (op: FsOp, path: string, to?: string) => {
+    setMenu(null);
+    setOpError(null);
+    // 옮기기 전에 그 파일(폴더면 그 안)의 진행 중인 저장을 기다린다: 저장이 끝나며 정리한 초안을 옮겨야 지문이 맞는다
+    if (op === 'move') {
+      const prefix = draftKey(scopeOf(p), path);
+      await Promise.all([...pendingSaves].filter(([key]) => key.startsWith(prefix)).map(([, saving]) => saving.catch(() => {})));
+    }
+    try {
+      await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
+      followDirs(op, path, to);
+      // 지운 파일의 저장 안 한 내용은 버린다 (편집기에서 파일을 지우면 닫히는 것과 같다)
+      if (op === 'delete') moveDrafts(scopeOf(p), path, null);
+      // 저장 안 한 내용도 따라간다
+      // 대소문자만 바꾼 이름은 맥에서 Git 목록이 옛 이름으로 남기도 해서 두 이름 다에 둔다
+      if (op === 'move' && to) moveDrafts(scopeOf(p), path, path.endsWith('/') ? `${to.replace(/\/+$/, '')}/` : to, to.toLowerCase() === path.replace(/\/$/, '').toLowerCase());
+      setRefresh((n) => n + 1);
+      return true;
+    } catch (e) {
+      setOpError(errorMessage(e));
+      return false;
+    }
+  };
+  const ask = (message: string, initial = '') => window.prompt(message, initial)?.trim() || null;
+  const newFile = async (dir: string) => {
+    const name = ask(`새 파일 이름 (${dir || '맨 위'} 안, "폴더/이름" 도 됩니다)`);
+    if (name && (await act('newFile', dir + name))) onOpen(dir + name);
+  };
+  const newDir = async (dir: string) => {
+    const name = ask(`새 폴더 이름 (${dir || '맨 위'} 안)`);
+    if (!name) return;
+    const path = `${dir}${name.replace(/\/+$/, '')}/`;
+    if (await act('newDir', path)) {
+      updateDirs((dirs) => [...new Set([...dirs, path])]);
+      updateOpen((prev) => new Set([...prev, ...(dir ? [dir] : []), path]));
+    }
+  };
+  const rename = async (path: string) => {
+    const to = ask('새 이름 또는 옮길 경로', path.replace(/\/$/, ''));
+    if (to && to !== path.replace(/\/$/, '')) await act('move', path, to);
+  };
+  const remove = async (path: string) => {
+    // Git 에 없는 것(새 파일 ?? 나 무시된 파일)이 들어 있으면 휴지통 말고는 되살릴 길이 없다고 알린다
+    const untracked = [...ignored, ...p.git.changedFiles.filter((f) => f.status === '??').map((f) => f.path)].some((f) => f === path || (path.endsWith('/') && f.startsWith(path)))
+      ? '\nGit 에 없는 파일이 있어 Git 으로는 되살릴 수 없습니다.'
+      : '';
+    const drafts = unsaved(path) || (path.endsWith('/') && all.some((f) => f.startsWith(path) && unsaved(f))) ? '\n저장하지 않은 내용도 버립니다.' : '';
+    if (window.confirm(`"${path}" 을(를) 지울까요?\n지운 것은 .git/nightshift-trash 에 7일 동안 남습니다.${untracked}${drafts}`)) await act('delete', path);
+  };
+  const copy = (path: string, cut: boolean) => {
+    clipboard = { scope: scopeOf(p), path, cut };
+    setClip(clipboard);
+    setMenu(null);
+  };
+  /** dir 안으로 붙여넣기. 복사는 같은 이름이 있으면 "이름 copy" 로, 잘라내기는 옮긴다 */
+  const paste = async (dir: string) => {
+    if (!clipboard || clipboard.scope !== scopeOf(p)) return;
+    const { path, cut } = clipboard;
+    const name = baseName(path);
+    if (cut) {
+      if (await act('move', path, dir + name)) {
+        clipboard = null;
+        setClip(null);
+      }
+      return;
+    }
+    setMenu(null);
+    setOpError(null);
+    // 같은 이름이 있으면 409: 다음 이름으로
+    for (let n = 0; n < 20; n++) {
+      try {
+        const to = dir + (n === 0 ? name : copyName(name, n));
+        await api.fsOp(p.id, { op: 'copy', path, to });
+        followDirs('copy', path, to);
+        return setRefresh((k) => k + 1);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.status === 409)) return setOpError(errorMessage(e));
+      }
+    }
+    setOpError('같은 이름이 너무 많습니다');
+  };
+  const duplicate = async (path: string) => {
+    clipboard = { scope: scopeOf(p), path, cut: false };
+    await paste(parentOf(path));
+    clipboard = clip;
+  };
+
+  // 끌어서 옮기기 (컴퓨터): 행을 폴더나 맨 위 영역에 놓는다
+  const dragProps = (path: string) =>
+    canEdit ? { draggable: true, onDragStart: (e: DragEvent) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ scope: scopeOf(p), path })) } : {};
+  const dropProps = (dir: string) =>
+    canEdit
+      ? {
+          onDragOver: (e: DragEvent) => {
+            if (!e.dataTransfer.types.includes(DRAG_TYPE)) return;
+            e.preventDefault();
+            e.stopPropagation();
+            setDropOn(dir);
+          },
+          onDragLeave: () => setDropOn((d) => (d === dir ? null : d)),
+          onDrop: (e: DragEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDropOn(null);
+            // 다른 창의 다른 프로젝트에서 끌어온 것은 받지 않는다 (같은 이름의 엉뚱한 파일을 옮기게 된다)
+            let from = '';
+            try {
+              const drag = JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as { scope: string; path: string };
+              if (drag.scope === scopeOf(p)) from = drag.path;
+            } catch {
+              return;
+            }
+            // 제자리나 (폴더를) 자기 안으로는 옮기지 않는다
+            if (from && parentOf(from) !== dir && !(from.endsWith('/') && dir.startsWith(from))) void act('move', from, dir + baseName(from));
+          },
+        }
+      : {};
+
+  const menuFor = (path: string) => {
+    const dir = path.endsWith('/');
+    const items: [string, () => void][] = [
+      ...(dir
+        ? ([
+            ['새 파일…', () => void newFile(path)],
+            ['새 폴더…', () => void newDir(path)],
+          ] as [string, () => void][])
+        : ([['열기', () => onOpen(path)]] as [string, () => void][])),
+      ...(dir && clip ? ([[`붙여넣기 (${baseName(clip.path)})`, () => void paste(path)]] as [string, () => void][]) : []),
+      ['이름 바꾸기·옮기기…', () => void rename(path)],
+      ['복제', () => void duplicate(path)],
+      ['복사', () => copy(path, false)],
+      ['잘라내기', () => copy(path, true)],
+      ['지우기…', () => void remove(path)],
+    ];
+    return (
+      <div className="menu row-menu" role="menu">
+        {items.map(([label, run]) => (
+          <button key={label} type="button" role="menuitem" className={label.startsWith('지우기') ? 'danger' : undefined} onClick={run}>
+            {label}
+          </button>
+        ))}
+      </div>
+    );
+  };
+  // 행 끝의 ⋯ 와 그 메뉴. 우클릭도 같은 메뉴를 연다. 같은 파일이 '바뀐 파일'과 트리에 다 있으니 어느 쪽 행인지(where)로 가른다
+  const actions = (path: string, where: string) =>
+    canEdit && (
+      // ⋯ 와 메뉴를 함께 감싼다: ⋯ 를 다시 누르면 '바깥'이 아니라 닫기다
+      <span ref={menu === where + path ? menuRef : undefined}>
+        <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === where + path} onClick={() => setMenu(menu === where + path ? null : where + path)}>
+          ⋯
+        </button>
+        {menu === where + path && menuFor(path)}
+      </span>
+    );
+  const onContext = (path: string, where: string) => (e: MouseEvent) => {
+    if (!canEdit) return;
+    e.preventDefault();
+    setMenu(where + path);
+  };
+
   const q = query.trim().toLowerCase();
   const matches = q ? all.filter((f) => f.toLowerCase().includes(q)) : [];
   // 지운 파일은 열 수 없으니 뺀다
   const changed = p.git.changedFiles.filter((f) => known.has(f.path));
   const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
-  const item = (path: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
-    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined}>
+  const item = (path: string, where: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
+    // 파일 위에 놓으면 그 파일이 있는 폴더로 (IDE 처럼). 안 그러면 맨 위 영역까지 올라가 엉뚱하게 맨 위로 옮겨진다
+    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, where)} {...dragProps(path)} {...dropProps(parentOf(path))}>
       {status !== undefined && <span className="xy">{status}</span>}
       <button type="button" className={ignored.has(path) ? 'file-link dim' : 'file-link'} onClick={() => onOpen(path)}>
         {label}
       </button>
       {ignored.has(path) && <span className="dim">무시됨</span>}
       {unsaved(path) && <span className="warn">저장 안 함</span>}
+      {clip?.path === path && <span className="dim">{clip.cut ? '잘라냄' : '복사함'}</span>}
+      {actions(path, where)}
     </li>
   );
   // 폴더를 먼저, 그다음 파일. 펼친 폴더만 그 안을 그린다
@@ -148,16 +429,18 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       const path = `${prefix}${name}/`;
       const isOpen = open.has(path);
       return [
-        <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined}>
+        <li key={path} className={dropOn === path ? 'drop' : undefined} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, 'tree:')} {...dragProps(path)} {...dropProps(path)}>
           <button type="button" className="file-link folder" aria-expanded={isOpen} onClick={() => toggle(path)}>
             {isOpen ? '▾' : '▸'} {name}/
           </button>
+          {clip?.path === path && <span className="dim">{clip.cut ? '잘라냄' : '복사함'}</span>}
+          {actions(path, 'tree:')}
         </li>,
         ...(isOpen ? rows(dir.dirs.get(name)!, path, depth + 1) : []),
       ];
     }),
     // 한 폴더에 파일이 아주 많으면 앞의 것만 (나머지는 이름으로 찾는다)
-    ...dir.files.slice(0, SHOWN).map((f) => item(f, { label: baseName(f), depth })),
+    ...dir.files.slice(0, SHOWN).map((f) => item(f, 'tree:', { label: baseName(f), depth })),
     ...(dir.files.length > SHOWN
       ? [
           <li key={`${prefix}…`} className="hint" style={{ paddingLeft: depth * 18 }}>
@@ -170,25 +453,45 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     <>
       <div className="file-tools">
         <input type="search" className="file-search" placeholder="파일 이름으로 찾기" aria-label="파일 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
+        {canEdit && (
+          <>
+            <button type="button" className="more-rows" onClick={() => void newFile('')}>
+              새 파일
+            </button>
+            <button type="button" className="more-rows" onClick={() => void newDir('')}>
+              새 폴더
+            </button>
+            {clip && (
+              <button type="button" className="more-rows" onClick={() => void paste('')} title="맨 위 폴더에 붙여넣습니다">
+                붙여넣기
+              </button>
+            )}
+          </>
+        )}
         <button type="button" className="more-rows" onClick={() => setRefresh(refresh + 1)} title="파일 목록을 다시 받습니다">
           새로고침
         </button>
       </div>
+      {opError && (
+        <p className="err" role="alert">
+          {opError}
+        </p>
+      )}
       {!q && changed.length > 0 && (
         <section>
           <h3>바뀐 파일 ({changed.length})</h3>
-          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, { status: f.status }))}</ul>
+          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, 'changed:', { status: f.status }))}</ul>
           {changed.length > SHOWN && <p className="hint">{changed.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
         </section>
       )}
       {q ? (
         <section>
           <h3>찾은 파일 ({matches.length})</h3>
-          <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f))}</ul>
+          <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f, 'found:'))}</ul>
           {matches.length > SHOWN && <p className="hint">{matches.length - SHOWN}개 더 있습니다. 이름으로 더 좁히세요.</p>}
         </section>
       ) : (
-        <section>
+        <section className={dropOn === '' ? 'drop-root drop' : 'drop-root'} {...dropProps('')}>
           <h3>모든 파일 ({all.length})</h3>
           <ul className="rows tree">{rows(tree, '', 0)}</ul>
         </section>
@@ -312,10 +615,13 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
     if (dirty && !window.confirm('고친 내용을 버리고 디스크의 내용을 다시 불러올까요?')) return;
     void load(false);
   };
-  const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-      e.preventDefault();
-      save();
+  const [wrap, setWrap] = useState(storedWrap);
+  const toggleWrap = () => {
+    setWrap(!wrap);
+    try {
+      localStorage.setItem('editorWrap', wrap ? '0' : '1');
+    } catch {
+      // 기억만 못 한다
     }
   };
 
@@ -327,6 +633,9 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </button>
         <span className="mono grow wrap editor-path">{path}</span>
         {dirty && <span className="warn">저장 안 함</span>}
+        <button type="button" className="more-rows" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄을 화면 폭에서 접어 보여 줍니다">
+          줄바꿈
+        </button>
         <button type="button" className="more-rows" disabled={loading || saving} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
           다시 불러오기
         </button>
@@ -351,18 +660,9 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       {mixed && <p className="hint">줄바꿈이 섞였거나(CRLF·LF) CR 만 쓰는 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
       {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
       {(file || orphan) && (
-        <textarea
-          className="editor-text"
-          aria-label={`${path} 내용`}
-          value={text}
-          readOnly={!p.allowInput || loading || orphan || mixed}
-          wrap="off"
-          spellCheck={false}
-          autoCapitalize="off"
-          autoCorrect="off"
-          onChange={(e) => edit(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
+        <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
+          <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
+        </Suspense>
       )}
     </div>
   );

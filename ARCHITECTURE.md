@@ -7,7 +7,7 @@ tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰�
 - 프로세스 하나, 포트 하나. Express가 API와 프론트엔드(개발: Vite 미들웨어, 프로덕션: `dist/web` 정적 파일)를 함께 서빙한다.
 - 서버는 Node의 TypeScript 네이티브 실행(type stripping, Node ≥ 22.18)으로 바로 돌린다. 서버용 빌드 단계·`tsx`·`concurrently` 없음.
 - DB 없음. 설정은 JSON/YAML, 세션 상태는 JSON 파일 하나.
-- 의존성 최소: 런타임은 `express`, `react`, `react-dom`, `yaml`, `@xterm/xterm`(터미널), 아이콘·글꼴뿐. 라우터·UI 킷·ANSI·검증 라이브러리 없음.
+- 의존성 최소: 런타임은 `express`, `react`, `react-dom`, `yaml`, `@xterm/xterm`(터미널), `codemirror`(파일 편집기, 파일을 열 때만 받음. 언어별 문법도 그때그때), 아이콘·글꼴뿐. 라우터·UI 킷·ANSI·검증 라이브러리 없음.
 
 ## 디렉터리
 
@@ -138,6 +138,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | GET | `/api/projects/:id` | 한 프로젝트의 전체 상태 (Git 탭이 기준점 이후 목록을 받을 때) |
 | GET | `/api/projects/:id/files` | Git 이 아는 파일 목록 (`ls-files --cached --others --exclude-standard`). `ignored`: 입력 허용 프로젝트만, 무시된 파일(무시된 폴더 안은 제외) |
 | GET | `/api/projects/:id/file?path=` | 글 파일 내용과 지문(sha1). 400 / 404 / 413 / 415 |
+| POST | `/api/projects/:id/fs` | `{op, path, to?}` 파일 다루기: newFile·newDir·move·copy·delete(.git/nightshift-trash 로). 입력과 같은 조건, 저장소 안·.git 밖만, 저장소마다 하나씩. 400 / 403 / 404 / 409 |
 | PUT | `/api/projects/:id/file` | `{path, content, version}` 저장 (입력과 같은 조건). 지문이 다르면 409 |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |

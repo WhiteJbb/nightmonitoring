@@ -232,6 +232,8 @@ describe('terminal API', () => {
     expect((await put('closed')).status).toBe(403); // allowInput 꺼짐
     expect((await put('open', { Origin: 'https://evil.example' })).status).toBe(403);
     expect((await put('nope')).status).toBe(404);
+    const fs = (id: string) => fetch(`${base}/${id}/fs`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ op: 'delete', path: 'a' }) });
+    expect((await fs('closed')).status).toBe(403); // 파일 다루기도 입력과 같은 조건
     expect((await fetch(`${base}/nope/files`)).status).toBe(404);
   });
 
