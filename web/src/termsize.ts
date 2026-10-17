@@ -6,6 +6,12 @@ export const TERM_MAX_VIEWPORT = 0.7;
 export const ROW_RATIO = 1.6;
 /** 전체 화면 모드에서 터미널 위 띠·여백이 차지하는 높이(px) */
 const FULL_CHROME = 64;
+/**
+ * 글자 크기 범위 [최소, 최대]. 컴퓨터는 tmux 창이 화면보다 크면(입력이 꺼져 크기를 못 바꾸는 프로젝트, 다른 터미널이 붙은 세션)
+ * 6px 까지 줄여 한 화면에 다 넣고, 작으면 16px 까지 키워 빈자리를 줄인다. 휴대폰은 9px 아래로는 읽기 힘들어 가로로 밀어 본다
+ */
+export const fontRange = (): [number, number] => (window.matchMedia?.('(pointer: fine)').matches ? [6, 16] : [9, 13]);
+
 /** 컴퓨터에서 터미널 아래로 남기는 여백(px)과 그래도 지키는 최소 높이 */
 const BOTTOM_GAP = 24;
 const MIN_HEIGHT = 240;

@@ -892,6 +892,12 @@ export function TerminalTab({ project: p, now }: Props) {
                   화면에 맞추기
                 </button>
               )}
+              {/* 크기를 못 바꾸는 세션에서 tmux 창이 화면보다 크면 글자가 작아진 까닭을 알린다 */}
+              {!splitOn && !canFit && size && (size.cols > want.cols || size.rows > want.rows) && (
+                <span className="dim" title={p.allowInput ? '다른 터미널이 붙어 있는 세션이라 tmux 창 크기를 바꾸지 않습니다' : '입력을 허용하지 않은 프로젝트라 tmux 창 크기를 바꾸지 않습니다. 설정에서 "터미널 입력 허용"을 켜면 화면에 맞춥니다'}>
+                  tmux 창 {size.cols}×{size.rows}이 화면보다 커서 글자를 줄여 보여 줍니다
+                </span>
+              )}
               {fitError && (
                 <span className="err" role="alert">
                   {fitError}

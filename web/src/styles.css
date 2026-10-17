@@ -1126,6 +1126,24 @@ pre {
 .term-info.pop .kv.inline {
   margin-bottom: 0;
 }
+/* 컴퓨터: 명령과 정보를 한 줄로 (넘치면 옆으로 민다) */
+@media (min-width: 721px) {
+  .term-info.pop {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    width: max-content;
+    white-space: nowrap;
+    overflow-x: auto;
+  }
+  .term-info.pop .cmdline {
+    flex: none;
+  }
+  .term-info.pop .kv.inline {
+    flex-wrap: nowrap;
+    margin: 0;
+  }
+}
 .panes {
   display: flex;
   flex-wrap: wrap;
