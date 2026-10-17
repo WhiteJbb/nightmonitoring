@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -45,7 +45,9 @@ describe('files', () => {
   it('reads and saves a text file; refuses to overwrite a file that changed after it was opened', async () => {
     const opened = await readText(repo, 'src/app.ts');
     expect(opened.content).toBe('export const a = 1;\n');
+    await chmod(path.join(repo, 'src/app.ts'), 0o755);
     const version = await writeText(repo, 'src/app.ts', 'export const a = 2;\n', opened.version);
+    expect((await stat(path.join(repo, 'src/app.ts'))).mode & 0o777).toBe(0o755); // 권한은 그대로
     expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe('export const a = 2;\n');
     // 에이전트가 그 사이 고쳤다
     await writeFile(path.join(repo, 'src/app.ts'), 'export const a = 3;\n');

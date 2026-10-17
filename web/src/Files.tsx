@@ -17,20 +17,23 @@ const scopeOf = (p: ProjectSnapshot) => `${p.id}:${p.repoPath}`;
 const draftKey = (scope: string, path: string) => `draft:${scope}:${path}`;
 // 진행 중인 저장. 저장하는 사이에 다시 연 편집기는 이게 끝난 뒤에 불러온다 (안 그러면 저장 전 지문을 쥐고 있게 된다)
 const pendingSaves = new Map<string, Promise<unknown>>();
+// 브라우저 저장소가 가득 찼거나 쓸 수 없으면 이 페이지의 메모리에라도 둔다 (탭을 오가는 동안은 남는다)
+const memory = new Map<string, string>();
 const store = {
   get: (key: string): string | null => {
     try {
-      return sessionStorage.getItem(key);
+      return sessionStorage.getItem(key) ?? memory.get(key) ?? null;
     } catch {
-      return null;
+      return memory.get(key) ?? null;
     }
   },
   set: (key: string, value: string | null) => {
+    memory.delete(key);
     try {
       if (value === null) sessionStorage.removeItem(key);
       else sessionStorage.setItem(key, value);
     } catch {
-      // 기억만 못 한다
+      if (value !== null) memory.set(key, value);
     }
   },
 };
@@ -61,7 +64,10 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
     api.files(p.id).then(
-      (r) => setFiles(r.files),
+      (r) => {
+        setFiles(r.files);
+        setError(null);
+      },
       (e: unknown) => setError(errorMessage(e)),
     );
   }, [p.id, p.repoPath, p.lastGitChangeAt]);
@@ -188,6 +194,8 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       .finally(() => setSaving(false));
   };
   const reload = () => {
+    // 처음 불러오기가 실패했으면 아직 되살린 내용이 없다: 다시 시도할 때도 되살린다
+    if (!file) return void load(true);
     if (dirty && !window.confirm('고친 내용을 버리고 디스크의 내용을 다시 불러올까요?')) return;
     void load(false);
   };
