@@ -161,15 +161,19 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       return new Set();
     }
   });
-  const setOpenDirs = (next: Set<string>) => {
-    setOpen(next);
-    store.set(treeKey, JSON.stringify([...next]));
-  };
-  const toggle = (dir: string) => {
-    const next = new Set(open);
-    if (!next.delete(dir)) next.add(dir);
-    setOpenDirs(next);
-  };
+  // 상태는 늘 최신 것에서 고친다: 작업 두 개가 겹쳐 끝나도 앞의 것이 사라지지 않게
+  const updateOpen = (change: (dirs: Set<string>) => Set<string>) =>
+    setOpen((prev) => {
+      const next = change(prev);
+      store.set(treeKey, JSON.stringify([...next]));
+      return next;
+    });
+  const toggle = (dir: string) =>
+    updateOpen((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(dir)) next.add(dir);
+      return next;
+    });
   // 여기서 만든 빈 폴더: Git 은 파일만 알아서 목록에 안 나온다
   const emptyKey = `emptyDirs:${scopeOf(p)}`;
   const [emptyDirs, setEmptyDirs] = useState<string[]>(() => {
@@ -179,18 +183,20 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       return [];
     }
   });
-  const saveDirs = (next: string[]) => {
-    setEmptyDirs(next);
-    store.set(emptyKey, JSON.stringify(next));
-  };
+  const updateDirs = (change: (dirs: string[]) => string[]) =>
+    setEmptyDirs((prev) => {
+      const next = change(prev);
+      store.set(emptyKey, JSON.stringify(next));
+      return next;
+    });
   /** 지우거나 옮기거나 복사한 뒤 빈 폴더 기억을 맞춘다 (Git 목록으로는 바로잡을 수 없다) */
   const followDirs = (op: FsOp, path: string, to?: string) => {
     const from = path.endsWith('/') ? path : `${path}/`;
     const dest = to && `${to.replace(/\/+$/, '')}/`;
     const under = (d: string) => d.startsWith(from);
-    if (op === 'delete') saveDirs(emptyDirs.filter((d) => !under(d)));
-    else if (op === 'move' && dest) saveDirs(emptyDirs.map((d) => (under(d) ? dest + d.slice(from.length) : d)));
-    else if (op === 'copy' && dest) saveDirs([...new Set([...emptyDirs, ...emptyDirs.filter(under).map((d) => dest + d.slice(from.length))])]);
+    if (op === 'delete') updateDirs((dirs) => dirs.filter((d) => !under(d)));
+    else if (op === 'move' && dest) updateDirs((dirs) => dirs.map((d) => (under(d) ? dest + d.slice(from.length) : d)));
+    else if (op === 'copy' && dest) updateDirs((dirs) => [...new Set([...dirs, ...dirs.filter(under).map((d) => dest + d.slice(from.length))])]);
   };
   // 파일 다루기: 입력 허용 프로젝트만 (서버도 같은 조건으로 막는다)
   const canEdit = p.allowInput;
@@ -262,8 +268,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     if (!name) return;
     const path = `${dir}${name.replace(/\/+$/, '')}/`;
     if (await act('newDir', path)) {
-      saveDirs([...new Set([...emptyDirs, path])]);
-      setOpenDirs(new Set([...open, ...(dir ? [dir] : []), path]));
+      updateDirs((dirs) => [...new Set([...dirs, path])]);
+      updateOpen((prev) => new Set([...prev, ...(dir ? [dir] : []), path]));
     }
   };
   const rename = async (path: string) => {

@@ -80,7 +80,10 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  if (!(await known(path.relative(realRoot, real).split(path.sep).join('/')))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
+  // 대소문자만 다른 것은 같은 파일로 본다: 맥에서 Foo.ts → foo.ts 로 바꾸면 Git 목록은 옛 이름으로 남는다 (.git·저장소 밖은 어차피 목록에 없다)
+  const realRel = path.relative(realRoot, real).split(path.sep).join('/');
+  const sameName = async () => [...tracked, ...(ignoredOk ? (ignored ?? []) : [])].some((f) => f.toLowerCase() === realRel.toLowerCase());
+  if (!(await known(realRel)) && !(await sameName())) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return real;
 }
 
