@@ -49,7 +49,8 @@ const theme = EditorView.theme(
   { dark: true },
 );
 
-const readOnlyExt = (ro: boolean) => [EditorState.readOnly.of(ro), EditorView.editable.of(!ro)];
+// 읽기 전용이어도 Tab 으로 들어가 고르고 복사하고 찾을 수 있게 (editable 을 끄면 포커스를 못 받는다)
+const readOnlyExt = (ro: boolean) => [EditorState.readOnly.of(ro), EditorView.editable.of(!ro), ...(ro ? [EditorView.contentAttributes.of({ tabindex: '0' })] : [])];
 
 /** CodeMirror 6 편집기. 뷰는 한 번만 만들고, 읽기 전용·줄바꿈·언어는 컴파트먼트로 그 자리에서 바꾼다 */
 export default function CodeEditor({ value, onChange, path, readOnly, wrap, onSave, ariaLabel }: { value: string; onChange: (value: string) => void; path: string; readOnly: boolean; wrap: boolean; onSave: () => void; ariaLabel: string }) {

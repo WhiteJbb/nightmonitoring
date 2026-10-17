@@ -52,8 +52,8 @@ const store = {
     }
   },
 };
-/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다 */
-function moveDrafts(scope: string, from: string, to: string) {
+/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다. keepOld: 옛 이름에도 남긴다 */
+function moveDrafts(scope: string, from: string, to: string, keepOld = false) {
   const prefix = draftKey(scope, from);
   const keys = new Set(memory.keys());
   try {
@@ -65,7 +65,7 @@ function moveDrafts(scope: string, from: string, to: string) {
     const rest = key.slice(prefix.length);
     if (!key.startsWith(prefix) || (rest !== '' && !from.endsWith('/') && !rest.startsWith('/'))) continue;
     const value = store.get(key);
-    store.set(key, null);
+    if (!keepOld) store.set(key, null);
     store.set(draftKey(scope, to + rest), value);
   }
 }
@@ -243,7 +243,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
       followDirs(op, path, to);
       // 저장 안 한 내용도 따라간다
-      if (op === 'move' && to) moveDrafts(scopeOf(p), path, path.endsWith('/') ? `${to.replace(/\/+$/, '')}/` : to);
+      // 대소문자만 바꾼 이름은 맥에서 Git 목록이 옛 이름으로 남기도 해서 두 이름 다에 둔다
+      if (op === 'move' && to) moveDrafts(scopeOf(p), path, path.endsWith('/') ? `${to.replace(/\/+$/, '')}/` : to, to.toLowerCase() === path.replace(/\/$/, '').toLowerCase());
       setRefresh((n) => n + 1);
       return true;
     } catch (e) {

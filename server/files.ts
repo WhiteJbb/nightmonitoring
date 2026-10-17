@@ -101,7 +101,7 @@ export async function readText(repo: string, rel: unknown, ignoredOk = false): P
   return { content: asText(buf), version: versionOf(buf) };
 }
 
-// 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 파일마다 줄 세운다
+// 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 저장소마다 줄 세운다 (파일 다루기와 같은 줄)
 const saving = new Map<string, Promise<unknown>>();
 function oneAtATime<T>(key: string, work: () => Promise<T>): Promise<T> {
   const next = (saving.get(key) ?? Promise.resolve()).catch(() => {}).then(work);
@@ -122,7 +122,8 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   const abs = await resolve(repo, rel, ignoredOk);
   const changed = async () => versionOf(await readFile(abs)) !== version;
   const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
-  return oneAtATime(abs, async () => {
+  // 파일 다루기(옮기기·지우기)와 같은 줄에 선다: 저장 직전 확인과 바꿔 끼우기 사이에 파일이 옮겨지면 옛 이름으로 되살아난다
+  return oneAtATime(`fs:${await rootOf(repo)}`, async () => {
     if (await changed()) throw conflict();
     // 옆에 다 쓴 뒤 바꿔 끼운다: 쓰다 실패해도(디스크 가득 등) 원래 파일은 그대로다. 권한은 원래 것을 따른다
     const { mode } = await stat(abs);
