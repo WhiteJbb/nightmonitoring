@@ -20,9 +20,10 @@ const pendingSaves = new Map<string, Promise<unknown>>();
 // 브라우저 저장소가 가득 찼거나 쓸 수 없으면 이 페이지의 메모리에라도 둔다 (탭을 오가는 동안은 남는다)
 const memory = new Map<string, string>();
 const store = {
+  // 메모리에 있으면 그게 더 새 것이다 (저장소에 쓰다 실패한 뒤의 내용)
   get: (key: string): string | null => {
     try {
-      return sessionStorage.getItem(key) ?? memory.get(key) ?? null;
+      return memory.get(key) ?? sessionStorage.getItem(key);
     } catch {
       return memory.get(key) ?? null;
     }

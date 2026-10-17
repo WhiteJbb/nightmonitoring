@@ -1,7 +1,7 @@
 // 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)뿐이라,
 // .env 처럼 무시된 파일과 저장소 밖은 경로를 직접 줘도 열지 않는다.
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { run } from './exec.ts';
 
@@ -87,15 +87,21 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   const buf = Buffer.from(content, 'utf8');
   if (buf.length > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 저장하지 않습니다', 413);
   const abs = await resolve(repo, rel);
+  const changed = async () => versionOf(await readFile(abs)) !== version;
+  const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
   return oneAtATime(abs, async () => {
-    if (versionOf(await readFile(abs)) !== version) throw new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
+    if (await changed()) throw conflict();
     // 옆에 다 쓴 뒤 바꿔 끼운다: 쓰다 실패해도(디스크 가득 등) 원래 파일은 그대로다. 권한은 원래 것을 따른다
     const { mode } = await stat(abs);
     // 바꿔 끼우면 읽기 전용이어도 써지므로 직접 막는다
     if (!(mode & 0o200)) throw new FileError('읽기 전용 파일입니다', 403);
     const tmp = `${abs}.nightshift-${process.pid}-${Date.now()}`;
     try {
-      await writeFile(tmp, buf, { mode });
+      await writeFile(tmp, buf);
+      // 만들 때의 mode 는 umask 를 거쳐 줄어든다. 원래 권한을 그대로 준다
+      await chmod(tmp, mode & 0o7777);
+      // 쓰는 사이 에이전트가 고쳤을 수 있다: 바꿔 끼우기 직전에 한 번 더 본다
+      if (await changed()) throw conflict();
       await rename(tmp, abs);
     } catch (e) {
       await rm(tmp, { force: true });

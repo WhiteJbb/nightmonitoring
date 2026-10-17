@@ -45,9 +45,9 @@ describe('files', () => {
   it('reads and saves a text file; refuses to overwrite a file that changed after it was opened', async () => {
     const opened = await readText(repo, 'src/app.ts');
     expect(opened.content).toBe('export const a = 1;\n');
-    await chmod(path.join(repo, 'src/app.ts'), 0o755);
+    await chmod(path.join(repo, 'src/app.ts'), 0o775); // umask(보통 022)에 깎이지 않아야 한다
     const version = await writeText(repo, 'src/app.ts', 'export const a = 2;\n', opened.version);
-    expect((await stat(path.join(repo, 'src/app.ts'))).mode & 0o777).toBe(0o755); // 권한은 그대로
+    expect((await stat(path.join(repo, 'src/app.ts'))).mode & 0o777).toBe(0o775); // 권한은 그대로
     expect(await readFile(path.join(repo, 'src/app.ts'), 'utf8')).toBe('export const a = 2;\n');
     // 에이전트가 그 사이 고쳤다
     await writeFile(path.join(repo, 'src/app.ts'), 'export const a = 3;\n');
