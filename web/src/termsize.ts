@@ -6,8 +6,20 @@ export const TERM_MAX_VIEWPORT = 0.7;
 export const ROW_RATIO = 1.6;
 /** 전체 화면 모드에서 터미널 위 띠·여백이 차지하는 높이(px) */
 const FULL_CHROME = 64;
-/** 터미널이 쓸 수 있는 높이(px). 전체 화면이면 창 높이에서 위 띠만 뺀다. share: 나란히 보기에서 한 칸이 가지는 몫 */
-export const termHeight = (full = false, share = 1) => (full ? window.innerHeight - FULL_CHROME : window.innerHeight * TERM_MAX_VIEWPORT) * share;
+/** 컴퓨터에서 터미널 아래로 남기는 여백(px)과 그래도 지키는 최소 높이 */
+const BOTTOM_GAP = 24;
+const MIN_HEIGHT = 240;
+/**
+ * 터미널이 쓸 수 있는 높이(px). 전체 화면이면 창 높이에서 위 띠만 뺀다. share: 나란히 보기에서 한 칸이 가지는 몫.
+ * 컴퓨터(마우스)에서는 터미널이 시작하는 곳부터 화면 끝까지 쓴다: 위에 제목·탭이 있어 고정 비율이면 아래(입력 줄)가 잘린다.
+ * 휴대폰은 아래에 입력칸·키 버튼이 와야 해서 화면의 일정 비율만 쓴다
+ */
+export function termHeight(full = false, share = 1): number {
+  if (full) return (window.innerHeight - FULL_CHROME) * share;
+  const area = window.matchMedia?.('(pointer: fine)').matches ? document.querySelector('.term-frame .split, .term-frame > .term-view') : null;
+  if (area) return Math.max(MIN_HEIGHT, window.innerHeight - (area.getBoundingClientRect().top + window.scrollY) - BOTTOM_GAP) * share;
+  return window.innerHeight * TERM_MAX_VIEWPORT * share;
+}
 const FALLBACK_CHAR = 7.8; // 13px 고정폭 글꼴의 대략적인 글자 폭 (측정할 수 없는 환경용)
 
 /**
