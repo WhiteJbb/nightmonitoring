@@ -4,7 +4,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TermEvent } from '../../shared/types.ts';
 import { api, errorMessage } from './api.ts';
-import { charWidth, ROW_RATIO, termHeight } from './termsize.ts';
+import { charWidth, fontRange, ROW_RATIO, termHeight } from './termsize.ts';
 
 /** 'connecting' | 'live' | 'down' | 'exit' 또는 서버가 보낸 오류 메시지 */
 export type TermStatus = string;
@@ -121,7 +121,7 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       return true;
     });
 
-    // pane 이 영역보다 넓거나 화면보다 높으면 글자를 줄인다 (9px 아래로는 안 간다).
+    // pane 이 영역보다 넓거나 화면보다 높으면 글자를 줄이고, 작으면 키운다 (범위는 fontRange).
     // 터미널 전체가 한 화면에 들어와야 그 위에서 쓸기를 프로그램 스크롤로 쓸 수 있다
     const fitFont = () => {
       const width = el.clientWidth;
@@ -129,7 +129,8 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
       const byWidth = Math.floor(width / (term.cols * perPx));
       const byHeight = Math.floor(termHeight(fullRef.current, layout.current.heightShare) / (term.rows * ROW_RATIO));
-      term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
+      const [min, max] = fontRange();
+      term.options.fontSize = Math.max(min, Math.min(max, byWidth, byHeight));
     };
 
     let stopFeed = () => {};
