@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ClipboardEvent, DragEvent, KeyboardEvent } from 'react';
-import type { Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
+import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapshot, ProjectState, RunKind, RunResult, RunSummary, TmuxPane } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
-import { StartSession } from './NewSession.tsx';
+import { AGENTS, StartSession } from './NewSession.tsx';
 import { fitSize } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
 import { copyText, Term } from './Term.tsx';
@@ -545,6 +545,9 @@ function useAway(): boolean {
   return away;
 }
 
+/** 새 터미널 메뉴 폭(px). styles.css 의 .new-term .menu 와 같다 */
+const MENU_WIDTH = 150;
+
 export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
   const viewRef = useRef<HTMLDivElement>(null);
@@ -565,6 +568,26 @@ export function TerminalTab({ project: p, now }: Props) {
   }, [paneId, pane]);
   // 새 터미널: 만든 pane 이 스냅샷에 들어오면 그리로 옮긴다 (그 전에 고르면 "사라진 pane" 으로 보인다)
   const [opening, setOpening] = useState(false);
+  // 무엇을 띄울지 고르는 메뉴. 바깥을 누르거나 Esc 면 닫는다
+  const [menuOpen, setMenuOpen] = useState(false);
+  // 버튼이 터미널 틀 오른쪽 끝 가까이 있으면 메뉴를 오른쪽에 맞춰 펼친다 (틀 밖은 잘린다)
+  const [menuRight, setMenuRight] = useState(false);
+  const menuRef = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const outside = (e: PointerEvent) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const esc = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [menuOpen]);
   const [opened, setOpened] = useState<string | null>(null);
   useEffect(() => {
     if (opened && t.panes.some((x) => x.id === opened)) {
@@ -642,10 +665,11 @@ export function TerminalTab({ project: p, now }: Props) {
       .finally(() => setFitting(false));
   };
 
-  const openTerminal = () => {
+  const openTerminal = (agent?: AgentKind) => {
+    setMenuOpen(false);
     setOpening(true);
     api
-      .newWindow(p.id)
+      .newWindow(p.id, agent)
       .then((r) => setOpened(r.pane))
       .catch((e: unknown) => showNotice(errorMessage(e)))
       .finally(() => setOpening(false));
@@ -727,9 +751,31 @@ export function TerminalTab({ project: p, now }: Props) {
                   </span>
                 ))}
                 {p.allowInput && (
-                  <button type="button" disabled={opening} onClick={openTerminal} title="이 세션에 셸 터미널을 하나 더 엽니다">
-                    + 새 터미널
-                  </button>
+                  <span className="new-term" ref={menuRef}>
+                    <button
+                      type="button"
+                      aria-haspopup="menu"
+                      aria-expanded={menuOpen}
+                      disabled={opening}
+                      title="이 세션에 터미널을 하나 더 엽니다"
+                      onClick={(e) => {
+                        const frame = frameRef.current?.getBoundingClientRect();
+                        setMenuRight(frame !== undefined && e.currentTarget.getBoundingClientRect().left + MENU_WIDTH > frame.right);
+                        setMenuOpen(!menuOpen);
+                      }}
+                    >
+                      {opening ? '여는 중…' : '+ 새 터미널'}
+                    </button>
+                    {menuOpen && (
+                      <span className={menuRight ? 'menu right' : 'menu'} role="menu">
+                        {AGENTS.map(([value, label]) => (
+                          <button key={value} type="button" role="menuitem" onClick={() => openTerminal(value || undefined)}>
+                            {label}
+                          </button>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 )}
               </div>
             )}

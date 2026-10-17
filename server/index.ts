@@ -156,13 +156,16 @@ async function main() {
     const error = await newSession(name, cwd, size);
     // 에이전트는 새로 만든 세션에만 띄운다 (이미 있던 세션에 글자를 치지 않는다)
     if (error || !agent || existed) return error;
-    return typeLine(name, AGENT_COMMANDS[agent]);
+    return typeLine(`=${name}:`, AGENT_COMMANDS[agent]);
   };
   // 저장소 폴더가 없어지면 tmux 는 조용히 홈 폴더에서 연다. 엉뚱한 곳에서 명령이 돌지 않게 미리 막는다
-  const openWindow = async (session: string, repoPath: string) => {
+  const openWindow = async (session: string, repoPath: string, agent?: AgentKind) => {
     const cwd = expandPath(repoPath, ROOT);
     if (!statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) return { error: `디렉터리가 없습니다: ${cwd}` };
-    return newWindow(session, cwd);
+    const r = await newWindow(session, cwd);
+    if ('error' in r || !agent) return r;
+    const error = await typeLine(r.pane, AGENT_COMMANDS[agent]);
+    return error ? { error } : r;
   };
   const cloneRepoTo = async (url: string, repoPath: string): Promise<string | null> => {
     const dir = expandPath(repoPath, ROOT);

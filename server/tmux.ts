@@ -215,9 +215,8 @@ export async function killPane(id: string): Promise<string | null> {
   return r.code === 0 ? null : r.stderr.trim() || 'tmux kill-pane 실패';
 }
 
-/** 세션의 첫 pane 에 한 줄을 치고 Enter (새 세션에서 에이전트를 띄울 때만 쓴다). 실패하면 오류 메시지 */
-export async function typeLine(session: string, line: string): Promise<string | null> {
-  const target = `=${session}:`;
+/** target(세션 `=이름:` 또는 pane id)에 한 줄을 치고 Enter (새로 만든 세션·터미널에서 에이전트를 띄울 때만 쓴다). 실패하면 오류 메시지 */
+export async function typeLine(target: string, line: string): Promise<string | null> {
   const r = await run('tmux', ['send-keys', '-t', target, '-l', line]);
   if (r.code !== 0) return r.stderr.trim() || 'tmux send-keys 실패';
   const e = await run('tmux', ['send-keys', '-t', target, 'Enter']);

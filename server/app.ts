@@ -87,8 +87,8 @@ export interface AppDeps {
     createSession: (name: string, repoPath: string, size: TermSize, agent?: AgentKind) => Promise<string | null>;
     /** 세션을 끝낸다. 실패하면 오류 메시지 */
     killSession: (name: string) => Promise<string | null>;
-    /** 세션에 repoPath(원문)에서 셸 윈도우를 하나 더 연다 */
-    newWindow: (session: string, repoPath: string) => Promise<{ pane: string } | { error: string }>;
+    /** 세션에 repoPath(원문)에서 셸 윈도우를 하나 더 연다. agent 를 주면 그 셸에서 띄운다 */
+    newWindow: (session: string, repoPath: string, agent?: AgentKind) => Promise<{ pane: string } | { error: string }>;
     /** pane 을 닫는다. 실패하면 오류 메시지 */
     killPane: (paneId: string) => Promise<string | null>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
@@ -112,6 +112,10 @@ export interface AppDeps {
  * 5초마다 가는 실시간 스냅샷에서 큰 것을 뺀다: pane 화면 사본(터미널은 따로 스트림으로 받는다)과
  * 기준점 이후 커밋·파일 목록(Git 탭이 열 때 따로 받는다). 휴대폰에서 시간당 수십 MB 가 나가던 것을 줄인다.
  */
+/** 요청의 agent: 없으면 undefined, 정해진 에이전트가 아니면 null. `in` 은 constructor 같은 상속 이름도 통과시키므로 쓰지 않는다 */
+export const parseAgent = (v: unknown): AgentKind | undefined | null =>
+  v === undefined || v === null ? undefined : typeof v === 'string' && Object.hasOwn(AGENT_COMMANDS, v) ? (v as AgentKind) : null;
+
 export const slimSnapshot = (s: Snapshot): Snapshot => ({
   ...s,
   projects: s.projects.map((p) => ({
@@ -283,8 +287,9 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (blocked || !terminal) return void res.status(403).json({ error: blocked });
     if (!project.tmuxSession) return void res.status(400).json({ error: '이 프로젝트에는 tmux 세션이 등록되어 있지 않습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    if (body.agent !== undefined && body.agent !== null && !(typeof body.agent === 'string' && body.agent in AGENT_COMMANDS)) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
-    const error = await terminal.createSession(project.tmuxSession, project.repoPath, clampSize(body.cols, body.rows), typeof body.agent === 'string' ? (body.agent as AgentKind) : undefined);
+    const agent = parseAgent(body.agent);
+    if (agent === null) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
+    const error = await terminal.createSession(project.tmuxSession, project.repoPath, clampSize(body.cols, body.rows), agent);
     if (error) return void res.status(400).json({ error });
     await monitor.tick();
     res.json({ ok: true });
@@ -304,7 +309,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   });
 
   // 같은 세션에 터미널(셸 윈도우)을 하나 더 연다. 셸에 칠 수 있게 되는 일이라 입력과 같은 조건이다
-  api.post('/projects/:id/windows', async (req, res) => {
+  api.post('/projects/:id/windows', express.json({ limit: '4kb' }), async (req, res) => {
     const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
     if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
     const blocked = inputBlocked(project);
@@ -313,7 +318,9 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     // 그보다 많으면 스냅샷에서 잘려 새 터미널이 안 보인다.
     // ponytail: 스냅샷 기준이라 두 화면에서 동시에 누르면 하나 넘칠 수 있다 (tmux 에는 남고 목록에서만 빠진다). 문제되면 세션별로 줄 세운다
     if (project.tmux.panes.length >= MAX_PANES) return void res.status(409).json({ error: `터미널은 세션당 ${MAX_PANES}개까지 열 수 있습니다` });
-    const r = await terminal.newWindow(project.tmuxSession, project.repoPath);
+    const agent = parseAgent(((req.body ?? {}) as Record<string, unknown>).agent);
+    if (agent === null) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
+    const r = await terminal.newWindow(project.tmuxSession, project.repoPath, agent);
     if ('error' in r) return void res.status(400).json(r);
     await monitor.tick();
     res.json(r);
@@ -342,11 +349,12 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     const view = configEditor.view();
     if (!view.editable) return void res.status(403).json({ error: view.readOnlyReason ?? '설정을 수정할 수 없습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const { tmuxSession, allowInput, gitUrl, agent, cols, rows } = body;
+    const { tmuxSession, allowInput, gitUrl, cols, rows } = body;
+    const agent = parseAgent(body.agent);
     // 세션 이름만 있어도 된다: 프로젝트 이름은 세션 이름, 경로는 홈 폴더
     const name = typeof body.name === 'string' && body.name.trim() ? body.name : tmuxSession;
     const repoPath = typeof body.repoPath === 'string' && body.repoPath.trim() ? body.repoPath : '~';
-    if (agent !== undefined && agent !== null && !(typeof agent === 'string' && agent in AGENT_COMMANDS)) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
+    if (agent === null) return void res.status(400).json({ error: '에이전트는 claude 또는 codex 만 고를 수 있습니다' });
     if (typeof name !== 'string' || typeof repoPath !== 'string' || typeof tmuxSession !== 'string' || !name.trim() || !repoPath.trim() || !tmuxSession.trim()) {
       return void res.status(400).json({ error: '세션 이름을 입력하세요' });
     }
@@ -362,7 +370,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
       if (cloneError) return void res.status(400).json({ error: `git clone 실패: ${cloneError}` });
     }
     // 세션을 먼저 만든다 (이름·디렉터리가 잘못되면 등록하지 않는다). 이미 있는 세션이면 그대로 등록만 한다.
-    const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows), typeof agent === 'string' ? (agent as AgentKind) : undefined);
+    const error = await terminal.createSession(tmuxSession, repoPath.trim(), clampSize(cols, rows), agent);
     if (error) return void res.status(400).json({ error });
     // clone 하는 동안 설정이 바뀌었을 수 있으니 쓰기 직전에 다시 읽는다.
     const latest = configEditor.view();
