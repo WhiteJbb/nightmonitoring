@@ -158,9 +158,15 @@ async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: s
   if (typeof rel !== 'string' || !rel || rel.includes('\0') || rel.startsWith('/')) throw new FileError('경로가 올바르지 않습니다', 400);
   const norm = rel.replace(/\/+$/, '');
   if (path.posix.normalize(norm) !== norm || norm === '.' || norm === '..' || norm.startsWith('../')) throw new FileError('경로가 올바르지 않습니다', 400);
-  if (norm.split('/').includes('.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
+  // 대소문자를 가리지 않는 디스크(맥)에서는 .GIT 도 .git 이다
+  if (norm.split('/').some((part) => part.toLowerCase() === '.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
   const root = await rootOf(repo);
   const realRoot = await realpath(root);
+  const gitDir = path.join(realRoot, '.git');
+  const inGit = (real: string) => real === gitDir || real.startsWith(gitDir + path.sep);
+  // 대상 자체가 링크로 .git 을 가리켜도 막는다
+  const realTarget = await realpath(path.join(root, norm)).catch(() => null);
+  if (realTarget && inGit(realTarget)) throw new FileError('.git 안은 건드리지 않습니다', 400);
   let dir = path.dirname(path.join(root, norm));
   for (;;) {
     const real = await realpath(dir).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? null : Promise.reject(e)));
@@ -169,7 +175,7 @@ async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: s
       continue;
     }
     if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new FileError('저장소 밖입니다', 400);
-    if (real === path.join(realRoot, '.git') || real.startsWith(path.join(realRoot, '.git') + path.sep)) throw new FileError('.git 안은 건드리지 않습니다', 400);
+    if (inGit(real)) throw new FileError('.git 안은 건드리지 않습니다', 400);
     return { abs: path.join(root, norm), rel: norm };
   }
 }

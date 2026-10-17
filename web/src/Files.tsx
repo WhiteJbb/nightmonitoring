@@ -38,6 +38,23 @@ const store = {
     }
   },
 };
+/** 옮긴 파일(폴더면 그 안의 파일들)의 초안을 새 경로로 옮긴다 */
+function moveDrafts(scope: string, from: string, to: string) {
+  const prefix = draftKey(scope, from);
+  const keys = new Set(memory.keys());
+  try {
+    for (let i = 0; i < sessionStorage.length; i++) keys.add(sessionStorage.key(i)!);
+  } catch {
+    // 저장소를 못 쓰면 메모리 것만
+  }
+  for (const key of keys) {
+    const rest = key.slice(prefix.length);
+    if (!key.startsWith(prefix) || (rest !== '' && !from.endsWith('/') && !rest.startsWith('/'))) continue;
+    const value = store.get(key);
+    store.set(key, null);
+    store.set(draftKey(scope, to + rest), value);
+  }
+}
 const loadDraft = (key: string): Draft | null => {
   try {
     return JSON.parse(store.get(key) ?? 'null') as Draft | null;
@@ -206,6 +223,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     try {
       await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
       followDirs(op, path, to);
+      // 저장 안 한 내용도 따라간다
+      if (op === 'move' && to) moveDrafts(scopeOf(p), path, path.endsWith('/') ? `${to.replace(/\/+$/, '')}/` : to);
       setRefresh((n) => n + 1);
       return true;
     } catch (e) {
@@ -275,7 +294,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
 
   // 끌어서 옮기기 (컴퓨터): 행을 폴더나 맨 위 영역에 놓는다
   const dragProps = (path: string) =>
-    canEdit ? { draggable: true, onDragStart: (e: DragEvent) => e.dataTransfer.setData(DRAG_TYPE, path) } : {};
+    canEdit ? { draggable: true, onDragStart: (e: DragEvent) => e.dataTransfer.setData(DRAG_TYPE, JSON.stringify({ scope: scopeOf(p), path })) } : {};
   const dropProps = (dir: string) =>
     canEdit
       ? {
@@ -287,10 +306,17 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
           },
           onDragLeave: () => setDropOn((d) => (d === dir ? null : d)),
           onDrop: (e: DragEvent) => {
-            const from = e.dataTransfer.getData(DRAG_TYPE);
             e.preventDefault();
             e.stopPropagation();
             setDropOn(null);
+            // 다른 창의 다른 프로젝트에서 끌어온 것은 받지 않는다 (같은 이름의 엉뚱한 파일을 옮기게 된다)
+            let from = '';
+            try {
+              const drag = JSON.parse(e.dataTransfer.getData(DRAG_TYPE)) as { scope: string; path: string };
+              if (drag.scope === scopeOf(p)) from = drag.path;
+            } catch {
+              return;
+            }
             // 제자리나 자기 안으로는 옮기지 않는다
             if (from && parentOf(from) !== dir && !dir.startsWith(from)) void act('move', from, dir + baseName(from));
           },

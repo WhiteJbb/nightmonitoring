@@ -117,7 +117,7 @@ describe('files', () => {
   });
 
   it('never touches .git or anything outside the repository', async () => {
-    for (const bad of ['../x', '/etc/passwd', '.git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
+    for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });
     // 링크된 폴더(cfg → .git)를 거쳐 들어가도 막는다
