@@ -12,7 +12,11 @@ interface Draft {
   text: string;
   version: string;
 }
-const draftKey = (projectId: string, path: string) => `draft:${projectId}:${path}`;
+// 저장소 경로까지 넣는다: 설정에서 경로를 바꾸면 같은 이름의 다른 파일이 된다
+const scopeOf = (p: ProjectSnapshot) => `${p.id}:${p.repoPath}`;
+const draftKey = (scope: string, path: string) => `draft:${scope}:${path}`;
+// 진행 중인 저장. 저장하는 사이에 다시 연 편집기는 이게 끝난 뒤에 불러온다 (안 그러면 저장 전 지문을 쥐고 있게 된다)
+const pendingSaves = new Map<string, Promise<unknown>>();
 const store = {
   get: (key: string): string | null => {
     try {
@@ -40,25 +44,27 @@ const loadDraft = (key: string): Draft | null => {
 
 /** 파일 탭: 저장소 파일을 골라 열고 고친다 (서버: files.ts). 마지막에 연 파일은 탭을 다시 열면 그대로 열린다 */
 export function FilesTab({ project: p }: { project: ProjectSnapshot }) {
-  const openKey = `open:${p.id}`;
+  const openKey = `open:${scopeOf(p)}`;
   const [open, setOpen] = useState(() => store.get(openKey));
   const choose = (path: string | null) => {
     store.set(openKey, path);
     setOpen(path);
   };
-  return open ? <Editor project={p} path={open} onClose={() => choose(null)} /> : <FileList project={p} onOpen={choose} />;
+  // 저장소 경로가 바뀌면 편집기를 새로 만든다
+  return open ? <Editor key={p.repoPath} project={p} path={open} onClose={() => choose(null)} /> : <FileList project={p} onOpen={choose} />;
 }
 
 function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (path: string) => void }) {
   const [files, setFiles] = useState<string[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
     api.files(p.id).then(
       (r) => setFiles(r.files),
       (e: unknown) => setError(errorMessage(e)),
     );
-  }, [p.id]);
+  }, [p.id, p.repoPath, p.lastGitChangeAt]);
   if (error) {
     return (
       <p className="err" role="alert">
@@ -71,7 +77,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const matches = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
   // 지운 파일은 열 수 없으니 뺀다
   const changed = p.git.changedFiles.filter((f) => files.includes(f.path));
-  const unsaved = (path: string) => store.get(draftKey(p.id, path)) !== null;
+  const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
   const item = (path: string, status?: string) => (
     <li key={path}>
       {status !== undefined && <span className="xy">{status}</span>}
@@ -100,7 +106,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
 }
 
 function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path: string; onClose: () => void }) {
-  const key = draftKey(p.id, path);
+  const key = draftKey(scopeOf(p), path);
   // 디스크의 내용과 지문
   const [file, setFile] = useState<{ content: string; version: string } | null>(null);
   const [text, setText] = useState('');
@@ -115,8 +121,9 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   // 불러오는 동안은 고치지 못하게 한다 (응답이 그 사이 친 내용을 덮는다)
   const [loading, setLoading] = useState(true);
 
-  const load = (keepDraft: boolean) => {
+  const load = async (keepDraft: boolean) => {
     setLoading(true);
+    await pendingSaves.get(key)?.catch(() => {});
     return api.file(p.id, path).then(
       (f) => {
         const draft = keepDraft ? loadDraft(key) : null;
@@ -154,8 +161,14 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
     const sentBase = base;
     setSaving(true);
     setError(null);
-    api
-      .saveFile(p.id, { path, content: crlf ? sent.replace(/\n/g, '\r\n') : sent, version: sentBase })
+    const saved = api.saveFile(p.id, { path, content: crlf ? sent.replace(/\n/g, '\r\n') : sent, version: sentBase });
+    pendingSaves.set(key, saved);
+    void saved
+      .finally(() => {
+        if (pendingSaves.get(key) === saved) pendingSaves.delete(key);
+      })
+      .catch(() => {});
+    saved
       .then(
         ({ version }) => {
           // 남은 초안은 저장소에서 본다 (그 사이 탭을 나갔다 다시 열어 고쳤을 수도 있다):
@@ -193,7 +206,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         </button>
         <span className="mono grow wrap editor-path">{path}</span>
         {dirty && <span className="warn">저장 안 함</span>}
-        <button type="button" className="more-rows" onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
+        <button type="button" className="more-rows" disabled={loading} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
           다시 불러오기
         </button>
         {p.allowInput && (
