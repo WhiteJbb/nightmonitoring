@@ -7,6 +7,8 @@ import type { FsOp } from '../shared/types.ts';
 import { run } from './exec.ts';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
+/** 그림은 보기만 하니 글보다 크게 받는다 */
+export const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
 /** 목록에 담는 파일 수 상한 (큰 모노레포에서 응답이 너무 커지지 않게) */
 export const MAX_FILES = 20_000;
 
@@ -84,8 +86,8 @@ function caseInsensitive(realRoot: string): Promise<boolean> {
   return known;
 }
 
-/** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
-async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<string> {
+/** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). maxBytes 보다 큰 파일은 읽기 전에 거른다 */
+async function resolve(repo: string, rel: unknown, ignoredOk: boolean, maxBytes = MAX_FILE_BYTES): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
   // 무시된 파일 목록은 필요할 때만 받는다 (큰 빌드 결과물이 있으면 무겁거나 실패할 수 있다: 그래도 보통 파일은 열린다)
   const tracked = await listFiles(repo);
@@ -96,7 +98,7 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean): Promise<
   const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
   if (!st?.isFile()) throw new FileError('일반 파일만 열 수 있습니다 (지워졌거나 링크입니다)', 404);
-  if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
+  if (st.size > maxBytes) throw new FileError(`${maxBytes / 1024 / 1024}MB 보다 큰 파일은 열지 않습니다`, 413);
   // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
   // 맥에서 Foo.ts → foo.ts (폴더도) 로 바꾸면 Git 목록은 옛 이름으로 남는다: 대소문자를 가리지 않는 디스크에서만 대소문자 차이를 무시한다.
@@ -122,6 +124,16 @@ function asText(buf: Buffer): string {
 export async function readText(repo: string, rel: unknown, ignoredOk = false): Promise<{ content: string; version: string }> {
   const buf = await readFile(await resolve(repo, rel, ignoredOk));
   return { content: asText(buf), version: versionOf(buf) };
+}
+
+const IMAGE_TYPES = new Map(Object.entries({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml', ico: 'image/x-icon', bmp: 'image/bmp', avif: 'image/avif' }));
+
+/** 그림 미리보기용 바이트와 종류. 여는 규칙은 readText 와 같다 (그림 확장자만) */
+export async function readRaw(repo: string, rel: unknown, ignoredOk = false): Promise<{ data: Buffer; type: string }> {
+  const abs = await resolve(repo, rel, ignoredOk, MAX_IMAGE_BYTES);
+  const type = IMAGE_TYPES.get(path.extname(abs).slice(1).toLowerCase());
+  if (!type) throw new FileError('그림 파일만 미리 봅니다', 415);
+  return { data: await readFile(abs), type };
 }
 
 // 두 화면에서 같은 파일을 동시에 저장하면 둘 다 지문 검사를 통과해 서로 덮거나 섞인다. 저장소마다 줄 세운다 (파일 다루기와 같은 줄)

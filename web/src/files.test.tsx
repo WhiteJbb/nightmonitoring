@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { FilesTab } from './Files.tsx';
@@ -28,6 +28,7 @@ beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal('fetch', fetchMock);
   sessionStorage.clear();
+  localStorage.clear();
 });
 afterEach(() => {
   cleanup();
@@ -162,6 +163,58 @@ test('⋯ menu: new file opens it, paste of a copy picks a free name, delete ask
   await screen.findByRole('button', { name: '▸ src/' });
   expect(screen.queryByRole('button', { name: /메뉴$/ })).toBeNull();
   expect(screen.queryByRole('button', { name: '새 파일' })).toBeNull();
+});
+
+test('an image opens as a picture from the raw endpoint instead of the editor, with its size and a reload', async () => {
+  fetchMock.mockImplementation(async () => json(200, { files: ['img/logo.png'], ignored: [] }));
+  render(<FilesTab project={project()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '▸ img/' }));
+  fireEvent.click(screen.getByRole('button', { name: 'logo.png' }));
+  const img = await screen.findByRole<HTMLImageElement>('img', { name: 'img/logo.png' });
+  expect(img.getAttribute('src')).toBe('/api/projects/api/raw?path=img%2Flogo.png');
+  expect(screen.queryByLabelText('img/logo.png 내용')).toBeNull();
+  expect(fetchMock.mock.calls.some(([u]) => String(u).includes('/file?'))).toBe(false); // 글로 읽지 않는다
+  Object.defineProperties(img, { naturalWidth: { value: 1200 }, naturalHeight: { value: 630 } });
+  fireEvent.load(img);
+  expect(screen.getByText('1200 × 630')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '다시 불러오기' }));
+  expect(screen.getByRole('img').getAttribute('src')).toMatch(/^\/api\/projects\/api\/raw\?path=img%2Flogo\.png&t=\d+$/);
+  fireEvent.error(screen.getByRole('img'));
+  expect(screen.getByRole('alert').textContent).toContain('그림을 불러오지 못했습니다');
+});
+
+test('a Markdown file previews the text being edited: no raw HTML, images via the raw endpoint, repo links open in the tab, saving still works', async () => {
+  fetchMock.mockImplementation(async (url, init) => {
+    const u = String(url);
+    if (u.endsWith('/files')) return json(200, { files: ['docs/a.md', 'docs/b.md'], ignored: [] });
+    if (init?.method === 'PUT') return json(200, { version: 'v2' });
+    return json(200, { content: u.includes('a.md') ? '# Old\n' : '# B\n', version: 'v1' });
+  });
+  render(<FilesTab project={project()} />);
+  fireEvent.click(await screen.findByRole('button', { name: '▸ docs/' }));
+  fireEvent.click(screen.getByRole('button', { name: 'a.md' }));
+  const source = (path: string) => screen.getByLabelText<HTMLTextAreaElement>(`${path} 내용`);
+  await waitFor(() => expect(source('docs/a.md').value).toBe('# Old\n'));
+  fireEvent.change(source('docs/a.md'), { target: { value: '# New\n\n[b](./b.md) [out](https://example.com)\n\n![shot](images/x.png) ![gone](../../x.png)\n\n<img src=x onerror=alert(1)>\n' } });
+  fireEvent.click(screen.getByRole('button', { name: '미리보기' }));
+  const preview = await screen.findByRole('region', { name: 'docs/a.md 미리보기' });
+  expect(within(preview).getByRole('heading', { name: 'New' })).toBeTruthy();
+  expect(source('docs/a.md').closest('[hidden]')).not.toBeNull(); // 편집기는 숨긴다
+  // 글 속 HTML 은 글자로만 나온다. 상대 경로 그림은 그림 주소로, 저장소 밖을 가리키는 그림은 빠진다
+  expect(preview.textContent).toContain('<img src=x onerror=alert(1)>');
+  expect([...preview.querySelectorAll('img')].map((i) => i.getAttribute('src'))).toEqual(['/api/projects/api/raw?path=docs%2Fimages%2Fx.png']);
+  expect(within(preview).getByRole('link', { name: 'out' }).getAttribute('rel')).toBe('noopener noreferrer');
+  fireEvent.keyDown(preview, { key: 's', metaKey: true });
+  await screen.findByText('저장했습니다');
+  expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toMatchObject({ path: 'docs/a.md', version: 'v1' });
+
+  // 다른 파일 링크는 이 탭에서 연다. 미리보기는 켠 채로 기억한다
+  fireEvent.click(within(preview).getByRole('link', { name: 'b' }));
+  const next = await screen.findByRole('region', { name: 'docs/b.md 미리보기' });
+  expect(within(next).getByRole('heading', { name: 'B' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '미리보기' }));
+  expect(screen.queryByRole('region')).toBeNull();
+  expect(source('docs/b.md').closest('[hidden]')).toBeNull();
 });
 
 test('a read-only project can look but not save', async () => {

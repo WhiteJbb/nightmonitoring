@@ -5,6 +5,12 @@ import { api, ApiError, errorMessage } from './api.ts';
 
 // 코드 편집기(CodeMirror)는 파일을 열 때만 받는다: 대시보드 첫 화면이 무거워지지 않게
 const CodeEditor = lazy(() => import('./CodeEditor.tsx'));
+// Markdown 미리보기(markdown-it)도 켤 때만 받는다
+const MarkdownPreview = lazy(() => import('./MarkdownPreview.tsx'));
+
+/** 편집기 대신 그림으로 보여 줄 파일 (서버 readRaw 와 같은 확장자) */
+const isImage = (path: string) => /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)$/i.test(path);
+const isMarkdown = (path: string) => /\.(md|markdown)$/i.test(path);
 
 /** 줄바꿈 보기: 이 브라우저에 기억한다. 처음엔 좁은 화면(휴대폰)만 켠다 */
 const storedWrap = () => {
@@ -92,8 +98,46 @@ export function FilesTab({ project: p }: { project: ProjectSnapshot }) {
     store.set(openKey, path);
     setOpen(path);
   };
-  // 저장소 경로가 바뀌면 편집기를 새로 만든다
-  return open ? <Editor key={p.repoPath} project={p} path={open} onClose={() => choose(null)} /> : <FileList project={p} onOpen={choose} />;
+  if (!open) return <FileList project={p} onOpen={choose} />;
+  // 저장소 경로가 바뀌거나 다른 파일(미리보기의 링크)로 가면 새로 만든다
+  const key = `${p.repoPath}:${open}`;
+  return isImage(open) ? <ImageView key={key} project={p} path={open} onClose={() => choose(null)} /> : <Editor key={key} project={p} path={open} onClose={() => choose(null)} onOpen={choose} />;
+}
+
+/** 그림 파일: 편집기 대신 그림과 실제 크기를 보여 준다 */
+function ImageView({ project: p, path, onClose }: { project: ProjectSnapshot; path: string; onClose: () => void }) {
+  // 다시 불러오기는 주소를 바꿔 브라우저가 새로 받게 한다
+  const [nonce, setNonce] = useState(0);
+  const [size, setSize] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+  const reload = () => {
+    setNonce(Date.now());
+    setSize(null);
+    setFailed(false);
+  };
+  return (
+    <div className="editor">
+      <div className="editor-bar">
+        <button type="button" className="more-rows" onClick={onClose}>
+          ← 목록
+        </button>
+        <span className="mono grow wrap editor-path">{path}</span>
+        {size && <span className="dim mono">{size}</span>}
+        <button type="button" className="more-rows" onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
+          다시 불러오기
+        </button>
+      </div>
+      {failed ? (
+        <p className="err" role="alert">
+          그림을 불러오지 못했습니다 (지워졌거나, 20MB 보다 크거나, 열 수 없는 파일입니다)
+        </p>
+      ) : (
+        <div className="image-view">
+          <img src={api.rawUrl(p.id, path) + (nonce ? `&t=${nonce}` : '')} alt={path} onLoad={(e) => setSize(`${e.currentTarget.naturalWidth} × ${e.currentTarget.naturalHeight}`)} onError={() => setFailed(true)} />
+        </div>
+      )}
+    </div>
+  );
 }
 
 /** 폴더 하나: 하위 폴더와 그 안의 파일(저장소 기준 전체 경로) */
@@ -500,7 +544,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   );
 }
 
-function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path: string; onClose: () => void }) {
+/** onOpen: 미리보기 속 링크가 가리키는 저장소 파일을 연다 */
+function Editor({ project: p, path, onClose, onOpen }: { project: ProjectSnapshot; path: string; onClose: () => void; onOpen: (path: string) => void }) {
   const key = draftKey(scopeOf(p), path);
   // 디스크의 내용과 지문
   const [file, setFile] = useState<{ content: string; version: string } | null>(null);
@@ -624,6 +669,24 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       // 기억만 못 한다
     }
   };
+  // Markdown 미리보기: 켠 채로 두면 다음 .md 도 미리보기로 연다 (이 브라우저에 기억)
+  const markdown = isMarkdown(path);
+  const [preview, setPreview] = useState(() => {
+    try {
+      return localStorage.getItem('mdPreview') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const togglePreview = () => {
+    setPreview(!preview);
+    try {
+      localStorage.setItem('mdPreview', preview ? '0' : '1');
+    } catch {
+      // 기억만 못 한다
+    }
+  };
+  const previewing = markdown && preview;
 
   return (
     <div className="editor">
@@ -636,6 +699,11 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         <button type="button" className="more-rows" aria-pressed={wrap} onClick={toggleWrap} title="긴 줄을 화면 폭에서 접어 보여 줍니다">
           줄바꿈
         </button>
+        {markdown && (
+          <button type="button" className="more-rows" aria-pressed={preview} onClick={togglePreview} title="고치는 중인 내용을 Markdown 으로 그려 봅니다">
+            미리보기
+          </button>
+        )}
         <button type="button" className="more-rows" disabled={loading || saving} onClick={reload} title="디스크의 지금 내용으로 다시 불러옵니다">
           다시 불러오기
         </button>
@@ -660,9 +728,19 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
       {mixed && <p className="hint">줄바꿈이 섞였거나(CRLF·LF) CR 만 쓰는 파일이라 여기서는 보기만 합니다. 저장하면 고치지 않은 줄까지 바뀝니다.</p>}
       {orphan && <p className="hint">디스크에서 파일을 열지 못해 저장하지 않은 내용만 보여 줍니다. 필요하면 복사해 두세요.</p>}
       {(file || orphan) && (
-        <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
-          <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
-        </Suspense>
+        <>
+          {/* 미리보기 동안 편집기는 숨기기만 한다: 되돌아오면 되돌리기 기록·커서가 그대로다 */}
+          <div hidden={previewing}>
+            <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
+              <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
+            </Suspense>
+          </div>
+          {previewing && (
+            <Suspense fallback={<p className="dim">미리보기를 불러오는 중…</p>}>
+              <MarkdownPreview projectId={p.id} path={path} text={text} onOpen={onOpen} onSave={save} />
+            </Suspense>
+          )}
+        </>
       )}
     </div>
   );
