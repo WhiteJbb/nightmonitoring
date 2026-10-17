@@ -65,13 +65,19 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const known = useMemo(() => new Set(files), [files]);
   // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
+    // 새로 받기 시작하면 앞의 응답은 버린다 (늦게 와도 새 목록을 덮지 않게)
+    let current = true;
     api.files(p.id).then(
       (r) => {
+        if (!current) return;
         setFiles(r.files);
         setError(null);
       },
-      (e: unknown) => setError(errorMessage(e)),
+      (e: unknown) => current && setError(errorMessage(e)),
     );
+    return () => {
+      current = false;
+    };
   }, [p.id, p.repoPath, p.lastGitChangeAt]);
   if (error) {
     return (
