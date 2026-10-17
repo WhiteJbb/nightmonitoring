@@ -237,6 +237,22 @@ describe('terminal API', () => {
     expect((await fetch(`${base}/nope/files`)).status).toBe(404);
   });
 
+  it('serves repository images with their type and a sandboxing CSP, to read-only projects too', async () => {
+    const { base } = await start();
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-raw-'));
+    await writeFile(path.join(dir, 'a.svg'), '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+    // git 흉내: 저장소 맨 위는 dir, 아는 파일은 a.svg 하나
+    mockRun.mockImplementation(async (_bin, args) => ok(args.includes('rev-parse') ? `${dir}\n` : args.includes('--deleted') || args.includes('--ignored') ? '' : 'a.svg\0'));
+    const res = await fetch(`${base}/closed/raw?path=a.svg`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-type')).toMatch(/^image\/svg\+xml/);
+    expect(res.headers.get('content-security-policy')).toContain('sandbox');
+    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(await res.text()).toContain('<svg');
+    expect((await fetch(`${base}/closed/raw?path=b.svg`)).status).toBe(404);
+    await rm(dir, { recursive: true });
+  });
+
   it('stores an uploaded image under the same rules as input and returns its path', async () => {
     const { base, terminal } = await start();
     const upload = (id: string, body: unknown) => fetch(`${base}/${id}/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

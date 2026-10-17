@@ -49,6 +49,8 @@ export const api = {
   newWindow: (id: string, agent?: AgentKind) => req<{ pane: string }>(`/api/projects/${encodeURIComponent(id)}/windows`, 'POST', agent ? { agent } : {}),
   files: (id: string) => req<{ files: string[]; ignored: string[] }>(`/api/projects/${encodeURIComponent(id)}/files`),
   file: (id: string, path: string) => req<{ content: string; version: string }>(`/api/projects/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
+  /** 그림 파일 주소 (<img src> 에 그대로 쓴다) */
+  rawUrl: (id: string, path: string) => `/api/projects/${encodeURIComponent(id)}/raw?path=${encodeURIComponent(path)}`,
   saveFile: (id: string, body: { path: string; content: string; version: string }) => req<{ version: string }>(`/api/projects/${encodeURIComponent(id)}/file`, 'PUT', body),
   fsOp: (id: string, body: { op: FsOp; path: string; to?: string }) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/fs`, 'POST', body),
   closePane: (id: string, paneId: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/panes/${encodeURIComponent(paneId)}`, 'DELETE'),

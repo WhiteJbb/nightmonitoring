@@ -5,7 +5,7 @@ import { AGENT_COMMANDS } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
-import { FileError, fsOp, listFiles, listIgnored, readText, writeText } from './files.ts';
+import { FileError, fsOp, listFiles, listIgnored, readRaw, readText, writeText } from './files.ts';
 import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
@@ -383,6 +383,12 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   api.get('/projects/:id/file', async (req, res) => {
     const project = projectOf(req.params.id);
     res.json(await readText(project.repoPath, req.query.path, !inputBlocked(project)));
+  });
+  // 그림 미리보기. 보기 규칙은 /file 과 같다. SVG 를 새 탭에서 바로 열어도 이 출처(터미널 입력 권한이 있다)에서 스크립트가 돌지 않게 sandbox 를 건다
+  api.get('/projects/:id/raw', async (req, res) => {
+    const project = projectOf(req.params.id);
+    const { data, type } = await readRaw(project.repoPath, req.query.path, !inputBlocked(project));
+    res.set({ 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox", 'Cache-Control': 'no-store' }).send(data);
   });
   api.put('/projects/:id/file', express.json({ limit: '4mb' }), async (req, res) => {
     const project = projectOf(req.params.id);

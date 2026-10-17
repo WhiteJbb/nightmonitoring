@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { fsOp, listFiles, listIgnored, readText, writeText } from './files.ts';
+import { fsOp, listFiles, listIgnored, MAX_IMAGE_BYTES, readRaw, readText, writeText } from './files.ts';
 
 describe('files', () => {
   let repo: string;
@@ -143,5 +143,27 @@ describe('files', () => {
     await expect(readText(repo, 'logo.bin')).rejects.toMatchObject({ status: 415 });
     await expect(writeText(repo, '.env', 'x', 'v')).rejects.toMatchObject({ status: 404 });
     expect(await readFile(path.join(repo, '.env'), 'utf8')).toBe('SECRET=1\n');
+  });
+
+  it('reads images (only images) under the same rules as text, up to 20MB', async () => {
+    const at = (rel: string) => path.join(repo, rel);
+    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    const exclude = await readFile(at('.git/info/exclude'), 'utf8');
+    await writeFile(at('shot.PNG'), png);
+    await writeFile(at('private.png'), png);
+    await writeFile(at('.git/info/exclude'), 'private.png\n');
+    expect(await readRaw(repo, 'shot.PNG')).toEqual({ data: png, type: 'image/png' });
+    // 무시된 그림은 허락할 때만
+    await expect(readRaw(repo, 'private.png')).rejects.toMatchObject({ status: 404 });
+    expect((await readRaw(repo, 'private.png', true)).type).toBe('image/png');
+    await expect(readRaw(repo, 'src/app.ts')).rejects.toMatchObject({ status: 415 });
+    await expect(readRaw(repo, 'cfg/config')).rejects.toMatchObject({ status: 404 });
+    // 글은 그대로 1MB 까지, 그림은 20MB 까지
+    await writeFile(at('shot.PNG'), Buffer.alloc(2 * 1024 * 1024));
+    expect((await readRaw(repo, 'shot.PNG')).data.length).toBe(2 * 1024 * 1024);
+    await expect(readText(repo, 'shot.PNG')).rejects.toMatchObject({ status: 413 });
+    await writeFile(at('shot.PNG'), Buffer.alloc(MAX_IMAGE_BYTES + 1));
+    await expect(readRaw(repo, 'shot.PNG')).rejects.toMatchObject({ status: 413 });
+    await Promise.all([rm(at('shot.PNG')), rm(at('private.png')), writeFile(at('.git/info/exclude'), exclude)]);
   });
 });
