@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { KeyboardEvent } from 'react';
+import type { KeyboardEvent, ReactNode } from 'react';
 import type { ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
 
@@ -58,11 +58,49 @@ export function FilesTab({ project: p }: { project: ProjectSnapshot }) {
   return open ? <Editor key={p.repoPath} project={p} path={open} onClose={() => choose(null)} /> : <FileList project={p} onOpen={choose} />;
 }
 
+/** 폴더 하나: 하위 폴더와 그 안의 파일(저장소 기준 전체 경로) */
+interface Dir {
+  dirs: Map<string, Dir>;
+  files: string[];
+}
+function buildTree(paths: string[]): Dir {
+  const root: Dir = { dirs: new Map(), files: [] };
+  for (const path of paths) {
+    let dir = root;
+    for (const part of path.split('/').slice(0, -1)) {
+      let next = dir.dirs.get(part);
+      if (!next) dir.dirs.set(part, (next = { dirs: new Map(), files: [] }));
+      dir = next;
+    }
+    dir.files.push(path);
+  }
+  return root;
+}
+const baseName = (path: string) => path.slice(path.lastIndexOf('/') + 1);
+
 function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (path: string) => void }) {
-  const [files, setFiles] = useState<string[] | null>(null);
+  const [list, setList] = useState<{ files: string[]; ignored: string[] } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const known = useMemo(() => new Set(files), [files]);
+  // 펼친 폴더 ("src/"꼴). 파일을 열었다 돌아와도 그대로다
+  const treeKey = `tree:${scopeOf(p)}`;
+  const [open, setOpen] = useState<Set<string>>(() => {
+    try {
+      return new Set(JSON.parse(store.get(treeKey) ?? '[]') as string[]);
+    } catch {
+      return new Set();
+    }
+  });
+  const toggle = (dir: string) => {
+    const next = new Set(open);
+    if (!next.delete(dir)) next.add(dir);
+    setOpen(next);
+    store.set(treeKey, JSON.stringify([...next]));
+  };
+  const known = useMemo(() => new Set(list?.files), [list]);
+  const ignored = useMemo(() => new Set(list?.ignored), [list]);
+  const all = useMemo(() => (list ? [...list.files, ...list.ignored].sort() : []), [list]);
+  const tree = useMemo(() => buildTree(all), [all]);
   // Git 에 변화가 있으면 다시 받는다 (에이전트가 만든 새 파일)
   useEffect(() => {
     // 새로 받기 시작하면 앞의 응답은 버린다 (늦게 와도 새 목록을 덮지 않게)
@@ -70,7 +108,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     api.files(p.id).then(
       (r) => {
         if (!current) return;
-        setFiles(r.files);
+        setList(r);
         setError(null);
       },
       (e: unknown) => current && setError(errorMessage(e)),
@@ -86,36 +124,60 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       </p>
     );
   }
-  if (!files) return <p className="dim">불러오는 중…</p>;
+  if (!list) return <p className="dim">불러오는 중…</p>;
   const q = query.trim().toLowerCase();
-  const matches = q ? files.filter((f) => f.toLowerCase().includes(q)) : files;
+  const matches = q ? all.filter((f) => f.toLowerCase().includes(q)) : [];
   // 지운 파일은 열 수 없으니 뺀다
   const changed = p.git.changedFiles.filter((f) => known.has(f.path));
   const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
-  const item = (path: string, status?: string) => (
-    <li key={path}>
+  const item = (path: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
+    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined}>
       {status !== undefined && <span className="xy">{status}</span>}
-      <button type="button" className="file-link" onClick={() => onOpen(path)}>
-        {path}
+      <button type="button" className={ignored.has(path) ? 'file-link dim' : 'file-link'} onClick={() => onOpen(path)}>
+        {label}
       </button>
+      {ignored.has(path) && <span className="dim">무시됨</span>}
       {unsaved(path) && <span className="warn">저장 안 함</span>}
     </li>
   );
+  // 폴더를 먼저, 그다음 파일. 펼친 폴더만 그 안을 그린다
+  const rows = (dir: Dir, prefix: string, depth: number): ReactNode[] => [
+    ...[...dir.dirs.keys()].sort().flatMap((name) => {
+      const path = `${prefix}${name}/`;
+      const isOpen = open.has(path);
+      return [
+        <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined}>
+          <button type="button" className="file-link folder" aria-expanded={isOpen} onClick={() => toggle(path)}>
+            {isOpen ? '▾' : '▸'} {name}/
+          </button>
+        </li>,
+        ...(isOpen ? rows(dir.dirs.get(name)!, path, depth + 1) : []),
+      ];
+    }),
+    ...dir.files.map((f) => item(f, { label: baseName(f), depth })),
+  ];
   return (
     <>
       <input type="search" className="file-search" placeholder="파일 이름으로 찾기" aria-label="파일 찾기" value={query} onChange={(e) => setQuery(e.target.value)} />
       {!q && changed.length > 0 && (
         <section>
           <h3>바뀐 파일 ({changed.length})</h3>
-          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, f.status))}</ul>
+          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, { status: f.status }))}</ul>
           {changed.length > SHOWN && <p className="hint">{changed.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
         </section>
       )}
-      <section>
-        <h3>{q ? `찾은 파일 (${matches.length})` : `모든 파일 (${files.length})`}</h3>
-        <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f))}</ul>
-        {matches.length > SHOWN && <p className="hint">{matches.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
-      </section>
+      {q ? (
+        <section>
+          <h3>찾은 파일 ({matches.length})</h3>
+          <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f))}</ul>
+          {matches.length > SHOWN && <p className="hint">{matches.length - SHOWN}개 더 있습니다. 이름으로 더 좁히세요.</p>}
+        </section>
+      ) : (
+        <section>
+          <h3>모든 파일 ({all.length})</h3>
+          <ul className="rows tree">{rows(tree, '', 0)}</ul>
+        </section>
+      )}
     </>
   );
 }

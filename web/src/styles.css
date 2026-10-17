@@ -1120,6 +1120,9 @@ pre {
   overflow-wrap: anywhere;
   background: none;
 }
+.rows .file-link.dim {
+  color: var(--dim);
+}
 .rows .file-link:hover:not(:disabled) {
   background: none;
   text-decoration: underline;

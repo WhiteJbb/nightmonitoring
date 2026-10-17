@@ -5,7 +5,7 @@ import { AGENT_COMMANDS } from '../shared/types.ts';
 import type { Config } from './config.ts';
 import { ConfigError, SESSION_RE } from './config.ts';
 import { ConfigConflict } from './configEdit.ts';
-import { FileError, listFiles, readText, writeText } from './files.ts';
+import { FileError, listFiles, listIgnored, readText, writeText } from './files.ts';
 import { GIT_URL_RE } from './git.ts';
 import type { ParsedInput } from './input.ts';
 import { parseInput } from './input.ts';
@@ -368,20 +368,27 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     res.json({ ok: true });
   });
 
-  // 파일 보기·고치기 (files.ts). 보기는 모든 프로젝트, 저장은 입력과 같은 조건이다 (셸에서 고치는 것과 같은 일)
+  // 파일 보기·고치기 (files.ts). 보기는 모든 프로젝트, 저장은 입력과 같은 조건이다 (셸에서 고치는 것과 같은 일).
+  // .gitignore 에 걸린 파일(.env 등)은 비밀이 들어 있기 쉬워서 보기도 입력과 같은 조건이다 (그 셸에서 cat 하는 것과 같다)
   const projectOf = (id: string) => {
     const project = monitor.snapshot.projects.find((p) => p.id === id);
     if (!project) throw new FileError('프로젝트를 찾을 수 없습니다', 404);
     return project;
   };
-  api.get('/projects/:id/files', async (req, res) => void res.json({ files: await listFiles(projectOf(req.params.id).repoPath) }));
-  api.get('/projects/:id/file', async (req, res) => void res.json(await readText(projectOf(req.params.id).repoPath, req.query.path)));
+  api.get('/projects/:id/files', async (req, res) => {
+    const project = projectOf(req.params.id);
+    res.json({ files: await listFiles(project.repoPath), ignored: inputBlocked(project) ? [] : await listIgnored(project.repoPath) });
+  });
+  api.get('/projects/:id/file', async (req, res) => {
+    const project = projectOf(req.params.id);
+    res.json(await readText(project.repoPath, req.query.path, !inputBlocked(project)));
+  });
   api.put('/projects/:id/file', express.json({ limit: '4mb' }), async (req, res) => {
     const project = projectOf(req.params.id);
     const blocked = inputBlocked(project);
     if (blocked) return void res.status(403).json({ error: blocked });
     const { path, content, version } = (req.body ?? {}) as Record<string, unknown>;
-    res.json({ version: await writeText(project.repoPath, path, content, version) });
+    res.json({ version: await writeText(project.repoPath, path, content, version, true) });
   });
 
   const editableProjects = (view: ConfigView): EditableProject[] =>

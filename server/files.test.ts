@@ -3,7 +3,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'n
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listFiles, readText, writeText } from './files.ts';
+import { listFiles, listIgnored, readText, writeText } from './files.ts';
 
 describe('files', () => {
   let repo: string;
@@ -14,7 +14,9 @@ describe('files', () => {
     execFileSync('git', ['init', '-q', repo]);
     await mkdir(path.join(repo, 'src'));
     await writeFile(path.join(repo, 'src/app.ts'), 'export const a = 1;\n');
-    await writeFile(path.join(repo, '.gitignore'), '.env\n');
+    await writeFile(path.join(repo, '.gitignore'), '.env\nbuild/\n');
+    await mkdir(path.join(repo, 'build'));
+    await writeFile(path.join(repo, 'build/out.js'), 'x\n');
     await writeFile(path.join(repo, '.env'), 'SECRET=1\n');
     await writeFile(path.join(repo, 'new.md'), '# 새 파일\n');
     await writeFile(path.join(repo, 'logo.bin'), Buffer.from([0x89, 0x50, 0x00, 0x01]));
@@ -78,7 +80,17 @@ describe('files', () => {
     expect(await readFile(path.join(repo, 'win.txt'), 'utf8')).toBe('\ufeffa\r\nb\r\n');
   });
 
-  it('refuses ignored files, paths outside the list, links, and binary files', async () => {
+  it('opens ignored files like .env only when allowed; never the inside of an ignored folder', async () => {
+    expect(await listIgnored(repo)).toEqual(['.env']);
+    const env = await readText(repo, '.env', true);
+    expect(env.content).toBe('SECRET=1\n');
+    await writeText(repo, '.env', 'SECRET=2\n', env.version, true);
+    expect(await readFile(path.join(repo, '.env'), 'utf8')).toBe('SECRET=2\n');
+    await writeFile(path.join(repo, '.env'), 'SECRET=1\n');
+    await expect(readText(repo, 'build/out.js', true)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('refuses ignored files unless allowed, paths outside the list, links, and binary files', async () => {
     await expect(readText(repo, '.env')).rejects.toMatchObject({ status: 404 });
     await expect(readText(repo, '../' + path.basename(outside) + '/secret.txt')).rejects.toMatchObject({ status: 404 });
     await expect(readText(repo, 'link.txt')).rejects.toMatchObject({ status: 404 });
