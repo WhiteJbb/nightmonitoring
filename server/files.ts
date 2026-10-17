@@ -30,10 +30,12 @@ async function rootOf(repo: string): Promise<string> {
 
 /** 저장소 맨 위 기준 상대 경로 목록 (정렬). 저장소가 아니면 FileError */
 export async function listFiles(repo: string): Promise<string[]> {
-  const r = await run('git', ['-C', await rootOf(repo), 'ls-files', '-z', '--cached', '--others', '--exclude-standard']);
+  const root = await rootOf(repo);
+  const [r, gone] = await Promise.all([run('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard']), run('git', ['-C', root, 'ls-files', '-z', '--deleted'])]);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
-  // 충돌 중인 파일은 단계마다 한 번씩 나온다
-  return [...new Set(r.stdout.split('\0').filter(Boolean))].sort().slice(0, MAX_FILES);
+  // 추적 중이지만 지운 파일은 열 수 없으니 뺀다. 충돌 중인 파일은 단계마다 한 번씩 나온다
+  const deleted = new Set(gone.stdout.split('\0'));
+  return [...new Set(r.stdout.split('\0').filter((f) => f && !deleted.has(f)))].sort().slice(0, MAX_FILES);
 }
 
 /** 목록에 있는, 저장소 안의 일반 파일의 실제 절대 경로 (링크를 푼 것: 같은 파일은 늘 같은 이름이라 저장 줄 세우기에 쓴다). 너무 큰 파일은 읽기 전에 거른다 */
@@ -97,8 +99,8 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
     if (!(mode & 0o200)) throw new FileError('읽기 전용 파일입니다', 403);
     const tmp = `${abs}.nightshift-${process.pid}-${Date.now()}`;
     try {
-      await writeFile(tmp, buf);
-      // 만들 때의 mode 는 umask 를 거쳐 줄어든다. 원래 권한을 그대로 준다
+      // 나만 읽을 수 있게 만든 뒤 원래 권한을 준다 (만들 때 mode 는 umask 에 깎이고, 넓게 만들면 잠깐 남이 읽을 수 있다)
+      await writeFile(tmp, buf, { mode: 0o600 });
       await chmod(tmp, mode & 0o7777);
       // 쓰는 사이 에이전트가 고쳤을 수 있다: 바꿔 끼우기 직전에 한 번 더 본다
       if (await changed()) throw conflict();

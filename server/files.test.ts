@@ -21,7 +21,9 @@ describe('files', () => {
     await writeFile(path.join(outside, 'secret.txt'), 'outside\n');
     await symlink(path.join(outside, 'secret.txt'), path.join(repo, 'link.txt'));
     await writeFile(path.join(repo, 'win.txt'), '\ufeffa\r\nb\r\n');
-    execFileSync('git', ['-C', repo, 'add', 'src/app.ts', '.gitignore']);
+    await writeFile(path.join(repo, 'gone.txt'), 'bye\n');
+    execFileSync('git', ['-C', repo, 'add', 'src/app.ts', '.gitignore', 'gone.txt']);
+    await rm(path.join(repo, 'gone.txt'));
     // 추적 중인 폴더를 .git 으로 가는 링크로 바꿔도 그 안을 읽지 못해야 한다
     await mkdir(path.join(repo, 'cfg'));
     await writeFile(path.join(repo, 'cfg/config'), 'tracked\n');
@@ -34,7 +36,7 @@ describe('files', () => {
     await rm(outside, { recursive: true, force: true });
   });
 
-  it('lists tracked and new files, never ignored ones', async () => {
+  it('lists tracked and new files, never ignored or deleted ones', async () => {
     expect(await listFiles(repo)).toEqual(['.gitignore', 'cfg', 'cfg/config', 'link.txt', 'logo.bin', 'new.md', 'src/app.ts', 'win.txt']);
     // 프로젝트 경로가 하위 폴더여도 맨 위 기준 (Git 상태의 바뀐 파일 경로와 맞춘다)
     expect(await listFiles(path.join(repo, 'src'))).toContain('src/app.ts');
