@@ -324,6 +324,8 @@ export interface UploadRequest {
  */
 /** 새 세션에서 바로 띄울 수 있는 에이전트와 그 명령 (웹에서 임의 명령은 받지 않는다) */
 export const AGENT_COMMANDS = { claude: 'claude', codex: 'codex' } as const;
+/** 파일 탭의 파일 다루기 (POST /api/projects/:id/fs) */
+export type FsOp = 'newFile' | 'newDir' | 'move' | 'copy' | 'delete';
 export type AgentKind = keyof typeof AGENT_COMMANDS;
 
 export interface NewSessionRequest {

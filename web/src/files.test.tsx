@@ -105,6 +105,47 @@ test('a CRLF file is shown with LF and saved back with CRLF', async () => {
   expect(JSON.parse(fetchMock.mock.calls.at(-1)![1]!.body as string)).toMatchObject({ content: 'a\r\nc\r\n' });
 });
 
+test('⋯ menu: new file opens it, paste of a copy picks a free name, delete asks first; a read-only project has no menus', async () => {
+  const sent: Record<string, unknown>[] = [];
+  const taken = new Set(['README.md', 'src/app.ts']);
+  fetchMock.mockImplementation(async (url, init) => {
+    const u = String(url);
+    if (u.endsWith('/files')) return json(200, { files: [...taken].sort(), ignored: [] });
+    if (u.includes('/file?path=')) return json(200, { content: '', version: 'v0' });
+    const body = JSON.parse(init!.body as string) as { op: string; path: string; to?: string };
+    sent.push(body);
+    if (body.to && taken.has(body.to)) return json(409, { error: '이미 있습니다' });
+    if (body.to) taken.add(body.to);
+    return json(200, { ok: true });
+  });
+  vi.stubGlobal('prompt', vi.fn(() => 'b.ts'));
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
+  const { unmount } = render(<FilesTab project={project()} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'src/ 메뉴' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '새 파일…' }));
+  await waitFor(() => expect(sent).toEqual([{ op: 'newFile', path: 'src/b.ts' }]));
+  await screen.findByLabelText('src/b.ts 내용'); // 만든 파일을 연다
+  fireEvent.click(screen.getByRole('button', { name: '← 목록' }));
+
+  // README.md 를 복사해 맨 위에 붙여넣으면 같은 이름이 있어서 "README copy.md"
+  fireEvent.click(await screen.findByRole('button', { name: 'README.md 메뉴' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '복사' }));
+  fireEvent.click(screen.getByRole('button', { name: '붙여넣기' }));
+  await waitFor(() => expect(sent.slice(-2)).toEqual([{ op: 'copy', path: 'README.md', to: 'README.md' }, { op: 'copy', path: 'README.md', to: 'README copy.md' }]));
+
+  fireEvent.click(await screen.findByRole('button', { name: 'README.md 메뉴' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '지우기…' }));
+  expect(confirm).toHaveBeenCalledOnce();
+  await waitFor(() => expect(sent.at(-1)).toEqual({ op: 'delete', path: 'README.md' }));
+  unmount();
+
+  render(<FilesTab project={project(false)} />);
+  await screen.findByRole('button', { name: '▸ src/' });
+  expect(screen.queryByRole('button', { name: /메뉴$/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: '새 파일' })).toBeNull();
+});
+
 test('a read-only project can look but not save', async () => {
   serve();
   render(<FilesTab project={project(false)} />);

@@ -1134,6 +1134,58 @@ pre {
   text-decoration: underline;
   transform: none;
 }
+/* 파일 행의 ⋯ 메뉴 (우클릭도 같은 메뉴). 끌어 놓을 폴더는 밝게 */
+.rows li {
+  position: relative;
+}
+.rows .row-more {
+  min-height: 0;
+  padding: 0 8px;
+  color: var(--dim);
+  background: none;
+  opacity: 0.5;
+}
+.rows li:hover .row-more,
+.rows .row-more[aria-expanded='true'],
+.rows .row-more:focus-visible {
+  opacity: 1;
+}
+@media (pointer: coarse) {
+  .rows .row-more {
+    opacity: 1;
+  }
+}
+.row-menu {
+  position: absolute;
+  top: calc(100% - 4px);
+  right: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+.row-menu button {
+  justify-content: flex-start;
+  min-height: 32px;
+  padding: 4px 12px;
+  font-size: var(--fs-sm);
+  background: transparent;
+}
+.row-menu button:hover:not(:disabled) {
+  background: var(--s2);
+  transform: none;
+}
+.rows li.drop,
+.drop-root.drop {
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  border-radius: 10px;
+}
 .editor-bar {
   display: flex;
   flex-wrap: wrap;

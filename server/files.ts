@@ -1,8 +1,9 @@
 // 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)이고,
 // .env 처럼 무시된 파일은 호출부가 허락할 때만(터미널 입력이 허용된 프로젝트) 연다. 저장소 밖과 .git 안은 경로를 직접 줘도 열지 않는다.
 import { createHash, randomUUID } from 'node:crypto';
-import { chmod, lstat, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { chmod, cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { FsOp } from '../shared/types.ts';
 import { run } from './exec.ts';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
@@ -142,4 +143,80 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
     }
     return versionOf(buf);
   });
+}
+
+// ── 파일 다루기 (새 파일·폴더, 이동, 복사, 삭제). 터미널 입력과 같은 조건에서만 부른다 (app.ts).
+// 쓰기라서 목록 규칙 대신 "저장소 안, .git 밖"만 지킨다. 무시된 폴더 안이라도 셸로 할 수 있는 일이다.
+
+/** 지운 것은 .git 안 휴지통에 이만큼 둔다 (Git 에 없는 .env 같은 파일도 되살릴 수 있게) */
+export const TRASH_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
+
+const exists = (abs: string) => lstat(abs).then(() => true, () => false);
+
+/** 쓰기 대상 경로: 저장소 맨 위 기준의 정규화된 상대 경로. 실제 위치(가장 가까운 기존 상위 폴더의 링크를 푼 것)도 저장소 안, .git 밖이어야 한다 */
+async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: string }> {
+  if (typeof rel !== 'string' || !rel || rel.includes('\0') || rel.startsWith('/')) throw new FileError('경로가 올바르지 않습니다', 400);
+  const norm = rel.replace(/\/+$/, '');
+  if (path.posix.normalize(norm) !== norm || norm === '.' || norm === '..' || norm.startsWith('../')) throw new FileError('경로가 올바르지 않습니다', 400);
+  if (norm.split('/').includes('.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
+  const root = await rootOf(repo);
+  const realRoot = await realpath(root);
+  let dir = path.dirname(path.join(root, norm));
+  for (;;) {
+    const real = await realpath(dir).catch((e: NodeJS.ErrnoException) => (e.code === 'ENOENT' ? null : Promise.reject(e)));
+    if (real === null) {
+      dir = path.dirname(dir);
+      continue;
+    }
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) throw new FileError('저장소 밖입니다', 400);
+    if (real === path.join(realRoot, '.git') || real.startsWith(path.join(realRoot, '.git') + path.sep)) throw new FileError('.git 안은 건드리지 않습니다', 400);
+    return { abs: path.join(root, norm), rel: norm };
+  }
+}
+
+/** 옮기거나 복사할 곳이 자기 안이면 안 된다 (폴더를 제 하위 폴더로) */
+const inside = (child: string, parent: string) => child === parent || child.startsWith(`${parent}/`);
+
+/** 지운 것을 .git/nightshift-trash/<시각>/<경로> 로 옮긴다. 오래된 것은 이때 비운다 */
+async function toTrash(repo: string, abs: string, rel: string, now = Date.now()): Promise<void> {
+  const r = await run('git', ['-C', repo, 'rev-parse', '--absolute-git-dir']);
+  if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
+  const trash = path.join(r.stdout.trim(), 'nightshift-trash');
+  for (const name of await readdir(trash).catch(() => [])) {
+    if (now - Number(name) > TRASH_KEEP_MS) await rm(path.join(trash, name), { recursive: true, force: true });
+  }
+  const dest = path.join(trash, String(now), rel);
+  await mkdir(path.dirname(dest), { recursive: true });
+  // 다른 디스크면 rename 이 안 된다: 복사한 뒤 지운다
+  await rename(abs, dest).catch(async (e: NodeJS.ErrnoException) => {
+    if (e.code !== 'EXDEV') throw e;
+    await cp(abs, dest, { recursive: true, verbatimSymlinks: true });
+    await rm(abs, { recursive: true, force: true });
+  });
+}
+
+/** 파일 다루기 하나. to 는 move·copy 에서 새 경로 */
+export async function fsOp(repo: string, op: FsOp | unknown, rel: unknown, to?: unknown): Promise<void> {
+  const src = await target(repo, rel);
+  try {
+    if (op === 'newFile' || op === 'newDir') {
+      if (await exists(src.abs)) throw new FileError('이미 있습니다', 409);
+      if (op === 'newDir') return void (await mkdir(src.abs, { recursive: true }));
+      await mkdir(path.dirname(src.abs), { recursive: true });
+      return void (await writeFile(src.abs, '', { flag: 'wx' }));
+    }
+    if (!(await exists(src.abs))) throw new FileError('없는 파일입니다', 404);
+    if (op === 'delete') return void (await toTrash(repo, src.abs, src.rel));
+    if (op !== 'move' && op !== 'copy') throw new FileError('알 수 없는 작업입니다', 400);
+    const dst = await target(repo, to);
+    if (inside(dst.rel, src.rel)) throw new FileError('자기 안으로는 옮기거나 복사할 수 없습니다', 400);
+    if (await exists(dst.abs)) throw new FileError(`이미 있습니다: ${dst.rel}`, 409);
+    await mkdir(path.dirname(dst.abs), { recursive: true });
+    if (op === 'move') await rename(src.abs, dst.abs);
+    else await cp(src.abs, dst.abs, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
+  } catch (e) {
+    if (e instanceof FileError) throw e;
+    const code = (e as NodeJS.ErrnoException).code;
+    throw new FileError((e as Error).message, code === 'ENOENT' ? 404 : code === 'EEXIST' ? 409 : 400);
+  }
 }

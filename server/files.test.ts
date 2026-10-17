@@ -1,9 +1,9 @@
 import { execFileSync } from 'node:child_process';
-import { chmod, mkdir, mkdtemp, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { listFiles, listIgnored, readText, writeText } from './files.ts';
+import { fsOp, listFiles, listIgnored, readText, writeText } from './files.ts';
 
 describe('files', () => {
   let repo: string;
@@ -91,6 +91,37 @@ describe('files', () => {
     expect(await readFile(path.join(repo, '.env'), 'utf8')).toBe('SECRET=2\n');
     await writeFile(path.join(repo, '.env'), 'SECRET=1\n');
     await expect(readText(repo, 'build/out.js', true)).rejects.toMatchObject({ status: 404 });
+  });
+
+  it('creates, moves, copies and deletes files and folders; deleted ones wait in a trash inside .git', async () => {
+    const at = (rel: string) => path.join(repo, rel);
+    await fsOp(repo, 'newDir', 'docs/guide');
+    await fsOp(repo, 'newFile', 'docs/guide/intro.md');
+    expect(await readFile(at('docs/guide/intro.md'), 'utf8')).toBe('');
+    await expect(fsOp(repo, 'newFile', 'docs/guide/intro.md')).rejects.toMatchObject({ status: 409 });
+    await writeFile(at('docs/guide/intro.md'), 'hello\n');
+    await fsOp(repo, 'copy', 'docs', 'docs-copy');
+    expect(await readFile(at('docs-copy/guide/intro.md'), 'utf8')).toBe('hello\n');
+    await fsOp(repo, 'move', 'docs-copy/guide/intro.md', 'notes/intro.md');
+    expect(await readFile(at('notes/intro.md'), 'utf8')).toBe('hello\n');
+    await expect(fsOp(repo, 'move', 'docs', 'docs/inner')).rejects.toMatchObject({ status: 400 }); // 자기 안으로
+    await expect(fsOp(repo, 'move', 'notes/intro.md', 'new.md')).rejects.toMatchObject({ status: 409 }); // 덮어쓰지 않는다
+    await fsOp(repo, 'delete', 'docs');
+    await expect(stat(at('docs'))).rejects.toThrow();
+    const trash = path.join(repo, '.git/nightshift-trash');
+    const [when] = await readdir(trash);
+    expect(await readFile(path.join(trash, when!, 'docs/guide/intro.md'), 'utf8')).toBe('hello\n');
+    await rm(at('notes'), { recursive: true });
+    await rm(at('docs-copy'), { recursive: true });
+  });
+
+  it('never touches .git or anything outside the repository', async () => {
+    for (const bad of ['../x', '/etc/passwd', '.git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
+      await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
+    await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });
+    // 링크된 폴더(cfg → .git)를 거쳐 들어가도 막는다
+    await expect(fsOp(repo, 'newFile', 'cfg/hooks/pre-commit')).rejects.toMatchObject({ status: 400 });
+    await expect(fsOp(repo, 'delete', 'cfg/config')).rejects.toMatchObject({ status: 400 });
   });
 
   it('refuses ignored files unless allowed, paths outside the list, links, and binary files', async () => {
