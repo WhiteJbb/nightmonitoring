@@ -198,7 +198,7 @@ describe('terminal API', () => {
     expect(terminal.newWindow).toHaveBeenCalledExactlyOnceWith('a', '/r/open', undefined);
     expect((await open('open', { agent: 'codex' })).status).toBe(200);
     expect(terminal.newWindow).toHaveBeenLastCalledWith('a', '/r/open', 'codex');
-    expect((await open('open', { agent: 'rm -rf ~' })).status).toBe(400); // 정해진 에이전트만
+    for (const agent of ['rm -rf ~', 'constructor', '__proto__', 5]) expect((await open('open', { agent })).status).toBe(400); // 정해진 에이전트만 (상속 이름도 거부)
     expect((await open('closed')).status).toBe(403); // allowInput 꺼짐
     expect((await open('nope')).status).toBe(404);
     expect(terminal.newWindow).toHaveBeenCalledTimes(2);
