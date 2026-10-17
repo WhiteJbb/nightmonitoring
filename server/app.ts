@@ -235,6 +235,8 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     // 출력은 건너뛸 수 없다 (한 조각이 빠지면 화면이 어긋난다). 느린 클라이언트에 너무 쌓이면 끊는다:
     // 브라우저 EventSource 가 다시 붙으면 첫 화면부터 새로 받는다
     const off = terminal.stream(project.tmuxSession, pane.id, (e) => {
+      // 끊은 뒤에도 기다리던 첫 화면이 올 수 있다. 끝난 응답에 쓰면 서버가 죽는다
+      if (res.writableEnded) return;
       res.write(`data: ${JSON.stringify(e)}\n\n`);
       if (res.writableLength > MAX_SSE_BUFFER) {
         off();
@@ -242,6 +244,32 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
       }
     });
     req.on('close', off);
+  });
+
+  // 여러 pane 을 SSE 하나로 (나란히 보기). 브라우저는 http/1.1 에서 주소당 연결을 6개만 열어서, pane 마다 열면 입력 요청이 막힌다.
+  // 이벤트는 위와 같고 어느 pane 것인지 pane 필드가 붙는다
+  api.get('/projects/:id/terms', (req, res) => {
+    const project = monitor.snapshot.projects.find((p) => p.id === req.params.id);
+    const ids = typeof req.query.panes === 'string' ? req.query.panes.split(',') : [];
+    const panes = ids.map((id) => project?.tmux.panes.find((x) => x.id === id));
+    if (!project || !ids.length || ids.length > MAX_PANES || panes.some((x) => !x)) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    if (!terminal || !project.tmuxSession) return void res.status(403).json({ error: 'demo mode 에서는 터미널 스트림이 없습니다' });
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
+    const offs: (() => void)[] = [];
+    const stop = () => offs.splice(0).forEach((off) => off());
+    for (const id of ids) {
+      offs.push(
+        terminal.stream(project.tmuxSession, id, (e) => {
+          if (res.writableEnded) return; // 위와 같다
+          res.write(`data: ${JSON.stringify({ ...e, pane: id })}\n\n`);
+          if (res.writableLength > MAX_SSE_BUFFER) {
+            stop();
+            res.end();
+          }
+        }),
+      );
+    }
+    req.on('close', stop);
   });
 
   // 이미지는 파일로 저장만 한다. 경로를 입력에 넣어 보내는 것은 평범한 글 입력과 같은 경로를 탄다.

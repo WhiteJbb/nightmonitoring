@@ -214,6 +214,18 @@ describe('terminal API', () => {
     expect(terminal.killPane).toHaveBeenCalledOnce();
   });
 
+  it('streams several panes of the project over one SSE, each event tagged with its pane', async () => {
+    const { base, terminal } = await start();
+    const ctrl = new AbortController();
+    const res = await fetch(`${base}/open/terms?panes=%251`, { signal: ctrl.signal });
+    expect(res.headers.get('content-type')).toBe('text/event-stream');
+    expect(new TextDecoder().decode((await res.body!.getReader().read()).value)).toBe('data: {"type":"init","cols":80,"rows":24,"alt":false,"data":"aGk=","pane":"%1"}\n\n');
+    expect(terminal.stream).toHaveBeenCalledWith('a', '%1', expect.any(Function));
+    ctrl.abort();
+    expect((await fetch(`${base}/open/terms?panes=%251,%252`)).status).toBe(404); // 남의 pane 이 섞임
+    expect((await fetch(`${base}/open/terms`)).status).toBe(404);
+  });
+
   it('stores an uploaded image under the same rules as input and returns its path', async () => {
     const { base, terminal } = await start();
     const upload = (id: string, body: unknown) => fetch(`${base}/${id}/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });

@@ -51,13 +51,29 @@ export function copyText(text: string): boolean {
   return ok;
 }
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+/** pane 의 출력 이벤트를 받는 곳. on 은 이벤트마다, down 은 연결이 끊길 때 불린다. 돌려주는 함수로 그만 받는다 */
+export type TermFeed = (pane: string, on: (e: TermEvent) => void, down: () => void) => () => void;
+/** 기본: pane 하나에 SSE 하나 */
+const paneFeed =
+  (projectId: string): TermFeed =>
+  (pane, on, down) => {
+    const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/term/${encodeURIComponent(pane)}`);
+    es.onmessage = (ev: MessageEvent<string>) => on(JSON.parse(ev.data) as TermEvent);
+    es.onerror = down;
+    return () => es.close();
+  };
 const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
 
 /**
  * pane 하나를 실제 터미널(xterm.js)로 그린다. 서버의 SSE 스트림(첫 화면 + 이어지는 바이트)을 그대로 쓰고,
  * 입력이 허용된 프로젝트면 키·마우스 보고 바이트를 pane 으로 돌려보낸다. 크기는 tmux pane 을 따른다.
  */
-export function Term({ projectId, pane, canInput, full = false, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+/**
+ * focus: 첫 화면을 받으면 키 입력을 받게 한다 (나란히 보기에서는 고른 칸만). heightShare: 쓸 수 있는 높이 중 이 터미널의 몫.
+ * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다
+ */
+export function Term({ projectId, pane, canInput, full = false, focus = true, heightShare = 1, feed, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize, onNotice });
@@ -65,6 +81,9 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
   // 전체 화면 여부는 글자 크기 계산에만 쓴다. 바뀌어도 터미널을 다시 만들지 않는다
   const fullRef = useRef(full);
   fullRef.current = full;
+  const layout = useRef({ focus, heightShare });
+  layout.current = { focus, heightShare };
+  const xterm = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const el = host.current;
@@ -85,6 +104,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
+    xterm.current = term;
     // 출력의 http(s) 주소를 눌러 새 탭으로 연다 (PR 링크 등). 프로그램이 마우스를 받으면 Cmd(⌘)+클릭
     term.loadAddon(new WebLinksAddon((_ev, uri) => void window.open(uri, '_blank', 'noopener,noreferrer')));
 
@@ -108,13 +128,12 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       if (!width) return;
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
       const byWidth = Math.floor(width / (term.cols * perPx));
-      const byHeight = Math.floor(termHeight(fullRef.current) / (term.rows * ROW_RATIO));
+      const byHeight = Math.floor(termHeight(fullRef.current, layout.current.heightShare) / (term.rows * ROW_RATIO));
       term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
 
-    const es = new EventSource(`/api/projects/${encodeURIComponent(projectId)}/term/${encodeURIComponent(pane)}`);
-    es.onmessage = (ev: MessageEvent<string>) => {
-      const e = JSON.parse(ev.data) as TermEvent;
+    let stopFeed = () => {};
+    const onEvent = (e: TermEvent) => {
       if (e.type === 'init') {
         // 다시 연결될 때마다 첫 화면이 다시 오므로 깨끗이 지우고 그린다
         term.reset();
@@ -124,7 +143,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
         cb.current.onStatus('live');
         cb.current.onSize(e.cols, e.rows);
         // 컴퓨터에선 열자마자 키를 칠 수 있게 (휴대폰은 화면 키보드가 튀어나오므로 두지 않는다)
-        if (canInput && window.matchMedia?.('(pointer: fine)').matches) term.focus();
+        if (canInput && layout.current.focus && window.matchMedia?.('(pointer: fine)').matches) term.focus();
       } else if (e.type === 'out') term.write(decode(e.data));
       else if (e.type === 'resize') {
         term.resize(e.cols, e.rows);
@@ -133,10 +152,10 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       } else {
         // 오류·종료 뒤에는 서버가 더 보내지 않는다. 재연결은 탭을 다시 열 때
         cb.current.onStatus(e.type === 'exit' ? 'exit' : e.message);
-        es.close();
+        stopFeed();
       }
     };
-    es.onerror = () => cb.current.onStatus('down');
+    stopFeed = (feed ?? paneFeed(projectId))(pane, onEvent, () => cb.current.onStatus('down'));
 
     // 키·마우스 보고는 묶어서 한 번에 하나씩 보낸다. 보내는 동안 모인 것은 다음 요청에 합친다
     const pasteOnRightClick = window.isSecureContext && typeof navigator.clipboard?.readText === 'function';
@@ -349,10 +368,16 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
-      es.close();
+      stopFeed();
+      xterm.current = null;
       term.dispose();
     };
   }, [projectId, pane, canInput]);
+
+  // 나란히 보기에서 다른 칸을 고르면 그 터미널로 키 입력을 옮긴다 (첫 화면 때만 잡으면 칸을 눌러야 했다)
+  useEffect(() => {
+    if (focus && canInput && window.matchMedia?.('(pointer: fine)').matches) xterm.current?.focus();
+  }, [focus, canInput]);
 
   return <div ref={host} className="xterm-host" aria-label="터미널" />;
 }
