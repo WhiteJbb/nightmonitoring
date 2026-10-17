@@ -1,17 +1,61 @@
-# NightShift
+<div align="center">
 
-tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰이나 다른 컴퓨터에서 실시간으로 보고 조종하는 **로컬** 원격 개발 대시보드. 서버는 Mac(또는 Windows의 WSL2)에서 돌고, 밖에서는 Tailscale로 접속합니다.
+# 🌙 NightShift
 
-- **실시간 터미널**: 세션의 pane을 xterm.js로 그대로 그리고, 터미널에 바로 키를 칩니다. 복사·붙여넣기, 이미지 붙여넣기(파일로 올려 경로를 입력), 컴퓨터에서는 전체 화면. 휴대폰에서는 입력 줄과 특수 키 버튼
-- **상태 판정**: 정상 실행 / 입력 대기 / 유휴 / 정지 의심 / 오류. 에이전트 세션은 화면 아래의 `esc to interrupt`(작업 중 표시)로 일하는 중인지 판단
-- **바로 답하기**: 에이전트가 번호 선택지 프롬프트를 띄우면 버튼 한 번으로 답함
-- **휴대폰 푸시** (ntfy, 선택 기능): 입력 대기·정지 의심·오류, 에이전트가 일을 마치면 **작업 끝남** (설정의 "알림 받을 상태"에서 켬)
-- **대시보드**: 프로젝트 카드를 한 화면에, 봐야 할 것(오류·입력 대기·정지 의심)부터. 카드마다 Git 상태(브랜치, 변경 파일, +/− 줄 수, 최근 커밋)와 tmux 세션 상태
-- config에 등록해 둔 테스트·빌드 명령을 버튼으로 실행·취소, 실행 이력 보관
-- 대시보드에서 새 tmux 세션을 만들어(Git 주소를 주면 clone까지, 고르면 Claude Code·Codex 까지 띄워) 바로 프로젝트로 등록, 꺼진 세션 다시 시작, 다 쓴 세션 끝내기(세션 정보 > 세션 종료, 입력 허용 프로젝트만)
-- **설정** 화면에서 임계값·패턴·알림·프로젝트 목록을 바로 수정 (테스트·빌드 명령은 파일에서만). config 파일을 고쳐도 재시작 없이 반영
-- 서버를 재시작해도 기준점·실행 이력·보낸 알림 기록이 이어짐
-- 외부 DB·API 키 없음. 휴대폰 알림을 켜지 않으면 외부로 나가는 요청도 없음. 서버는 기본으로 `127.0.0.1`에만 바인딩
+**휴대폰에서 Claude Code·Codex 세션을 보고 조종하는 원격 개발 대시보드**
+
+tmux에서 도는 AI 코딩 에이전트를 실시간 터미널로 보고, 키를 치고, 끝나거나 입력을 기다리면 푸시로 알려 줍니다.
+서버는 내 컴퓨터에서만 돌고, 밖에서는 Tailscale로 접속합니다.
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=node.js&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20WSL2-lightgrey)
+
+*A self-hosted dashboard to watch and drive Claude Code / Codex tmux sessions from your phone. Real xterm.js terminal over tmux control mode, busy/idle/waiting detection, one-tap answers to agent prompts, and push notifications via ntfy. Runs on macOS or WSL2, reachable over Tailscale.*
+
+</div>
+
+<p align="center">
+  <img src="docs/images/dashboard.png" alt="대시보드" width="100%">
+</p>
+
+<table>
+  <tr>
+    <td width="68%"><img src="docs/images/terminal.png" alt="컴퓨터에서 본 실시간 터미널"></td>
+    <td width="16%"><img src="docs/images/phone-terminal.png" alt="휴대폰 터미널"></td>
+    <td width="16%"><img src="docs/images/phone-dashboard.png" alt="휴대폰 대시보드"></td>
+  </tr>
+</table>
+
+## 왜 만들었나
+
+AI 에이전트에게 긴 작업을 맡겨 두면, 정작 사람이 할 일은 "다 됐나?", "뭘 물어보고 멈춰 있나?"를 확인하는 것입니다. 그때마다 컴퓨터 앞으로 돌아가야 했습니다.
+NightShift는 tmux 세션을 그대로 휴대폰 브라우저로 가져옵니다. 침대에서, 이동 중에 에이전트가 무엇을 하는지 보고, 승인 질문에 버튼 하나로 답하고, 다음 지시를 보냅니다.
+
+## 주요 기능
+
+- **실시간 터미널**: tmux 컨트롤 모드로 pane을 xterm.js에 그대로 그립니다. 컴퓨터에서는 네이티브 터미널처럼 모든 키·복사·우클릭 붙여넣기·전체 화면, 휴대폰에서는 화면 폭에 맞춘 글꼴, 빠른 터치 스크롤, Esc·Tab·화살표 버튼, 이미지 붙여넣기
+- **상태 판정**: 정상 실행 / 입력 대기 / 유휴 / 정지 의심 / 오류. 에이전트 세션은 화면 아래의 작업 중 표시(`esc to interrupt`)로 판단해, 화면이 다시 그려지는 것만으로 "실행 중"이 되지 않습니다
+- **바로 답하기**: 에이전트가 번호 선택지 프롬프트를 띄우면 카드와 터미널에 버튼으로 나옵니다
+- **휴대폰 푸시** ([ntfy](https://ntfy.sh)): 입력 대기·정지 의심·오류, 그리고 **작업 끝남**. 보고 있는 동안은 보류하고, 끝났다가 금방 다시 일하면 보내지 않아 알림이 시끄럽지 않습니다
+- **세션 관리**: 대시보드에서 세션 이름과 에이전트만 고르면 바로 띄우기. Git 주소를 주면 `~/repos/`에 clone까지
+- **Git·테스트**: 카드마다 브랜치·변경 파일·최근 커밋, 등록한 테스트·빌드 명령을 버튼으로 실행
+- **로컬 우선**: 외부 DB·API 키 없음. 서버는 기본으로 `127.0.0.1`에만 바인딩, 원격 접속은 Tailscale(HTTPS)로만
+
+## 구조
+
+```
+휴대폰·노트북 브라우저
+   │  HTTPS (Tailscale) · SSE로 상태 스냅샷과 터미널 스트림
+   ▼
+NightShift 서버 (Node · Express)
+   │  tmux -C (컨트롤 모드) · git · ps
+   ▼
+tmux 세션 ── Claude Code / Codex
+```
+
+TypeScript · React · Vite · Express · xterm.js. 자세한 설계는 [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## 요구 사항
 
@@ -435,3 +479,18 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | 화면에 "연결 끊김" | 서버가 종료된 상태. 다시 시작하면 자동으로 재연결됩니다 |
 
 구조와 설계 결정은 [ARCHITECTURE.md](ARCHITECTURE.md)를 참고하세요.
+
+## 기여
+
+이슈와 PR 환영합니다. 큰 변경은 이슈로 먼저 이야기해 주세요.
+
+```bash
+npm install
+npm run demo        # tmux 없이 가짜 데이터로 모든 화면 보기
+npm test            # vitest
+npm run typecheck && npm run lint
+```
+
+## 라이선스
+
+[MIT](LICENSE) © WhiteJbb
