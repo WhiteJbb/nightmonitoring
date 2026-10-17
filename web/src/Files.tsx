@@ -129,21 +129,22 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const [loading, setLoading] = useState(true);
   // 디스크에서 못 연 파일의 저장 안 한 내용: 보여만 준다 (복사해 두라고)
   const [orphan, setOrphan] = useState(false);
-  // 닫은 편집기의 늦은 응답이 다시 연 편집기의 초안을 건드리지 않게
-  const alive = useRef(true);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
+  // 마지막으로 시작한 불러오기만 반영한다: 늦게 온 옛 응답(닫은 편집기의 것 포함)이 저장한 내용·초안을 덮지 않게
+  const loads = useRef(0);
+  useEffect(
+    () => () => {
+      loads.current++;
+    },
+    [],
+  );
 
   const load = async (keepDraft: boolean) => {
+    const mine = ++loads.current;
     setLoading(true);
     await pendingSaves.get(key)?.catch(() => {});
     return api.file(p.id, path).then(
       (f) => {
-        if (!alive.current) return;
+        if (mine !== loads.current) return;
         const draft = keepDraft ? loadDraft(key) : null;
         if (!keepDraft) store.set(key, null);
         const content = f.content.replace(/\r\n/g, '\n');
@@ -158,7 +159,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         setLoading(false);
       },
       (e: unknown) => {
-        if (!alive.current) return;
+        if (mine !== loads.current) return;
         setError(errorMessage(e));
         setLoading(false);
         // 그 사이 파일이 지워졌거나 이름이 바뀌었어도 고친 내용은 꺼내 볼 수 있게
