@@ -1133,6 +1133,7 @@ pre {
     align-items: center;
     gap: 18px;
     width: max-content;
+    max-width: calc(100% - 24px);
     white-space: nowrap;
     overflow-x: auto;
   }
