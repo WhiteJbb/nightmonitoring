@@ -1075,6 +1075,13 @@ pre {
 .panes button {
   font-family: var(--mono);
 }
+.pane-tab {
+  display: inline-flex;
+  gap: 2px;
+}
+.panes .close {
+  padding-inline: 8px;
+}
 .with-action {
   display: flex;
   flex-wrap: wrap;

@@ -376,6 +376,27 @@ test('+ 새 터미널 opens a window and switches to it once the snapshot has it
   expect(screen.queryByRole('button', { name: '+ 새 터미널' })).toBeNull();
 });
 
+test('✕ closes a terminal after asking; closing the one in view moves to another; a lone terminal has no ✕', async () => {
+  const confirm = vi.fn(() => true);
+  vi.stubGlobal('confirm', confirm);
+  await renderTab(project(TWO));
+  fireEvent.click(screen.getByRole('button', { name: /· 1/ }));
+  await tick();
+  expect(es().url).toBe('/api/projects/api/term/%252');
+  fireEvent.click(screen.getByRole('button', { name: '터미널 0:1 닫기' }));
+  await tick();
+  expect(confirm).toHaveBeenCalledOnce();
+  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/panes/%252', { method: 'DELETE' });
+  expect(es().url).toBe('/api/projects/api/term/%251');
+  confirm.mockReturnValue(false);
+  fireEvent.click(screen.getByRole('button', { name: '터미널 0:0 닫기' }));
+  await tick();
+  expect(fetchMock.mock.calls.filter(([, init]) => init?.method === 'DELETE')).toHaveLength(1);
+  cleanup();
+  await renderTab(project(ONE));
+  expect(screen.queryByRole('button', { name: /닫기$/ })).toBeNull();
+});
+
 test('the stream is closed and the terminal disposed on unmount', async () => {
   const { unmount } = await renderTab(project(ONE));
   unmount();
