@@ -83,6 +83,7 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
   fullRef.current = full;
   const layout = useRef({ focus, heightShare });
   layout.current = { focus, heightShare };
+  const xterm = useRef<Terminal | null>(null);
 
   useEffect(() => {
     const el = host.current;
@@ -103,6 +104,7 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
     term.open(el);
+    xterm.current = term;
     // 출력의 http(s) 주소를 눌러 새 탭으로 연다 (PR 링크 등). 프로그램이 마우스를 받으면 Cmd(⌘)+클릭
     term.loadAddon(new WebLinksAddon((_ev, uri) => void window.open(uri, '_blank', 'noopener,noreferrer')));
 
@@ -367,9 +369,15 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       el.removeEventListener('touchmove', onTouchMove);
       ro?.disconnect();
       stopFeed();
+      xterm.current = null;
       term.dispose();
     };
   }, [projectId, pane, canInput]);
+
+  // 나란히 보기에서 다른 칸을 고르면 그 터미널로 키 입력을 옮긴다 (첫 화면 때만 잡으면 칸을 눌러야 했다)
+  useEffect(() => {
+    if (focus && canInput && window.matchMedia?.('(pointer: fine)').matches) xterm.current?.focus();
+  }, [focus, canInput]);
 
   return <div ref={host} className="xterm-host" aria-label="터미널" />;
 }

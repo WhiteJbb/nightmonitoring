@@ -927,8 +927,8 @@ export function TerminalTab({ project: p, now }: Props) {
           <div className="split" style={{ gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))` }}>
             {visible && !away ? (
               t.panes.map((x, i) => (
-                // 마지막 줄이 덜 차면 마지막 칸이 남은 자리를 채운다
-                <SplitCell key={`${x.id}:${feedKey}`} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} cols={grid.cols} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} feed={feed} onSelect={() => setPaneId(x.id)} onReconnect={() => setFeedAttempt(feedAttempt + 1)} onNotice={showNotice} />
+                // 마지막 줄이 덜 차면 마지막 칸이 남은 자리를 채운다. 크기 맞추기는 윈도우 단위라, 한 윈도우를 나눈 pane 들은 맞추지 않는다
+                <SplitCell key={`${x.id}:${feedKey}`} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} cols={grid.cols} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit && !t.panes.some((y) => y.window === x.window && y.id !== x.id)} feed={feed} onSelect={() => setPaneId(x.id)} onReconnect={() => setFeedAttempt(feedAttempt + 1)} onNotice={showNotice} />
               ))
             ) : (
               <p className="dim term-paused">{pausedText}</p>

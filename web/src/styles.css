@@ -1135,7 +1135,8 @@ pre {
   padding: 8px 10px;
 }
 @media (max-width: 720px) {
-  .split-toggle {
+  /* 켜진 채로 화면이 좁아지면 끌 수 있게 남긴다 */
+  .split-toggle:not([aria-pressed='true']) {
     display: none;
   }
   .split {
