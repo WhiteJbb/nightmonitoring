@@ -1107,12 +1107,14 @@ pre {
 /* 파일 탭: 목록과 편집기 */
 .file-tools {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 8px;
 }
+/* 좁으면 찾기 칸이 한 줄을 다 쓰고 버튼은 아래로 */
 .file-tools .file-search {
-  flex: 1;
+  flex: 1 1 220px;
 }
 .rows .file-link {
   flex: 1;

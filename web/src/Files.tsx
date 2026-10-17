@@ -256,7 +256,10 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     if (to && to !== path.replace(/\/$/, '')) await act('move', path, to);
   };
   const remove = async (path: string) => {
-    const untracked = !path.endsWith('/') && !known.has(path) ? '\nGit 에 없는 파일이라 Git 으로는 되살릴 수 없습니다.' : '';
+    // Git 에 없는 것(새 파일 ?? 나 무시된 파일)이 들어 있으면 휴지통 말고는 되살릴 길이 없다고 알린다
+    const untracked = [...ignored, ...p.git.changedFiles.filter((f) => f.status === '??').map((f) => f.path)].some((f) => f === path || (path.endsWith('/') && f.startsWith(path)))
+      ? '\nGit 에 없는 파일이 있어 Git 으로는 되살릴 수 없습니다.'
+      : '';
     if (window.confirm(`"${path}" 을(를) 지울까요?\n지운 것은 .git/nightshift-trash 에 7일 동안 남습니다.${untracked}`)) await act('delete', path);
   };
   const copy = (path: string, cut: boolean) => {
