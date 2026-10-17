@@ -39,15 +39,16 @@ export async function listFiles(repo: string): Promise<string[]> {
 /** 목록에 있는, 저장소 안의 일반 파일의 절대 경로. 너무 큰 파일은 읽기 전에 거른다 */
 async function resolve(repo: string, rel: unknown): Promise<string> {
   if (typeof rel !== 'string' || !rel || rel.includes('\0')) throw new FileError('경로가 올바르지 않습니다', 400);
-  if (!(await listFiles(repo)).includes(rel)) throw new FileError('열 수 없는 파일입니다 (Git 이 모르는 파일이거나 .gitignore 에 걸린 파일)', 404);
+  const files = await listFiles(repo);
+  if (!files.includes(rel)) throw new FileError('열 수 없는 파일입니다 (Git 이 모르는 파일이거나 .gitignore 에 걸린 파일)', 404);
   const root = await rootOf(repo);
   const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
   if (!st?.isFile()) throw new FileError('일반 파일만 열 수 있습니다 (지워졌거나 링크입니다)', 404);
   if (st.size > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 열지 않습니다', 413);
-  // 링크된 상위 폴더를 거쳐 저장소 밖으로 나가지 않게
+  // 상위 폴더가 링크로 바뀌었으면 실제 파일은 다른 곳이다 (저장소 밖이나 .git 안). 실제 경로도 목록에 있어야 한다
   const [real, realRoot] = await Promise.all([realpath(abs), realpath(root)]);
-  if (!real.startsWith(realRoot + path.sep)) throw new FileError('저장소 밖의 파일입니다', 404);
+  if (!files.includes(path.relative(realRoot, real).split(path.sep).join('/'))) throw new FileError('링크를 거친 파일은 열지 않습니다', 404);
   return abs;
 }
 

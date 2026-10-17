@@ -22,6 +22,12 @@ describe('files', () => {
     await symlink(path.join(outside, 'secret.txt'), path.join(repo, 'link.txt'));
     await writeFile(path.join(repo, 'win.txt'), '\ufeffa\r\nb\r\n');
     execFileSync('git', ['-C', repo, 'add', 'src/app.ts', '.gitignore']);
+    // 추적 중인 폴더를 .git 으로 가는 링크로 바꿔도 그 안을 읽지 못해야 한다
+    await mkdir(path.join(repo, 'cfg'));
+    await writeFile(path.join(repo, 'cfg/config'), 'tracked\n');
+    execFileSync('git', ['-C', repo, 'add', 'cfg/config']);
+    await rm(path.join(repo, 'cfg'), { recursive: true });
+    await symlink(path.join(repo, '.git'), path.join(repo, 'cfg'));
   });
   afterAll(async () => {
     await rm(repo, { recursive: true, force: true });
@@ -29,7 +35,7 @@ describe('files', () => {
   });
 
   it('lists tracked and new files, never ignored ones', async () => {
-    expect(await listFiles(repo)).toEqual(['.gitignore', 'link.txt', 'logo.bin', 'new.md', 'src/app.ts', 'win.txt']);
+    expect(await listFiles(repo)).toEqual(['.gitignore', 'cfg', 'cfg/config', 'link.txt', 'logo.bin', 'new.md', 'src/app.ts', 'win.txt']);
     // 프로젝트 경로가 하위 폴더여도 맨 위 기준 (Git 상태의 바뀐 파일 경로와 맞춘다)
     expect(await listFiles(path.join(repo, 'src'))).toContain('src/app.ts');
     expect((await readText(path.join(repo, 'src'), 'new.md')).content).toBe('# 새 파일\n');
@@ -64,6 +70,7 @@ describe('files', () => {
     await expect(readText(repo, '.env')).rejects.toMatchObject({ status: 404 });
     await expect(readText(repo, '../' + path.basename(outside) + '/secret.txt')).rejects.toMatchObject({ status: 404 });
     await expect(readText(repo, 'link.txt')).rejects.toMatchObject({ status: 404 });
+    await expect(readText(repo, 'cfg/config')).rejects.toMatchObject({ status: 404 });
     await expect(readText(repo, 'logo.bin')).rejects.toMatchObject({ status: 415 });
     await expect(writeText(repo, '.env', 'x', 'v')).rejects.toMatchObject({ status: 404 });
     expect(await readFile(path.join(repo, '.env'), 'utf8')).toBe('SECRET=1\n');

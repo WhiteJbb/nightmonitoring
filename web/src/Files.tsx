@@ -112,9 +112,12 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const [conflict, setConflict] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 불러오는 동안은 고치지 못하게 한다 (응답이 그 사이 친 내용을 덮는다)
+  const [loading, setLoading] = useState(true);
 
-  const load = (keepDraft: boolean) =>
-    api.file(p.id, path).then(
+  const load = (keepDraft: boolean) => {
+    setLoading(true);
+    return api.file(p.id, path).then(
       (f) => {
         const draft = keepDraft ? loadDraft(key) : null;
         if (!keepDraft) store.set(key, null);
@@ -126,9 +129,14 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
         setNotice(draft ? '저장하지 않은 내용을 되살렸습니다' : null);
         setError(null);
         setConflict(false);
+        setLoading(false);
       },
-      (e: unknown) => setError(errorMessage(e)),
+      (e: unknown) => {
+        setError(errorMessage(e));
+        setLoading(false);
+      },
     );
+  };
   useEffect(() => {
     void load(true);
   }, [p.id, path]);
@@ -137,7 +145,8 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
   const edit = (value: string) => {
     setText(value);
     setNotice(null);
-    store.set(key, file && value === file.content && base === file.version ? null : JSON.stringify({ text: value, version: base } satisfies Draft));
+    // 저장하는 동안에는 지우지 않는다: 원래 내용으로 되돌려도 저장이 끝나면 그건 '안 저장한 내용'이 된다 (끝날 때 정리한다)
+    store.set(key, !saving && file && value === file.content && base === file.version ? null : JSON.stringify({ text: value, version: base } satisfies Draft));
   };
   const save = () => {
     if (!file || saving || !p.allowInput) return;
@@ -210,7 +219,7 @@ function Editor({ project: p, path, onClose }: { project: ProjectSnapshot; path:
           className="editor-text"
           aria-label={`${path} 내용`}
           value={text}
-          readOnly={!p.allowInput}
+          readOnly={!p.allowInput || loading}
           wrap="off"
           spellCheck={false}
           autoCapitalize="off"
