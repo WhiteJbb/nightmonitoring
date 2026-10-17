@@ -46,6 +46,7 @@ export const api = {
   hideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'POST'),
   unhideSession: (name: string) => req<{ ok: true }>(`/api/sessions/${encodeURIComponent(name)}/hide`, 'DELETE'),
   killSession: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}/session`, 'DELETE'),
+  deleteProject: (id: string) => req<{ ok: true }>(`/api/projects/${encodeURIComponent(id)}`, 'DELETE'),
   newWindow: (id: string, agent?: AgentKind) => req<{ pane: string }>(`/api/projects/${encodeURIComponent(id)}/windows`, 'POST', agent ? { agent } : {}),
   files: (id: string) => req<{ files: string[]; ignored: string[] }>(`/api/projects/${encodeURIComponent(id)}/files`),
   file: (id: string, path: string) => req<{ content: string; version: string }>(`/api/projects/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`),
