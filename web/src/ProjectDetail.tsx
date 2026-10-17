@@ -549,7 +549,7 @@ function useAway(): boolean {
  * 나란히 보기: 터미널들의 출력을 SSE 하나로 받아 pane 별로 나눠 준다. 브라우저는 http/1.1 에서 주소당 연결을 6개만 열어서
  * pane 마다 열면 입력 요청이 막힌다. 칸(Term)들이 먼저 등록하고, 연결은 그 뒤에 열린다 (자식 effect 가 먼저 돈다)
  */
-function useSharedFeed(projectId: string, paneIds: string, on: boolean, attempt: number): TermFeed {
+function useSharedFeed(projectId: string, paneIds: string, on: boolean, attempt: string): TermFeed {
   const listeners = useRef(new Map<string, { on: (e: TermEvent) => void; down: () => void }>());
   useEffect(() => {
     if (!on || !paneIds) return;
@@ -571,14 +571,14 @@ function useSharedFeed(projectId: string, paneIds: string, on: boolean, attempt:
 }
 
 /** 나란히 보기의 한 칸: 터미널 하나와 그 이름·연결 상태. 누르거나 키보드로 들어오면 입력 대상이 된다 */
-function SplitCell({ project: p, pane: x, no, selected, share, span, full, canFit, feed, onSelect, onReconnect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; share: number; span: number; full: boolean; canFit: boolean; feed: TermFeed; onSelect: () => void; onReconnect: () => void; onNotice: (msg: string) => void }) {
+function SplitCell({ project: p, pane: x, no, selected, cols, share, span, full, canFit, feed, onSelect, onReconnect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; cols: number; share: number; span: number; full: boolean; canFit: boolean; feed: TermFeed; onSelect: () => void; onReconnect: () => void; onNotice: (msg: string) => void }) {
   const viewRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<TermStatus>('connecting');
   const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
   const [fitError, setFitError] = useState<string | null>(null);
   // 붙어 있는 터미널이 없으면 이 칸 크기에 맞춘다. 칸 배치(전체 화면, 칸 수에 따른 높이·폭)가 바뀌면 다시. 첫 화면이 그려진 뒤에 잰다
   const fittedFor = useRef<string | null>(null);
-  const layoutKey = `${full}:${share}:${span}`;
+  const layoutKey = `${full}:${cols}:${share}:${span}`;
   useEffect(() => {
     if (!canFit || !size || fittedFor.current === layoutKey) return;
     const timer = setTimeout(() => {
@@ -682,8 +682,10 @@ export function TerminalTab({ project: p, now }: Props) {
   // 탭을 앞에 띄워 둔 채 자리를 비워도 마찬가지로 닫는다
   const away = useAway();
   // 나란히 보기의 연결. 다시 연결하면 칸의 터미널도 새로 만들어 첫 화면부터 받는다
+  // 입력 허용이 바뀌면 칸의 터미널을 새로 만드므로 연결도 새로 열어 첫 화면을 다시 받는다
   const [feedAttempt, setFeedAttempt] = useState(0);
-  const feed = useSharedFeed(p.id, t.panes.map((x) => x.id).join(','), splitOn && visible && !away, feedAttempt);
+  const feedKey = `${feedAttempt}:${p.allowInput}`;
+  const feed = useSharedFeed(p.id, t.panes.map((x) => x.id).join(','), splitOn && visible && !away, feedKey);
   // 터미널에서 복사·이미지 붙여넣기의 결과를 잠깐 보여 준다
   const [notice, setNotice] = useState<string | null>(null);
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -926,7 +928,7 @@ export function TerminalTab({ project: p, now }: Props) {
             {visible && !away ? (
               t.panes.map((x, i) => (
                 // 마지막 줄이 덜 차면 마지막 칸이 남은 자리를 채운다
-                <SplitCell key={`${x.id}:${feedAttempt}`} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} feed={feed} onSelect={() => setPaneId(x.id)} onReconnect={() => setFeedAttempt(feedAttempt + 1)} onNotice={showNotice} />
+                <SplitCell key={`${x.id}:${feedKey}`} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} cols={grid.cols} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} feed={feed} onSelect={() => setPaneId(x.id)} onReconnect={() => setFeedAttempt(feedAttempt + 1)} onNotice={showNotice} />
               ))
             ) : (
               <p className="dim term-paused">{pausedText}</p>

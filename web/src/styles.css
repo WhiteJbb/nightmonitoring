@@ -1027,9 +1027,14 @@ pre {
   flex-direction: column;
   border-radius: 0;
 }
-.term-frame.full .term-view {
+.term-frame.full .term-view,
+.term-frame.full .split {
   flex: 1;
   overflow: auto;
+}
+/* 나란히 보기의 칸 안에서는 늘어나지 않는다 (넘치면 바깥 격자가 스크롤) */
+.term-frame.full .split .term-view {
+  flex: none;
 }
 @media (pointer: coarse) {
   .full-toggle {
