@@ -707,11 +707,11 @@ export function TerminalTab({ project: p, now }: Props) {
     // 첫 화면이 그려진 뒤에 재야 실제 칸 폭을 쓴다
     const timer = setTimeout(() => {
       autoFitted.current = pane.id;
-      const want = fitSize(viewRef.current);
+      const want = fitSize(viewRef.current, full);
       if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, pane.id, want).catch((e: unknown) => setFitError(errorMessage(e)));
     }, 300);
     return () => clearTimeout(timer);
-  }, [splitOn, canFit, pane, size, p.id]);
+  }, [splitOn, canFit, pane, size, full, p.id]);
 
   if (!t.configured) {
     return (
