@@ -110,8 +110,8 @@ export function useDismiss(ref: RefObject<HTMLElement | null>, open: boolean, cl
   }, [ref, open]);
 }
 
-// 복사·잘라내기 한 것. 편집기를 열었다 돌아와도 남게 모듈에 둔다
-let clipboard: { path: string; cut: boolean } | null = null;
+// 복사·잘라내기 한 것. 편집기를 열었다 돌아와도 남게 모듈에 둔다. 다른 프로젝트에 붙이지 않게 어디 것인지(scope)도 둔다
+let clipboard: { scope: string; path: string; cut: boolean } | null = null;
 /** 끌어서 옮길 때 실어 보내는 종류 */
 const DRAG_TYPE = 'application/x-nightshift-path';
 
@@ -148,17 +148,25 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       return [];
     }
   });
-  const rememberDir = (dir: string) => {
-    const next = [...new Set([...emptyDirs, dir])];
+  const saveDirs = (next: string[]) => {
     setEmptyDirs(next);
     store.set(emptyKey, JSON.stringify(next));
+  };
+  /** 지우거나 옮기거나 복사한 뒤 빈 폴더 기억을 맞춘다 (Git 목록으로는 바로잡을 수 없다) */
+  const followDirs = (op: FsOp, path: string, to?: string) => {
+    const from = path.endsWith('/') ? path : `${path}/`;
+    const dest = to && `${to.replace(/\/+$/, '')}/`;
+    const under = (d: string) => d.startsWith(from);
+    if (op === 'delete') saveDirs(emptyDirs.filter((d) => !under(d)));
+    else if (op === 'move' && dest) saveDirs(emptyDirs.map((d) => (under(d) ? dest + d.slice(from.length) : d)));
+    else if (op === 'copy' && dest) saveDirs([...new Set([...emptyDirs, ...emptyDirs.filter(under).map((d) => dest + d.slice(from.length))])]);
   };
   // 파일 다루기: 입력 허용 프로젝트만 (서버도 같은 조건으로 막는다)
   const canEdit = p.allowInput;
   const [menu, setMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   useDismiss(menuRef, menu !== null, () => setMenu(null));
-  const [clip, setClip] = useState(clipboard);
+  const [clip, setClip] = useState(clipboard?.scope === scopeOf(p) ? clipboard : null);
   const [opError, setOpError] = useState<string | null>(null);
   const [dropOn, setDropOn] = useState<string | null>(null);
 
@@ -197,6 +205,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     setOpError(null);
     try {
       await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
+      followDirs(op, path, to);
       setRefresh((n) => n + 1);
       return true;
     } catch (e) {
@@ -214,7 +223,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     if (!name) return;
     const path = `${dir}${name.replace(/\/+$/, '')}/`;
     if (await act('newDir', path)) {
-      rememberDir(path);
+      saveDirs([...new Set([...emptyDirs, path])]);
       setOpenDirs(new Set([...open, ...(dir ? [dir] : []), path]));
     }
   };
@@ -227,13 +236,13 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     if (window.confirm(`"${path}" 을(를) 지울까요?\n지운 것은 .git/nightshift-trash 에 7일 동안 남습니다.${untracked}`)) await act('delete', path);
   };
   const copy = (path: string, cut: boolean) => {
-    clipboard = { path, cut };
+    clipboard = { scope: scopeOf(p), path, cut };
     setClip(clipboard);
     setMenu(null);
   };
   /** dir 안으로 붙여넣기. 복사는 같은 이름이 있으면 "이름 copy" 로, 잘라내기는 옮긴다 */
   const paste = async (dir: string) => {
-    if (!clipboard) return;
+    if (!clipboard || clipboard.scope !== scopeOf(p)) return;
     const { path, cut } = clipboard;
     const name = baseName(path);
     if (cut) {
@@ -248,7 +257,9 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     // 같은 이름이 있으면 409: 다음 이름으로
     for (let n = 0; n < 20; n++) {
       try {
-        await api.fsOp(p.id, { op: 'copy', path, to: dir + (n === 0 ? name : copyName(name, n)) });
+        const to = dir + (n === 0 ? name : copyName(name, n));
+        await api.fsOp(p.id, { op: 'copy', path, to });
+        followDirs('copy', path, to);
         return setRefresh((k) => k + 1);
       } catch (e) {
         if (!(e instanceof ApiError && e.status === 409)) return setOpError(errorMessage(e));
@@ -257,7 +268,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
     setOpError('같은 이름이 너무 많습니다');
   };
   const duplicate = async (path: string) => {
-    clipboard = { path, cut: false };
+    clipboard = { scope: scopeOf(p), path, cut: false };
     await paste(parentOf(path));
     clipboard = clip;
   };
@@ -312,20 +323,20 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       </div>
     );
   };
-  // 행 끝의 ⋯ 와 그 메뉴. 우클릭도 같은 메뉴를 연다
-  const actions = (path: string) =>
+  // 행 끝의 ⋯ 와 그 메뉴. 우클릭도 같은 메뉴를 연다. 같은 파일이 '바뀐 파일'과 트리에 다 있으니 어느 쪽 행인지(where)로 가른다
+  const actions = (path: string, where: string) =>
     canEdit && (
       <>
-        <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === path} onClick={() => setMenu(menu === path ? null : path)}>
+        <button type="button" className="row-more" aria-label={`${path} 메뉴`} aria-haspopup="menu" aria-expanded={menu === where + path} onClick={() => setMenu(menu === where + path ? null : where + path)}>
           ⋯
         </button>
-        {menu === path && menuFor(path)}
+        {menu === where + path && menuFor(path)}
       </>
     );
-  const onContext = (path: string) => (e: MouseEvent) => {
+  const onContext = (path: string, where: string) => (e: MouseEvent) => {
     if (!canEdit) return;
     e.preventDefault();
-    setMenu(path);
+    setMenu(where + path);
   };
 
   const q = query.trim().toLowerCase();
@@ -333,8 +344,8 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   // 지운 파일은 열 수 없으니 뺀다
   const changed = p.git.changedFiles.filter((f) => known.has(f.path));
   const unsaved = (path: string) => store.get(draftKey(scopeOf(p), path)) !== null;
-  const item = (path: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
-    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path)} {...dragProps(path)}>
+  const item = (path: string, where: string, { status, label = path, depth = 0 }: { status?: string; label?: string; depth?: number } = {}) => (
+    <li key={path} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, where)} {...dragProps(path)}>
       {status !== undefined && <span className="xy">{status}</span>}
       <button type="button" className={ignored.has(path) ? 'file-link dim' : 'file-link'} onClick={() => onOpen(path)}>
         {label}
@@ -342,7 +353,7 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       {ignored.has(path) && <span className="dim">무시됨</span>}
       {unsaved(path) && <span className="warn">저장 안 함</span>}
       {clip?.path === path && <span className="dim">{clip.cut ? '잘라냄' : '복사함'}</span>}
-      {actions(path)}
+      {actions(path, where)}
     </li>
   );
   // 폴더를 먼저, 그다음 파일. 펼친 폴더만 그 안을 그린다
@@ -351,18 +362,18 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       const path = `${prefix}${name}/`;
       const isOpen = open.has(path);
       return [
-        <li key={path} className={dropOn === path ? 'drop' : undefined} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path)} {...dragProps(path)} {...dropProps(path)}>
+        <li key={path} className={dropOn === path ? 'drop' : undefined} style={depth ? { paddingLeft: depth * 18 } : undefined} onContextMenu={onContext(path, 'tree:')} {...dragProps(path)} {...dropProps(path)}>
           <button type="button" className="file-link folder" aria-expanded={isOpen} onClick={() => toggle(path)}>
             {isOpen ? '▾' : '▸'} {name}/
           </button>
           {clip?.path === path && <span className="dim">{clip.cut ? '잘라냄' : '복사함'}</span>}
-          {actions(path)}
+          {actions(path, 'tree:')}
         </li>,
         ...(isOpen ? rows(dir.dirs.get(name)!, path, depth + 1) : []),
       ];
     }),
     // 한 폴더에 파일이 아주 많으면 앞의 것만 (나머지는 이름으로 찾는다)
-    ...dir.files.slice(0, SHOWN).map((f) => item(f, { label: baseName(f), depth })),
+    ...dir.files.slice(0, SHOWN).map((f) => item(f, 'tree:', { label: baseName(f), depth })),
     ...(dir.files.length > SHOWN
       ? [
           <li key={`${prefix}…`} className="hint" style={{ paddingLeft: depth * 18 }}>
@@ -402,14 +413,14 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
       {!q && changed.length > 0 && (
         <section>
           <h3>바뀐 파일 ({changed.length})</h3>
-          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, { status: f.status }))}</ul>
+          <ul className="rows">{changed.slice(0, SHOWN).map((f) => item(f.path, 'changed:', { status: f.status }))}</ul>
           {changed.length > SHOWN && <p className="hint">{changed.length - SHOWN}개 더 있습니다. 이름으로 찾아 좁히세요.</p>}
         </section>
       )}
       {q ? (
         <section>
           <h3>찾은 파일 ({matches.length})</h3>
-          <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f))}</ul>
+          <ul className="rows">{matches.slice(0, SHOWN).map((f) => item(f, 'found:'))}</ul>
           {matches.length > SHOWN && <p className="hint">{matches.length - SHOWN}개 더 있습니다. 이름으로 더 좁히세요.</p>}
         </section>
       ) : (

@@ -198,6 +198,11 @@ async function toTrash(repo: string, abs: string, rel: string, now = Date.now())
 /** 파일 다루기 하나. to 는 move·copy 에서 새 경로 */
 export async function fsOp(repo: string, op: FsOp | unknown, rel: unknown, to?: unknown): Promise<void> {
   const src = await target(repo, rel);
+  // ponytail: 저장소 하나의 파일 다루기는 하나씩 (있는지 보고 옮기는 사이 다른 요청이 같은 자리를 덮지 않게). 드문 일이라 이걸로 충분하다
+  return oneAtATime(`fs:${await rootOf(repo)}`, () => applyOp(repo, op, src, to));
+}
+
+async function applyOp(repo: string, op: unknown, src: { abs: string; rel: string }, to: unknown): Promise<void> {
   try {
     if (op === 'newFile' || op === 'newDir') {
       if (await exists(src.abs)) throw new FileError('이미 있습니다', 409);
