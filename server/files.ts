@@ -119,11 +119,12 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   if (typeof content !== 'string' || typeof version !== 'string') throw new FileError('내용과 지문이 필요합니다', 400);
   const buf = Buffer.from(content, 'utf8');
   if (buf.length > MAX_FILE_BYTES) throw new FileError('1MB 보다 큰 파일은 저장하지 않습니다', 413);
-  const abs = await resolve(repo, rel, ignoredOk);
-  const changed = async () => versionOf(await readFile(abs)) !== version;
   const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
-  // 파일 다루기(옮기기·지우기)와 같은 줄에 선다: 저장 직전 확인과 바꿔 끼우기 사이에 파일이 옮겨지면 옛 이름으로 되살아난다
+  // 파일 다루기(옮기기·지우기)와 같은 줄에 선다: 저장 직전 확인과 바꿔 끼우기 사이에 파일이 옮겨지면 옛 이름으로 되살아난다.
+  // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
   return oneAtATime(`fs:${await rootOf(repo)}`, async () => {
+    const abs = await resolve(repo, rel, ignoredOk);
+    const changed = async () => versionOf(await readFile(abs)) !== version;
     if (await changed()) throw conflict();
     // 옆에 다 쓴 뒤 바꿔 끼운다: 쓰다 실패해도(디스크 가득 등) 원래 파일은 그대로다. 권한은 원래 것을 따른다
     const { mode } = await stat(abs);
