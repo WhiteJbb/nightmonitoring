@@ -394,14 +394,24 @@ test('+ 새 터미널 opens a window and switches to it once the snapshot has it
   serve(() => json(200, { pane: '%13' }));
   const { rerender } = await renderTab(project(ONE));
   fireEvent.click(screen.getByRole('button', { name: '+ 새 터미널' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: '셸만' }));
   await tick();
-  expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/windows', { method: 'POST' });
+  expect(posts()).toEqual([['/api/projects/api/windows', {}]]);
+  expect(screen.queryByRole('menu')).toBeNull();
   // 스냅샷에 들어오기 전에는 보던 pane 그대로 ("사라진 pane" 경고 없이)
   expect(es().url).toBe('/api/projects/api/term/%2512');
   rerender(<TerminalTab project={project([...ONE, pane('%13', 0, false, [])])} now={NOW} />);
   await tick();
   expect(es().url).toBe('/api/projects/api/term/%2513');
   expect(screen.queryByRole('alert')).toBeNull();
+  // 에이전트를 고르면 같이 보낸다. 바깥을 누르면 메뉴만 닫힌다
+  fireEvent.click(screen.getByRole('button', { name: '+ 새 터미널' }));
+  fireEvent.pointerDown(document.body);
+  expect(screen.queryByRole('menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: '+ 새 터미널' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Codex' }));
+  await tick();
+  expect(posts().at(-1)).toEqual(['/api/projects/api/windows', { agent: 'codex' }]);
   cleanup();
   await renderTab(project(ONE, false));
   expect(screen.queryByRole('button', { name: '+ 새 터미널' })).toBeNull();

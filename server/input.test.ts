@@ -191,14 +191,17 @@ describe('terminal API', () => {
 
   it('opens another shell window under the input rules and returns its pane', async () => {
     const { base, terminal } = await start();
-    const open = (id: string) => fetch(`${base}/${id}/windows`, { method: 'POST' });
+    const open = (id: string, body: unknown = {}) => fetch(`${base}/${id}/windows`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const ok = await open('open');
     expect(ok.status).toBe(200);
     expect(await ok.json()).toEqual({ pane: '%9' });
-    expect(terminal.newWindow).toHaveBeenCalledExactlyOnceWith('a', '/r/open');
+    expect(terminal.newWindow).toHaveBeenCalledExactlyOnceWith('a', '/r/open', undefined);
+    expect((await open('open', { agent: 'codex' })).status).toBe(200);
+    expect(terminal.newWindow).toHaveBeenLastCalledWith('a', '/r/open', 'codex');
+    expect((await open('open', { agent: 'rm -rf ~' })).status).toBe(400); // 정해진 에이전트만
     expect((await open('closed')).status).toBe(403); // allowInput 꺼짐
     expect((await open('nope')).status).toBe(404);
-    expect(terminal.newWindow).toHaveBeenCalledOnce();
+    expect(terminal.newWindow).toHaveBeenCalledTimes(2);
   });
 
   it('closes a pane of the project under the input rules', async () => {

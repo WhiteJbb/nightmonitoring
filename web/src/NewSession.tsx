@@ -24,7 +24,7 @@ export const sessionNameFrom = (name: string) =>
     .replace(/^[-$=@%]+|-+$/g, '');
 
 /** 대시보드에서 새 tmux 세션을 만들고 바로 프로젝트로 등록하는 접이식 폼. */
-const AGENTS: [AgentKind | '', string][] = [
+export const AGENTS: [AgentKind | '', string][] = [
   ['', '셸만'],
   ['claude', 'Claude Code'],
   ['codex', 'Codex'],
