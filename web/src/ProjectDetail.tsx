@@ -785,8 +785,8 @@ export function TerminalTab({ project: p, now }: Props) {
           <QuickAnswers project={p} />
         </div>
       )}
-      {/* 좁은 화면에서는 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게 */}
-      <div className={showInfo ? 'term-info open' : 'term-info'}>
+      {/* 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게. 펼칠 버튼이 없으면(pane 없음) 펼쳐 둔다 */}
+      <div className={showInfo || !pane ? 'term-info open' : 'term-info'}>
         {t.attachCommand && (
           <div className="cmdline">
             <code>{t.attachCommand}</code>
