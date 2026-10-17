@@ -494,6 +494,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | 카드가 "저장소 경로가 존재하지 않습니다" | `repoPath` 오타, `~` 경로 확인 |
 | 카드가 "Git 저장소가 아닙니다" | 오류로 치지는 않음. Git 정보도 보려면 해당 경로에서 `git status`가 되는지 확인 |
 | "tmux 세션이 종료되었거나 없습니다" | `tmux ls`의 세션 이름과 `tmuxSession`이 정확히 같은지 확인. 세션 없는 프로젝트를 오류로 보고 싶지 않으면 `sessionExitIsError: false` |
+| launchd로 띄웠더니 다운로드·문서·데스크탑 폴더의 프로젝트가 "Git 이 응답하지 않습니다" | macOS가 그 폴더 접근을 막고 있음. 시스템 설정 → 개인정보 보호 및 보안 → **전체 디스크 접근 권한**에서 `+`를 누르고 ⌘⇧G로 node의 실제 경로(`readlink -f $(which node)`, Homebrew는 node를 올리면 경로가 바뀜)를 추가한 뒤 `launchctl kickstart -k gui/$(id -u)/com.nightshift` |
 | launchd로 띄웠더니 tmux 세션이 안 보임 | plist의 `PATH`에 `tmux`가 있는 디렉터리(Homebrew는 `/opt/homebrew/bin`)가 있는지 확인. `.nightshift/server.log` 확인 |
 | 터미널 출력이 비어 있음 | 세션의 활성 pane이 비어 있는지 확인 (`tmux capture-pane -p -t =세션이름:`) |
 | 로그 때문에 계속 오류로 표시됨 | Git 탭에서 "확인 처리", 또는 `errorIgnorePatterns`에 제외할 문구 추가, `errorPatterns`를 정규식으로 좁히기 |
