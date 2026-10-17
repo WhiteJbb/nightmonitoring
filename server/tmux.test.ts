@@ -156,6 +156,9 @@ describe('pattern helpers', () => {
     expect(isBusy(['❯ ', '─────', '  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents'], p)).toBe(false);
     expect(isBusy(['본문에 esc to interrupt 라고 썼다', 'a', 'b', 'c', 'd', 'e', 'f'], p)).toBe(false);
     expect(isBusy(['esc to interrupt'], [])).toBe(false);
+    expect(isBusy(['❯ ', '─────', '  ⏵⏵ auto mode on · 1 shell · esc to interrup…'], p)).toBe(true);
+    expect(isBusy(['• Working (12s • esc to…'], p)).toBe(true);
+    expect(isBusy(['  ⏵⏵ auto mode on · 1 shell · ↓ to manag…'], p)).toBe(false);
   });
 
   it('finds the agent behind a node pane from ps output', () => {

@@ -38,7 +38,13 @@ const PROMPT_SCAN_LINES = 15;
 export function isBusy(lines: string[], patterns: string[]): boolean {
   if (!patterns.length) return false;
   const match = compileMatcher(patterns);
-  return lines.filter((l) => l.trim() !== '').slice(-6).some(match);
+  // 좁은 화면(휴대폰)에선 상태 줄이 "esc to interrup…" 처럼 잘린다. 잘린 끝이 표시의 앞부분(5자 이상)이면 같은 것으로 본다
+  const needles = patterns.filter((p) => !/^\/.+\/[a-z]*$/.test(p)).map((p) => p.toLowerCase());
+  const cut = (line: string) => {
+    const m = /^(.*?)\s*…\s*$/.exec(line.toLowerCase());
+    return !!m && needles.some((n) => [...Array(n.length).keys()].some((k) => k >= 5 && m[1]!.endsWith(n.slice(0, k))));
+  };
+  return lines.filter((l) => l.trim() !== '').slice(-6).some((l) => match(l) || cut(l));
 }
 const CHOICE_RE = /^[\s│┃║▌]*(?:[❯›>]\s*)?([1-9])[.)]\s+(.+?)[\s│┃║]*$/;
 /** 프롬프트 줄부터 아래로 "1. Yes" 같은 번호 선택지를 모은다 (같은 번호는 처음 것만). */
