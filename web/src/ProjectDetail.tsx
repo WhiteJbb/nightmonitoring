@@ -91,7 +91,7 @@ export function ProjectDetail({ project: p, now, refreshSec }: Props) {
         {p.id.startsWith('tmux:') && <Register project={p} />}
         {tabs}
         {/* 세션 끝내기·삭제는 드물고 되돌릴 수 없어 머리 오른쪽 끝에 따로 둔다. key 로 바뀔 때 오류 표시를 지운다 */}
-        {p.tmuxSession && !p.id.startsWith('tmux:') && (p.allowInput || !p.tmux.exists) && <EndSession key={String(p.tmux.exists)} project={p} />}
+        {p.tmuxSession && !p.id.startsWith('tmux:') && <EndSession key={String(p.tmux.exists)} project={p} />}
       </div>
       <div className="detail-meta">
         <Reasons reasons={p.status.reasons} />
@@ -855,7 +855,7 @@ export function TerminalTab({ project: p, now }: Props) {
                         <span className="dim">{paneNo(x, t.panes)}</span> {progName(x)}
                       </button>
                       {/* 마지막 하나는 닫으면 세션이 끝나므로 세션 종료 버튼에 맡긴다 */}
-                      {p.allowInput && t.panes.length > 1 && (
+                      {t.panes.length > 1 && (
                         <button type="button" className="close" aria-label={`터미널 ${paneNo(x, t.panes)} 닫기`} title="이 터미널 닫기" onClick={() => closePane(x)}>
                           ✕
                         </button>
