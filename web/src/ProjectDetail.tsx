@@ -667,6 +667,7 @@ export function TerminalTab({ project: p, now }: Props) {
   }, [opened, t.panes]);
   const [showInfo, setShowInfo] = useState(false);
   const infoRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
   useDismiss(infoRef, showInfo, () => setShowInfo(false));
   const [fitting, setFitting] = useState(false);
   const [fitError, setFitError] = useState<string | null>(null);
@@ -796,7 +797,7 @@ export function TerminalTab({ project: p, now }: Props) {
   const waitingBelow = finePointer();
   // 세션 정보: 버튼이 있으면 터미널 위에 떠서 펼친다 (터미널 크기·자리를 바꾸지 않게). 버튼이 없으면(pane 없음) 펼쳐 둔다
   const info = (
-    <div className={pane ? 'term-info pop' : 'term-info'} ref={infoRef}>
+    <div className={pane ? 'term-info pop' : 'term-info'} ref={infoRef} style={pane ? { top: (barRef.current?.offsetHeight ?? 46) + 6 } : undefined}>
       {t.attachCommand && (
         <div className="cmdline">
           <code>{t.attachCommand}</code>
@@ -832,9 +833,11 @@ export function TerminalTab({ project: p, now }: Props) {
       {!pane && info}
       {t.error && <p className="err mono wrap">{t.error}</p>}
       <div className="term-wrap">
+        {/* 터미널 틀 밖에 띄운다: 틀은 넘치는 것을 자르고 글자색을 어둡게 고정한다. 자리는 바 바로 아래 (바가 몇 줄이든) */}
+        {pane && showInfo && info}
         <div className={full ? 'term-frame full' : 'term-frame'} ref={frameRef}>
           {pane && (
-            <div className="term-bar">
+            <div className="term-bar" ref={barRef}>
               {(t.panes.length > 1 || lost || p.allowInput) && (
                 <div className="panes" role="group" aria-label="pane 선택">
                   {t.panes.map((x) => (
@@ -942,8 +945,6 @@ export function TerminalTab({ project: p, now }: Props) {
                   다시 연결
                 </button>
               )}
-              {/* 바 바로 아래로 펼친다 (바가 몇 줄이든) */}
-              {showInfo && info}
             </div>
           )}
           {splitOn ? (
