@@ -117,11 +117,12 @@ describe('logInput', () => {
 
 describe('terminal API', () => {
   let attached = false;
+  let gone = false; // pane 이 tmux 에서 사라졌다
   const pane = (id: string) => ({ id, window: 0, windowName: 'w', index: 0, command: 'zsh', active: true, lines: [`snapshot ${id}`] });
   const collector: Collector = {
     git: async () => ({ ok: true, branch: 'main', head: 'h', clean: true, changedFiles: [], diffStat: [], additions: 0, deletions: 0, recentCommits: [], todayCommits: [], fingerprint: 'h' }),
     since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
-    tmux: async (projects) => new Map(projects.map((p, i) => [p.id, { configured: true, exists: true, createdAt: null, attached, lastActivityAt: null, output: [], panes: [pane(`%${i + 1}`)], waitingPrompt: null, attachCommand: null }])),
+    tmux: async (projects) => new Map(projects.map((p, i) => [p.id, { configured: true, exists: true, createdAt: null, attached, lastActivityAt: null, output: [], panes: gone ? [] : [pane(`%${i + 1}`)], waitingPrompt: null, attachCommand: null }])),
     logErrors: async () => NO_LOG,
   };
   const servers: { close: () => void }[] = [];
@@ -204,14 +205,14 @@ describe('terminal API', () => {
     expect(terminal.newWindow).toHaveBeenCalledTimes(2);
   });
 
-  it('closes a pane of the project under the input rules', async () => {
+  it('closes a pane of the project, input allowed or not', async () => {
     const { base, terminal } = await start();
     const close = (id: string, pane: string) => fetch(`${base}/${id}/panes/${encodeURIComponent(pane)}`, { method: 'DELETE' });
     expect((await close('open', '%1')).status).toBe(200);
     expect(terminal.killPane).toHaveBeenCalledExactlyOnceWith('%1');
     expect((await close('open', '%2')).status).toBe(404); // 남의 pane
-    expect((await close('closed', '%2')).status).toBe(403); // allowInput 꺼짐
-    expect(terminal.killPane).toHaveBeenCalledOnce();
+    expect((await close('closed', '%2')).status).toBe(200); // 입력이 꺼진 프로젝트도 닫을 수 있다 (글자를 보내지 않는다)
+    expect(terminal.killPane).toHaveBeenLastCalledWith('%2');
   });
 
   it('streams several panes of the project over one SSE, each event tagged with its pane', async () => {
@@ -273,6 +274,15 @@ describe('terminal API', () => {
     expect(terminal.resize).toHaveBeenCalledExactlyOnceWith('%1', { cols: 96, rows: 30 });
     expect((await fit('closed', '%2', { cols: 96, rows: 30 })).status).toBe(200); // 입력이 꺼진 프로젝트도 크기는 맞춘다 (글자를 보내지 않는다)
     expect((await fit('open', '%2', { cols: 96, rows: 30 })).status).toBe(404); // 남의 pane
+    // 맞추는 사이 pane 이 닫혔으면 할 일이 없을 뿐이다. 아직 있는데 실패하면 오류
+    terminal.resize.mockResolvedValueOnce('no such pane');
+    expect((await fit('open', '%1', { cols: 90, rows: 30 })).status).toBe(500);
+    terminal.resize.mockImplementationOnce(async () => {
+      gone = true;
+      return "can't find pane: %1";
+    });
+    expect((await fit('open', '%1', { cols: 90, rows: 30 })).status).toBe(200);
+    gone = false;
     attached = true;
     const again = await start();
     const res = await fetch(`${again.base}/open/panes/%251/fit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{"cols":96,"rows":30}' });
@@ -388,10 +398,10 @@ describe('session API', () => {
     expect(loadConfig(file, '/base').config.projects[0]!.testCommand).toBe('npm test');
   });
 
-  it('ending a session needs the same permission as input', async () => {
+  it('ends a session whether or not input is allowed', async () => {
     const { post } = await start();
     expect((await post('/projects/nope/session', undefined, 'DELETE'))[0]).toBe(404);
-    expect((await post('/projects/old/session', undefined, 'DELETE'))[0]).toBe(403); // 입력이 꺼진 프로젝트
+    expect(await post('/projects/old/session', undefined, 'DELETE')).toEqual([200, { ok: true }]); // 입력이 꺼진 프로젝트
   });
 
   it('starts only a known agent in the new session', async () => {
