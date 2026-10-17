@@ -209,8 +209,9 @@ export async function fsOp(repo: string, op: FsOp | unknown, rel: unknown, to?: 
     if (op === 'delete') return void (await toTrash(repo, src.abs, src.rel));
     if (op !== 'move' && op !== 'copy') throw new FileError('알 수 없는 작업입니다', 400);
     const dst = await target(repo, to);
-    if (inside(dst.rel, src.rel)) throw new FileError('자기 안으로는 옮기거나 복사할 수 없습니다', 400);
+    // 같은 자리면 '이미 있음'(409): 붙여넣기는 그걸 보고 "이름 copy" 로 다시 시도한다
     if (await exists(dst.abs)) throw new FileError(`이미 있습니다: ${dst.rel}`, 409);
+    if (inside(dst.rel, src.rel)) throw new FileError('자기 안으로는 옮기거나 복사할 수 없습니다', 400);
     await mkdir(path.dirname(dst.abs), { recursive: true });
     if (op === 'move') await rename(src.abs, dst.abs);
     else await cp(src.abs, dst.abs, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });

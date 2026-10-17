@@ -105,6 +105,7 @@ describe('files', () => {
     await fsOp(repo, 'move', 'docs-copy/guide/intro.md', 'notes/intro.md');
     expect(await readFile(at('notes/intro.md'), 'utf8')).toBe('hello\n');
     await expect(fsOp(repo, 'move', 'docs', 'docs/inner')).rejects.toMatchObject({ status: 400 }); // 자기 안으로
+    await expect(fsOp(repo, 'copy', 'notes/intro.md', 'notes/intro.md')).rejects.toMatchObject({ status: 409 }); // 제자리 복사는 '이미 있음'
     await expect(fsOp(repo, 'move', 'notes/intro.md', 'new.md')).rejects.toMatchObject({ status: 409 }); // 덮어쓰지 않는다
     await fsOp(repo, 'delete', 'docs');
     await expect(stat(at('docs'))).rejects.toThrow();
