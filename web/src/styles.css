@@ -1119,10 +1119,16 @@ pre {
   z-index: 30;
   width: min(640px, calc(100% - 24px));
   padding: 14px 16px;
+  color: var(--text);
   background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 18px;
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+}
+/* 터미널 바 안에 있어도 바의 어두운 단추 색 대신 페이지 테마 색 (밝은 테마에서 흰 글자가 안 보이지 않게) */
+.term-bar .term-info.pop button {
+  color: var(--text);
+  background: var(--s2);
 }
 .term-info.pop .kv.inline {
   margin-bottom: 0;
