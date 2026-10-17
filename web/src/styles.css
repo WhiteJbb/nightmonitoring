@@ -1068,7 +1068,8 @@ pre {
   overflow-wrap: anywhere;
   overflow-x: hidden;
 }
-.info-toggle {
+/* 세션 정보(tmux attach 명령·생성 시각 등)는 접어 둔다: 터미널이 화면 위쪽부터 다 보이게 */
+.term-info:not(.open) {
   display: none;
 }
 .panes {
@@ -1844,9 +1845,6 @@ fieldset.checks legend {
   }
 }
 @media (max-width: 720px) {
-  .term-info:not(.open) {
-    display: none;
-  }
   /* 세션 정보는 한 줄에 못 들어가 이름과 값이 따로 꺾이므로, 좁으면 표 모양으로 */
   .kv.inline {
     display: grid;
@@ -1854,9 +1852,6 @@ fieldset.checks legend {
   }
   .kv.inline dd {
     margin-right: 0;
-  }
-  .info-toggle {
-    display: inline-block;
   }
   /* 휴대폰: 위 띠를 한 줄로 줄이고 따라다니지 않게 한다. 터미널과 입력칸이 한 화면에 들어오게 */
   .side {

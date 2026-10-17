@@ -628,8 +628,10 @@ export function TerminalTab({ project: p, now }: Props) {
   const viewRef = useRef<HTMLDivElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
   // 휴대폰에선 터미널 탭을 열면 터미널 틀을 화면 맨 위로 올린다: 터미널과 입력칸이 한 화면에 들어온다
+  // 컴퓨터에선 맨 위로: 터미널 높이를 화면 끝까지로 잡으므로, 다른 프로젝트에서 내려 둔 스크롤이 남으면 아래가 잘린다
   useEffect(() => {
     if (window.matchMedia?.('(max-width: 720px)').matches) frameRef.current?.scrollIntoView?.({ block: 'start' });
+    else if (window.matchMedia?.('(pointer: fine)').matches) window.scrollTo({ top: 0 });
   }, []);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
   const [paneId, setPaneId] = useState<string | null>(null);
@@ -783,8 +785,8 @@ export function TerminalTab({ project: p, now }: Props) {
           <QuickAnswers project={p} />
         </div>
       )}
-      {/* 좁은 화면에서는 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게 */}
-      <div className={showInfo ? 'term-info open' : 'term-info'}>
+      {/* 접혀 있다가 "세션 정보"로 펼친다: 터미널이 화면 위쪽을 차지하게. 펼칠 버튼이 없으면(pane 없음) 펼쳐 둔다 */}
+      <div className={showInfo || !pane ? 'term-info open' : 'term-info'}>
         {t.attachCommand && (
           <div className="cmdline">
             <code>{t.attachCommand}</code>
