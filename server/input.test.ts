@@ -226,6 +226,15 @@ describe('terminal API', () => {
     expect((await fetch(`${base}/open/terms`)).status).toBe(404);
   });
 
+  it('file saves follow the input rules; unknown projects are 404', async () => {
+    const { base } = await start();
+    const put = (id: string, headers: Record<string, string> = {}) => fetch(`${base}/${id}/file`, { method: 'PUT', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify({ path: 'a', content: 'x', version: 'v' }) });
+    expect((await put('closed')).status).toBe(403); // allowInput 꺼짐
+    expect((await put('open', { Origin: 'https://evil.example' })).status).toBe(403);
+    expect((await put('nope')).status).toBe(404);
+    expect((await fetch(`${base}/nope/files`)).status).toBe(404);
+  });
+
   it('stores an uploaded image under the same rules as input and returns its path', async () => {
     const { base, terminal } = await start();
     const upload = (id: string, body: unknown) => fetch(`${base}/${id}/upload`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
