@@ -1852,6 +1852,8 @@ fieldset.checks legend {
 @media (max-width: 900px) {
   .shell {
     grid-template-columns: minmax(0, 1fr);
+    /* 본문이 화면보다 짧으면(꺼진 세션 등) 남는 높이가 위 띠 줄까지 늘리지 않게 위로 붙인다 */
+    align-content: start;
   }
   .hud {
     display: none;
