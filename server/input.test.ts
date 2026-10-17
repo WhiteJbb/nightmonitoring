@@ -271,7 +271,7 @@ describe('terminal API', () => {
     const fit = (id: string, paneId: string, body: unknown) => fetch(`${base}/${id}/panes/${encodeURIComponent(paneId)}/fit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     expect((await fit('open', '%1', { cols: 96, rows: 30 })).status).toBe(200);
     expect(terminal.resize).toHaveBeenCalledExactlyOnceWith('%1', { cols: 96, rows: 30 });
-    expect((await fit('closed', '%2', { cols: 96, rows: 30 })).status).toBe(403); // 입력이 꺼진 프로젝트
+    expect((await fit('closed', '%2', { cols: 96, rows: 30 })).status).toBe(200); // 입력이 꺼진 프로젝트도 크기는 맞춘다 (글자를 보내지 않는다)
     expect((await fit('open', '%2', { cols: 96, rows: 30 })).status).toBe(404); // 남의 pane
     attached = true;
     const again = await start();
