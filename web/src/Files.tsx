@@ -220,6 +220,11 @@ function FileList({ project: p, onOpen }: { project: ProjectSnapshot; onOpen: (p
   const act = async (op: FsOp, path: string, to?: string) => {
     setMenu(null);
     setOpError(null);
+    // 옮기기 전에 그 파일(폴더면 그 안)의 진행 중인 저장을 기다린다: 저장이 끝나며 정리한 초안을 옮겨야 지문이 맞는다
+    if (op === 'move') {
+      const prefix = draftKey(scopeOf(p), path);
+      await Promise.all([...pendingSaves].filter(([key]) => key.startsWith(prefix)).map(([, saving]) => saving.catch(() => {})));
+    }
     try {
       await api.fsOp(p.id, to === undefined ? { op, path } : { op, path, to });
       followDirs(op, path, to);

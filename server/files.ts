@@ -162,8 +162,8 @@ async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: s
   if (norm.split('/').some((part) => part.toLowerCase() === '.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
   const root = await rootOf(repo);
   const realRoot = await realpath(root);
-  const gitDir = path.join(realRoot, '.git');
-  const inGit = (real: string) => real === gitDir || real.startsWith(gitDir + path.sep);
+  // 실제 경로의 어느 부분이든 .git 이면 (하위 저장소의 .git 을 가리키는 링크 포함) 안 된다
+  const inGit = (real: string) => path.relative(realRoot, real).split(path.sep).some((part) => part.toLowerCase() === '.git');
   // 대상 자체가 링크로 .git 을 가리켜도 막는다
   const realTarget = await realpath(path.join(root, norm)).catch(() => null);
   if (realTarget && inGit(realTarget)) throw new FileError('.git 안은 건드리지 않습니다', 400);
@@ -220,8 +220,14 @@ async function applyOp(repo: string, op: unknown, src: { abs: string; rel: strin
     if (op === 'delete') return void (await toTrash(repo, src.abs, src.rel));
     if (op !== 'move' && op !== 'copy') throw new FileError('알 수 없는 작업입니다', 400);
     const dst = await target(repo, to);
-    // 같은 자리면 '이미 있음'(409): 붙여넣기는 그걸 보고 "이름 copy" 로 다시 시도한다
-    if (await exists(dst.abs)) throw new FileError(`이미 있습니다: ${dst.rel}`, 409);
+    // 같은 자리면 '이미 있음'(409): 붙여넣기는 그걸 보고 "이름 copy" 로 다시 시도한다.
+    // 단, 대소문자만 바꾸는 이름 바꾸기(맥에서 Foo.ts → foo.ts)는 같은 파일을 가리키므로 허용한다
+    const sameEntry = async () => {
+      const [a, b] = await Promise.all([lstat(src.abs), lstat(dst.abs)]);
+      return a.ino === b.ino && a.dev === b.dev;
+    };
+    const caseOnly = op === 'move' && dst.rel !== src.rel && dst.rel.toLowerCase() === src.rel.toLowerCase();
+    if ((await exists(dst.abs)) && !(caseOnly && (await sameEntry()))) throw new FileError(`이미 있습니다: ${dst.rel}`, 409);
     if (inside(dst.rel, src.rel)) throw new FileError('자기 안으로는 옮기거나 복사할 수 없습니다', 400);
     await mkdir(path.dirname(dst.abs), { recursive: true });
     if (op === 'move') await rename(src.abs, dst.abs);

@@ -120,6 +120,12 @@ describe('files', () => {
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });
+    // 하위 저장소의 .git 을 가리키는 링크도 막는다
+    await mkdir(path.join(repo, 'sub/.git'), { recursive: true });
+    await symlink(path.join(repo, 'sub/.git'), path.join(repo, 'alias'));
+    await expect(fsOp(repo, 'newFile', 'alias/hooks/x')).rejects.toMatchObject({ status: 400 });
+    await rm(path.join(repo, 'alias'));
+    await rm(path.join(repo, 'sub'), { recursive: true });
     // 링크된 폴더(cfg → .git)를 거쳐 들어가도 막는다
     await expect(fsOp(repo, 'newFile', 'cfg/hooks/pre-commit')).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'delete', 'cfg/config')).rejects.toMatchObject({ status: 400 });
