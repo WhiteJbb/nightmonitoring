@@ -46,7 +46,8 @@ export async function listIgnored(repo: string): Promise<string[]> {
   const root = await rootOf(repo);
   const r = await run('git', ['-C', root, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
-  const files = r.stdout.split('\0').filter((f) => f && !f.endsWith('/'));
+  // 따옴표·역슬래시·탭·줄바꿈이 든 경로는 check-ignore 가 따옴표로 감싸 돌려줘 맞춰 볼 수 없다: 안전하게 뺀다
+  const files = r.stdout.split('\0').filter((f) => f && !f.endsWith('/') && !/["\\\t\n]/.test(f));
   // 무시된 폴더라도 그 안에 추적 중인 파일이 있으면 접히지 않고 파일이 하나씩 나온다. 그런 폴더 안은 직접 걸러 낸다
   const parents = (f: string) => f.split('/').slice(0, -1).map((_, i, parts) => `${parts.slice(0, i + 1).join('/')}/`);
   const dirs = [...new Set(files.flatMap(parents))];
