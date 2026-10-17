@@ -158,6 +158,7 @@ describe('pattern helpers', () => {
     expect(isBusy(['esc to interrupt'], [])).toBe(false);
     expect(isBusy(['❯ ', '─────', '  ⏵⏵ auto mode on · 1 shell · esc to interrup…'], p)).toBe(true);
     expect(isBusy(['• Working (12s • esc to…'], p)).toBe(true);
+    expect(isBusy(['  ⏵⏵ auto mode on (shift+tab to cycle) · esc …'], p)).toBe(true);
     expect(isBusy(['  ⏵⏵ auto mode on · 1 shell · ↓ to manag…'], p)).toBe(false);
   });
 
