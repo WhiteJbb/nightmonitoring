@@ -133,7 +133,7 @@ describe('terminal API', () => {
     const monitor = new Monitor({ config, collector, runs: runner.get });
     await monitor.tick();
     const sinks: ((e: TermEvent) => void)[] = [];
-    const terminal = { send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string, size: unknown, agent?: string) => Promise<string | null>>(async () => null), killSession: vi.fn<(name: string) => Promise<string | null>>(async () => null), newWindow: vi.fn(async () => ({ pane: '%9' })), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
+    const terminal = { send: vi.fn<(input: ParsedInput) => Promise<string | null>>(async () => null), sendRaw: vi.fn<(paneId: string, bytes: Uint8Array) => Promise<string | null>>(async () => null), stream: vi.fn((_s: string, _p: string, sink: (e: TermEvent) => void) => { sinks.push(sink); sink({ type: 'init', cols: 80, rows: 24, alt: false, data: 'aGk=' }); return () => {}; }), log: vi.fn(), createSession: vi.fn<(name: string, repoPath: string, size: unknown, agent?: string) => Promise<string | null>>(async () => null), killSession: vi.fn<(name: string) => Promise<string | null>>(async () => null), newWindow: vi.fn(async () => ({ pane: '%9' })), killPane: vi.fn<(paneId: string) => Promise<string | null>>(async () => null), cloneRepo: vi.fn(async () => null), resize: vi.fn<(paneId: string, size: { cols: number; rows: number }) => Promise<string | null>>(async () => null), saveUpload: vi.fn(async (id: string, ext: string) => `/up/${id}.${ext}`) };
     const server = createApp({ config, monitor, runner, ...(opts.demo ? {} : { terminal }) }).listen(0, '127.0.0.1');
     servers.push(server);
     await new Promise((resolve) => server.once('listening', resolve));
@@ -199,6 +199,16 @@ describe('terminal API', () => {
     expect((await open('closed')).status).toBe(403); // allowInput 꺼짐
     expect((await open('nope')).status).toBe(404);
     expect(terminal.newWindow).toHaveBeenCalledOnce();
+  });
+
+  it('closes a pane of the project under the input rules', async () => {
+    const { base, terminal } = await start();
+    const close = (id: string, pane: string) => fetch(`${base}/${id}/panes/${encodeURIComponent(pane)}`, { method: 'DELETE' });
+    expect((await close('open', '%1')).status).toBe(200);
+    expect(terminal.killPane).toHaveBeenCalledExactlyOnceWith('%1');
+    expect((await close('open', '%2')).status).toBe(404); // 남의 pane
+    expect((await close('closed', '%2')).status).toBe(403); // allowInput 꺼짐
+    expect(terminal.killPane).toHaveBeenCalledOnce();
   });
 
   it('stores an uploaded image under the same rules as input and returns its path', async () => {
@@ -305,7 +315,7 @@ describe('session API', () => {
     await monitor.tick();
     const createSession = vi.fn<(name: string, repoPath: string, size?: unknown, agent?: string) => Promise<string | null>>(async (name) => (name === 'bad name' ? '세션 이름이 올바르지 않습니다' : null));
     const cloneRepo = vi.fn<(url: string, repoPath: string) => Promise<string | null>>(async (url) => (url.includes('nope') ? 'repository not found' : null));
-    const terminal = { send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, killSession: vi.fn(async () => null), newWindow: vi.fn(async () => ({ pane: '%9' })), cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
+    const terminal = { send: vi.fn(async () => null), sendRaw: vi.fn(async () => null), stream: vi.fn(() => () => {}), log: vi.fn(), createSession, killSession: vi.fn(async () => null), newWindow: vi.fn(async () => ({ pane: '%9' })), killPane: vi.fn(async () => null), cloneRepo, resize: vi.fn(async () => null), saveUpload: vi.fn(async () => '/up/x.png') };
     const configEditor = {
       view: () => readConfigView(file, '/base'),
       update: async (body: unknown) => {

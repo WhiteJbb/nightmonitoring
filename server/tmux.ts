@@ -209,6 +209,12 @@ export async function newWindow(session: string, cwd: string): Promise<{ pane: s
   return r.code === 0 && /^%\d+$/.test(pane) ? { pane } : { error: r.stderr.trim() || 'tmux new-window 실패' };
 }
 
+/** pane 을 닫는다 (안에서 돌던 프로그램도 끝난다). 실패하면 오류 메시지 */
+export async function killPane(id: string): Promise<string | null> {
+  const r = await run('tmux', ['kill-pane', '-t', id]);
+  return r.code === 0 ? null : r.stderr.trim() || 'tmux kill-pane 실패';
+}
+
 /** 세션의 첫 pane 에 한 줄을 치고 Enter (새 세션에서 에이전트를 띄울 때만 쓴다). 실패하면 오류 메시지 */
 export async function typeLine(session: string, line: string): Promise<string | null> {
   const target = `=${session}:`;

@@ -89,6 +89,8 @@ export interface AppDeps {
     killSession: (name: string) => Promise<string | null>;
     /** 세션에 repoPath(원문)에서 셸 윈도우를 하나 더 연다 */
     newWindow: (session: string, repoPath: string) => Promise<{ pane: string } | { error: string }>;
+    /** pane 을 닫는다. 실패하면 오류 메시지 */
+    killPane: (paneId: string) => Promise<string | null>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
     /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
@@ -315,6 +317,19 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if ('error' in r) return void res.status(400).json(r);
     await monitor.tick();
     res.json(r);
+  });
+
+  // 터미널(pane) 닫기: 세션 종료와 같은 조건. 마지막 pane 이면 세션도 끝난다 (화면은 그때 세션 종료 버튼만 보여 준다)
+  api.delete('/projects/:id/panes/:paneId', async (req, res) => {
+    const { project, pane } = findPane(req.params.id, req.params.paneId);
+    if (!project) return void res.status(404).json({ error: '프로젝트를 찾을 수 없습니다' });
+    const blocked = inputBlocked(project);
+    if (blocked || !terminal) return void res.status(403).json({ error: blocked });
+    if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
+    const error = await terminal.killPane(pane.id);
+    if (error) return void res.status(400).json({ error });
+    await monitor.tick();
+    res.json({ ok: true });
   });
 
   const editableProjects = (view: ConfigView): EditableProject[] =>

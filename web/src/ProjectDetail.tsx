@@ -644,6 +644,17 @@ export function TerminalTab({ project: p, now }: Props) {
       .finally(() => setOpening(false));
   };
 
+  const closePane = (x: TmuxPane) => {
+    if (!window.confirm(`터미널 ${x.window}:${x.windowName} (${x.command}) 을 닫을까요?\n안에서 돌던 프로그램도 종료됩니다.`)) return;
+    api
+      .closePane(p.id, x.id)
+      // 보던 터미널을 닫았으면 남은 것으로 옮긴다 (그대로 두면 "사라진 pane" 으로 입력이 막힌다)
+      .then(() => {
+        if (x.id === pane?.id) setPaneId(t.panes.find((y) => y.id !== x.id)?.id ?? null);
+      })
+      .catch((e: unknown) => showNotice(errorMessage(e)));
+  };
+
   const copy = (cmd: string) => {
     setCopyMsg(copyText(cmd) ? '복사됨' : '복사 실패');
     setTimeout(() => setCopyMsg(null), 1500);
@@ -697,9 +708,17 @@ export function TerminalTab({ project: p, now }: Props) {
             {(t.panes.length > 1 || lost || p.allowInput) && (
               <div className="panes" role="group" aria-label="pane 선택">
                 {t.panes.map((x) => (
-                  <button key={x.id} type="button" aria-pressed={!lost && x.id === pane.id} onClick={() => setPaneId(x.id)}>
-                    {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
-                  </button>
+                  <span key={x.id} className="pane-tab">
+                    <button type="button" aria-pressed={!lost && x.id === pane.id} onClick={() => setPaneId(x.id)}>
+                      {x.window}:{x.windowName} · {x.index} <span className="dim">{x.command}</span>
+                    </button>
+                    {/* 마지막 하나는 닫으면 세션이 끝나므로 세션 종료 버튼에 맡긴다 */}
+                    {p.allowInput && t.panes.length > 1 && (
+                      <button type="button" className="close" aria-label={`터미널 ${x.window}:${x.index} 닫기`} title="이 터미널 닫기" onClick={() => closePane(x)}>
+                        ✕
+                      </button>
+                    )}
+                  </span>
                 ))}
                 {p.allowInput && (
                   <button type="button" disabled={opening} onClick={openTerminal} title="이 세션에 셸 터미널을 하나 더 엽니다">
