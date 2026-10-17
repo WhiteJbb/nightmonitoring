@@ -93,8 +93,8 @@ export interface AppDeps {
     killPane: (paneId: string) => Promise<string | null>;
     /** repoPath(원문) 에 git clone. 이미 저장소면 건너뛴다. 실패하면 오류 메시지 */
     cloneRepo: (url: string, repoPath: string) => Promise<string | null>;
-    /** pane 이 속한 윈도우의 크기를 바꾼다. 실패하면 오류 메시지 */
-    resize: (paneId: string, size: TermSize) => Promise<string | null>;
+    /** pane 이 속한 윈도우의 크기를 바꾼다. pin 이면 그 크기로 고정한다 (나란히 보기). 실패하면 오류 메시지 */
+    resize: (paneId: string, size: TermSize, pin?: boolean) => Promise<string | null>;
     /** 올린 이미지를 저장하고 절대 경로를 돌려준다 */
     saveUpload: (projectId: string, ext: string, data: Buffer) => Promise<string>;
   };
@@ -274,7 +274,7 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
     if (!pane) return void res.status(404).json({ error: 'pane 을 찾을 수 없습니다' });
     if (project.tmux.attached) return void res.status(409).json({ error: '터미널이 붙어 있는 세션은 크기를 바꾸지 않습니다' });
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows));
+    const error = await terminal.resize(pane.id, clampSize(body.cols, body.rows), body.pin === true);
     if (error) return void res.status(500).json({ error });
     await monitor.tick();
     res.json({ ok: true });

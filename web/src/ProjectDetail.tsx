@@ -545,8 +545,52 @@ function useAway(): boolean {
   return away;
 }
 
+/** 나란히 보기의 한 칸: 터미널 하나와 그 이름·연결 상태. 누르거나 키보드로 들어오면 입력 대상이 된다 */
+function SplitCell({ project: p, pane: x, no, selected, share, span, full, canFit, onSelect, onNotice }: { project: ProjectSnapshot; pane: TmuxPane; no: string; selected: boolean; share: number; span: number; full: boolean; canFit: boolean; onSelect: () => void; onNotice: (msg: string) => void }) {
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [status, setStatus] = useState<TermStatus>('connecting');
+  const [size, setSize] = useState<{ cols: number; rows: number } | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [fitError, setFitError] = useState<string | null>(null);
+  // 붙어 있는 터미널이 없으면 이 칸 크기에 한 번 맞춘다 (전체 화면을 켜고 끄면 다시). 첫 화면이 그려진 뒤에 잰다
+  const fittedFull = useRef<boolean | null>(null);
+  useEffect(() => {
+    if (!canFit || !size || fittedFull.current === full) return;
+    const timer = setTimeout(() => {
+      fittedFull.current = full;
+      const want = fitSize(viewRef.current, full, share);
+      // 크기를 고정한다: 풀어 두면 다른 칸을 맞출 때 같은 크기로 끌려간다 (tmux.ts resizeWindow)
+      if (want.cols !== size.cols || want.rows !== size.rows) void api.fitPane(p.id, x.id, want, true).catch((e: unknown) => setFitError(errorMessage(e)));
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [canFit, size, full, share, p.id, x.id]);
+  const live = status === 'live';
+  return (
+    <div className={selected ? 'split-cell selected' : 'split-cell'} style={span > 1 ? { gridColumn: `span ${span}` } : undefined} onPointerDown={onSelect} onFocusCapture={onSelect}>
+      <div className="split-head">
+        <span className="dim mono">{no}</span>
+        <span className="mono">{progName(x)}</span>
+        {fitError && <span className="err">{fitError}</span>}
+        <span className={live ? 'conn conn-live' : status === 'down' ? 'conn conn-down' : 'conn'} role="status" title={live ? '실시간' : status}>
+          <span className="dot" />
+        </span>
+        {!live && status !== 'connecting' && (
+          <button type="button" className="more-rows" onClick={() => setAttempt(attempt + 1)}>
+            다시 연결
+          </button>
+        )}
+      </div>
+      <div ref={viewRef} className="term-view">
+        <Term key={`${x.id}:${attempt}`} projectId={p.id} pane={x.id} canInput={p.allowInput} full={full} focus={selected} heightShare={share} onNotice={onNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+      </div>
+    </div>
+  );
+}
+
 /** 새 터미널 메뉴 폭(px). styles.css 의 .new-term .menu 와 같다 */
 const MENU_WIDTH = 150;
+/** 나란히 보기의 열 수: 둘이면 2열, 넷까지 2×2, 그보다 많으면 3열 */
+const splitCols = (n: number) => (n <= 2 ? n : n <= 4 ? 2 : 3);
 
 export function TerminalTab({ project: p, now }: Props) {
   const t = p.tmux;
@@ -605,6 +649,10 @@ export function TerminalTab({ project: p, now }: Props) {
   const [attempt, setAttempt] = useState(0);
   // 전체 화면: 터미널이 창을 다 채우고, 붙은 터미널이 없으면 tmux 크기도 그 화면에 맞춘다
   const [full, setFull] = useState(false);
+  // 나란히 보기: 세션의 터미널을 한 화면에 칸으로 나눠 모두 띄운다 (터미널이 둘 이상일 때만)
+  const [split, setSplit] = useState(false);
+  const splitOn = split && t.panes.length > 1;
+  const grid = { cols: splitCols(t.panes.length), rows: Math.ceil(t.panes.length / splitCols(t.panes.length)) };
   // 탭이 뒤로 가거나 휴대폰 화면이 꺼지면 터미널 스트림을 닫는다. 서버는 "보고 있는 사람 없음"으로 보고 작업 끝남·입력 대기 알림을 보낸다
   const visible = useSyncExternalStore(onVisibility, () => document.visibilityState !== 'hidden');
   // 탭을 앞에 띄워 둔 채 자리를 비워도 마찬가지로 닫는다
@@ -691,6 +739,8 @@ export function TerminalTab({ project: p, now }: Props) {
   };
 
   const live = status === 'live';
+  // 화면이 안 보이거나 자리를 비운 동안: 연결을 쉰다. 마우스·키를 움직이면 다시 붙는다
+  const pausedText = away ? '자리를 비운 동안 연결을 쉬는 중입니다. 마우스나 키를 움직이면 다시 연결합니다.' : '화면이 보이지 않아 연결을 쉬는 중입니다.';
   const statusLabel = status === 'live' ? '실시간' : status === 'connecting' ? '연결 중' : status === 'down' ? '연결 끊김 · 재연결 중' : status === 'exit' ? 'pane 종료' : status;
 
   return (
@@ -782,13 +832,13 @@ export function TerminalTab({ project: p, now }: Props) {
             <button type="button" className="more-rows info-toggle" aria-expanded={showInfo} onClick={() => setShowInfo(!showInfo)}>
               세션 정보
             </button>
-            {size && (
+            {!splitOn && size && (
               <span className="dim mono" title="pane 크기 (칸 × 줄)">
                 {size.cols}×{size.rows}
               </span>
             )}
             {/* 붙어 있는 터미널이 없는 세션만: 이 화면 크기로 맞춘다 (붙어 있으면 그 터미널까지 바뀐다) */}
-            {canFit && misfit && (
+            {!splitOn && canFit && misfit && (
               <button type="button" className="more-rows" disabled={fitting} onClick={fit} title="tmux 화면을 이 터미널 영역 크기로 바꿉니다">
                 화면에 맞추기
               </button>
@@ -803,10 +853,26 @@ export function TerminalTab({ project: p, now }: Props) {
                 {notice}
               </span>
             )}
-            <span className={live ? 'conn conn-live' : status === 'down' ? 'conn conn-down' : 'conn'} role="status">
-              <span className="dot" />
-              {statusLabel}
-            </span>
+            {!splitOn && (
+              <span className={live ? 'conn conn-live' : status === 'down' ? 'conn conn-down' : 'conn'} role="status">
+                <span className="dot" />
+                {statusLabel}
+              </span>
+            )}
+            {t.panes.length > 1 && (
+              <button
+                type="button"
+                className="more-rows split-toggle"
+                aria-pressed={splitOn}
+                onClick={() => {
+                  // 하나씩 보기로 돌아가면 고른 터미널을 다시 이 화면 크기에 맞춘다
+                  autoFitted.current = null;
+                  setSplit(!splitOn);
+                }}
+              >
+                나란히 보기
+              </button>
+            )}
             <button
               type="button"
               className="more-rows full-toggle"
@@ -815,32 +881,44 @@ export function TerminalTab({ project: p, now }: Props) {
                 const next = !full;
                 setFull(next);
                 // 바뀐 틀이 그려진 뒤에 재서 맞춘다
-                if (canFit && pane) requestAnimationFrame(() => void api.fitPane(p.id, pane.id, fitSize(viewRef.current, next)).catch((e: unknown) => setFitError(errorMessage(e))));
+                if (!splitOn && canFit && pane) requestAnimationFrame(() => void api.fitPane(p.id, pane.id, fitSize(viewRef.current, next)).catch((e: unknown) => setFitError(errorMessage(e))));
               }}
             >
               {full ? '전체 화면 끝내기' : '전체 화면'}
             </button>
-            {status !== 'live' && status !== 'connecting' && (
+            {!splitOn && status !== 'live' && status !== 'connecting' && (
               <button type="button" className="more-rows" onClick={() => setAttempt(attempt + 1)}>
                 다시 연결
               </button>
             )}
           </div>
         )}
-        <div ref={viewRef} className="term-view">
-          {pane ? (
-            visible && !away ? (
-              <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+        {splitOn ? (
+          <div className="split" style={{ gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))` }}>
+            {visible && !away ? (
+              t.panes.map((x, i) => (
+                // 마지막 줄이 덜 차면 마지막 칸이 남은 자리를 채운다
+                <SplitCell key={x.id} project={p} pane={x} no={paneNo(x, t.panes)} selected={!lost && x.id === pane?.id} share={1 / grid.rows} span={i === t.panes.length - 1 ? grid.cols * grid.rows - t.panes.length + 1 : 1} full={full} canFit={canFit} onSelect={() => setPaneId(x.id)} onNotice={showNotice} />
+              ))
             ) : (
-              // 화면이 안 보이거나 자리를 비운 동안: 연결을 쉰다. 마우스·키를 움직이면 다시 붙는다
-              <p className="dim term-paused">{away ? '자리를 비운 동안 연결을 쉬는 중입니다. 마우스나 키를 움직이면 다시 연결합니다.' : '화면이 보이지 않아 연결을 쉬는 중입니다.'}</p>
-            )
-          ) : (
-            <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
-              {t.output.join('\n')}
-            </pre>
-          )}
-        </div>
+              <p className="dim term-paused">{pausedText}</p>
+            )}
+          </div>
+        ) : (
+          <div ref={viewRef} className="term-view">
+            {pane ? (
+              visible && !away ? (
+                <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+              ) : (
+                <p className="dim term-paused">{pausedText}</p>
+              )
+            ) : (
+              <pre className="terminal" tabIndex={0} aria-label="최근 터미널 출력">
+                {t.output.join('\n')}
+              </pre>
+            )}
+          </div>
+        )}
       </div>
       {pane &&
         (p.allowInput ? (

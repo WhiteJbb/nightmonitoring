@@ -438,6 +438,24 @@ test('✕ closes a terminal after asking; closing the one in view moves to anoth
   expect(screen.queryByRole('button', { name: /닫기$/ })).toBeNull();
 });
 
+test('나란히 보기 streams every terminal side by side; the cell used last is the input target; off goes back to one', async () => {
+  await renderTab(project(TWO));
+  expect(screen.getByRole('button', { name: '나란히 보기' }).getAttribute('aria-pressed')).toBe('false');
+  fireEvent.click(screen.getByRole('button', { name: '나란히 보기' }));
+  await tick();
+  const open = () => FakeEventSource.all.filter((e) => !e.closed).map((e) => e.url);
+  expect(open()).toEqual(['/api/projects/api/term/%251', '/api/projects/api/term/%252']);
+  fireEvent.pointerDown(document.querySelectorAll('.split-cell')[1]!);
+  await tick();
+  expect(screen.getByText(/^보낼 곳:/).textContent).toBe('보낼 곳: 0.1 zsh');
+  fireEvent.click(screen.getByRole('button', { name: '나란히 보기' }));
+  await tick();
+  expect(open()).toEqual(['/api/projects/api/term/%252']);
+  cleanup();
+  await renderTab(project(ONE));
+  expect(screen.queryByRole('button', { name: '나란히 보기' })).toBeNull();
+});
+
 test('the stream is closed and the terminal disposed on unmount', async () => {
   const { unmount } = await renderTab(project(ONE));
   unmount();

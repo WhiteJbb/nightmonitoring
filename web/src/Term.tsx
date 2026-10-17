@@ -57,7 +57,8 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * pane 하나를 실제 터미널(xterm.js)로 그린다. 서버의 SSE 스트림(첫 화면 + 이어지는 바이트)을 그대로 쓰고,
  * 입력이 허용된 프로젝트면 키·마우스 보고 바이트를 pane 으로 돌려보낸다. 크기는 tmux pane 을 따른다.
  */
-export function Term({ projectId, pane, canInput, full = false, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+/** focus: 첫 화면을 받으면 키 입력을 받게 한다 (나란히 보기에서는 고른 칸만). heightShare: 쓸 수 있는 높이 중 이 터미널의 몫 */
+export function Term({ projectId, pane, canInput, full = false, focus = true, heightShare = 1, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; focus?: boolean; heightShare?: number; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize, onNotice });
@@ -65,6 +66,8 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
   // 전체 화면 여부는 글자 크기 계산에만 쓴다. 바뀌어도 터미널을 다시 만들지 않는다
   const fullRef = useRef(full);
   fullRef.current = full;
+  const layout = useRef({ focus, heightShare });
+  layout.current = { focus, heightShare };
 
   useEffect(() => {
     const el = host.current;
@@ -108,7 +111,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
       if (!width) return;
       const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
       const byWidth = Math.floor(width / (term.cols * perPx));
-      const byHeight = Math.floor(termHeight(fullRef.current) / (term.rows * ROW_RATIO));
+      const byHeight = Math.floor(termHeight(fullRef.current, layout.current.heightShare) / (term.rows * ROW_RATIO));
       term.options.fontSize = Math.max(9, Math.min(TERM_FONT_SIZE, byWidth, byHeight));
     };
 
@@ -124,7 +127,7 @@ export function Term({ projectId, pane, canInput, full = false, onStatus, onSize
         cb.current.onStatus('live');
         cb.current.onSize(e.cols, e.rows);
         // 컴퓨터에선 열자마자 키를 칠 수 있게 (휴대폰은 화면 키보드가 튀어나오므로 두지 않는다)
-        if (canInput && window.matchMedia?.('(pointer: fine)').matches) term.focus();
+        if (canInput && layout.current.focus && window.matchMedia?.('(pointer: fine)').matches) term.focus();
       } else if (e.type === 'out') term.write(decode(e.data));
       else if (e.type === 'resize') {
         term.resize(e.cols, e.rows);
