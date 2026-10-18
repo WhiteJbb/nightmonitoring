@@ -4,7 +4,7 @@
   "private": true,
   "description": "휴대폰에서 tmux 속 Claude Code·Codex 세션을 보고 조종하는 원격 개발 대시보드",
   "license": "MIT",
-  "repository": "github:WhiteJbb/nightmonitoring",
+  "repository": "github:WhiteJbb/nightshift",
   "type": "module",
   "bin": {
     "nightshift": "scripts/nightshift.ts"

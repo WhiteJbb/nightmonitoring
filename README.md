@@ -68,7 +68,7 @@ TypeScript · React · Vite · Express · xterm.js. 자세한 설계는 [ARCHITE
 ## 빠른 시작
 
 ```bash
-git clone <this-repo> nightshift
+git clone https://github.com/WhiteJbb/nightshift.git nightshift
 cd nightshift
 npm run setup
 ```
@@ -144,7 +144,7 @@ launchd로 띄운 node는 터미널의 폴더 권한을 물려받지 않습니�
 ```bash
 sudo apt update && sudo apt install -y git tmux
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
-git clone <this-repo> ~/nightshift && cd ~/nightshift && npm run setup
+git clone https://github.com/WhiteJbb/nightshift.git ~/nightshift && cd ~/nightshift && npm run setup
 ```
 
 - **Node 버전:** 배포판 apt의 `nodejs`는 너무 오래됐습니다(Ubuntu 24.04는 18). 위처럼 NodeSource나 nvm으로 22.18 이상을 까세요.
@@ -170,7 +170,7 @@ Ubuntu 터미널에서:
 sudo apt update && sudo apt install -y git tmux build-essential
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
 npm install -g @anthropic-ai/claude-code @openai/codex   # 쓰는 에이전트만
-git clone <this-repo> ~/nightshift && cd ~/nightshift && npm run setup
+git clone https://github.com/WhiteJbb/nightshift.git ~/nightshift && cd ~/nightshift && npm run setup
 ```
 
 저장소는 `/mnt/c/...`(Windows 드라이브)가 아니라 WSL 안(`~/repos/...`)에 두세요. Windows 드라이브 위에서는 git이 매우 느립니다.
