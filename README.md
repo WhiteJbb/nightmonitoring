@@ -70,10 +70,17 @@ TypeScript · React · Vite · Express · xterm.js. 자세한 설계는 [ARCHITE
 ```bash
 git clone <this-repo> nightshift
 cd nightshift
-npm install
-npm run build
-npm start
+npm run setup
 ```
+
+`npm run setup` 하나로 끝납니다.
+
+- Node 버전을 확인하고, 의존성을 설치하고, 빌드합니다. git·tmux가 없으면 설치합니다(Homebrew, Linux는 apt).
+- Tailscale이 켜져 있으면 `tailscale serve`로 휴대폰용 https 주소를 열고 그 이름을 config의 `allowedHosts`에 적습니다. 그 기기의 443을 이미 다른 데 쓰고 있으면 건드리지 않습니다.
+- 로그인하면 자동으로 뜨게 등록합니다(macOS launchd, Linux systemd 사용자 서비스). 서버가 떴는지 확인한 뒤 접속 주소와 로그·재시작·끄기 명령을 보여 줍니다.
+- 다시 돌려도 됩니다. 업데이트는 `git pull && npm run setup`입니다.
+
+자동 시작 없이 직접 띄우려면 `npm install && npm run build && npm start`.
 
 브라우저에서 <http://127.0.0.1:4477> 을 엽니다. 설정 파일은 아직 필요 없습니다.
 
@@ -105,39 +112,15 @@ npm run dev                  # 개발 모드 (프론트엔드 HMR 포함, 빌드
 
 ### 백그라운드로 실행 (로그인하면 자동 시작)
 
-터미널을 닫아도 돌게 하려면 launchd에 등록합니다. `~/Library/LaunchAgents/com.nightshift.plist`를 만들고 경로 두 곳(`node`, NightShift 디렉터리)을 내 환경에 맞게 고칩니다. `node` 경로는 `which node`로 확인합니다.
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key><string>com.nightshift</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/opt/homebrew/bin/node</string>
-    <string>server/index.ts</string>
-  </array>
-  <key>WorkingDirectory</key><string>/Users/me/nightshift</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <!-- launchd 는 셸의 PATH 를 모르므로 Homebrew 의 git·tmux 위치를 알려 준다 -->
-    <key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
-  </dict>
-  <key>RunAtLoad</key><true/>
-  <key>KeepAlive</key><true/>
-  <key>StandardOutPath</key><string>/Users/me/nightshift/.nightshift/server.log</string>
-  <key>StandardErrorPath</key><string>/Users/me/nightshift/.nightshift/server.log</string>
-</dict>
-</plist>
-```
+`npm run setup`이 `~/Library/LaunchAgents/com.nightshift.plist`를 만들어 등록합니다. 서비스는 setup을 돌린 터미널의 `node`와 `PATH`를 씁니다. 그래서 node나 에이전트를 다른 곳에 새로 깔았으면 setup을 다시 돌리세요.
 
 ```bash
-launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.nightshift.plist   # 등록하고 바로 시작
 launchctl kickstart -k gui/$(id -u)/com.nightshift                             # 재시작 (코드를 바꿔 npm run build 한 뒤)
 launchctl bootout gui/$(id -u)/com.nightshift                                  # 중지하고 등록 해제
 tail -f .nightshift/server.log                                                 # 로그
 ```
+
+launchd로 띄운 node는 터미널의 폴더 권한을 물려받지 않습니다. 다운로드·문서·데스크탑 아래 저장소를 보려면 node에 전체 디스크 접근 권한을 주세요(setup 마지막에 경로가 나옵니다, [문제 해결](#문제-해결) 참고).
 
 서버가 죽으면 launchd가 다시 띄우고(`KeepAlive`), 모니터링 세션은 `.nightshift/state.json`에서 이어집니다. 같은 사용자로 로그인해 있는 동안만 돌고, tmux 세션도 그 사용자의 것을 봅니다.
 
@@ -148,13 +131,13 @@ tail -f .nightshift/server.log                                                 #
 ```bash
 sudo apt update && sudo apt install -y git tmux
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
-git clone <this-repo> ~/nightshift && cd ~/nightshift && npm install && npm run build && npm start
+git clone <this-repo> ~/nightshift && cd ~/nightshift && npm run setup
 ```
 
 - **Node 버전:** 배포판 apt의 `nodejs`는 너무 오래됐습니다(Ubuntu 24.04는 18). 위처럼 NodeSource나 nvm으로 22.18 이상을 까세요.
 - **라즈베리파이:** 64비트 OS(arm64)가 필요하고, 라즈베리파이 4·5를 권합니다. 1세대 Pi Zero·Pi 1(armv6)용 Node 22는 없습니다. 같은 기기에서 Claude Code·Codex도 돌린다면 램 2GB 이상이 편합니다.
 - **휴대폰에서 접속:** Linux 기기에 Tailscale을 깔고 [다른 기기에서 접속 (Tailscale)](#다른-기기에서-접속-tailscale)을 그대로 따릅니다.
-- **자동 시작:** 아래 WSL2의 4번 systemd 서비스를 그대로 씁니다(`/etc/wsl.conf` 단계와 마지막 문단은 WSL 전용이라 빼세요).
+- **자동 시작:** `npm run setup`이 systemd 사용자 서비스(`~/.config/systemd/user/nightshift.service`)를 등록하고, 로그아웃해도 돌도록 linger를 켭니다(권한이 없으면 `sudo loginctl enable-linger $USER`를 안내합니다). 관리 명령은 아래 WSL2의 4번과 같습니다.
 
 ## Windows에서 (WSL2)
 
@@ -174,12 +157,12 @@ Ubuntu 터미널에서:
 sudo apt update && sudo apt install -y git tmux build-essential
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt install -y nodejs   # Node 22.18 이상
 npm install -g @anthropic-ai/claude-code @openai/codex   # 쓰는 에이전트만
-git clone <this-repo> ~/nightshift && cd ~/nightshift && npm install && npm run build
+git clone <this-repo> ~/nightshift && cd ~/nightshift && npm run setup
 ```
 
 저장소는 `/mnt/c/...`(Windows 드라이브)가 아니라 WSL 안(`~/repos/...`)에 두세요. Windows 드라이브 위에서는 git이 매우 느립니다.
 
-**2. 실행하고 Windows 브라우저에서 확인** — `npm start` 뒤 Windows 브라우저에서 <http://127.0.0.1:4477>. WSL2는 `127.0.0.1`을 Windows로 넘겨 줍니다.
+**2. Windows 브라우저에서 확인** — <http://127.0.0.1:4477>. setup이 자동 시작까지 했으면 이미 떠 있고, systemd가 꺼져 있어 건너뛰었으면 `npm start`로 띄웁니다. WSL2는 `127.0.0.1`을 Windows로 넘겨 줍니다.
 
 **3. 휴대폰에서 접속 (Tailscale)** — Tailscale은 **Windows에** 설치합니다. NightShift는 기본값(`127.0.0.1`)에 그대로 두고, Windows의 PowerShell에서 중계합니다.
 
@@ -200,24 +183,9 @@ tailscale serve --bg --https=443 http://127.0.0.1:4477
 networkingMode=mirrored
 ```
 
-**4. 자동 시작 (systemd)** — `/etc/wsl.conf`에 `[boot]` 아래 `systemd=true`를 넣고 PowerShell에서 `wsl --shutdown` 후 다시 엽니다. 그다음 `~/.config/systemd/user/nightshift.service`:
-
-```ini
-[Unit]
-Description=NightShift
-
-[Service]
-WorkingDirectory=%h/nightshift
-ExecStart=/usr/bin/node server/index.ts
-Restart=always
-
-[Install]
-WantedBy=default.target
-```
+**4. 자동 시작 (systemd)** — `/etc/wsl.conf`에 `[boot]` 아래 `systemd=true`를 넣고 PowerShell에서 `wsl --shutdown` 후 다시 엽니다. 그다음 `npm run setup`을 다시 돌리면 systemd 사용자 서비스로 등록됩니다.
 
 ```bash
-systemctl --user daemon-reload && systemctl --user enable --now nightshift
-sudo loginctl enable-linger $USER          # 로그인 창이 없어도 사용자 서비스 유지
 journalctl --user -u nightshift -f         # 로그
 systemctl --user restart nightshift        # 재시작 (npm run build 한 뒤)
 ```

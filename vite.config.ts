@@ -7,5 +7,5 @@ export default defineConfig({
   define: { __APP_VERSION__: JSON.stringify((JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string }).version) },
   plugins: [react()],
   build: { outDir: '../dist/web', emptyOutDir: true },
-  test: { root: '.', include: ['server/**/*.test.ts', 'web/src/**/*.test.{ts,tsx}'] },
+  test: { root: '.', include: ['server/**/*.test.ts', 'scripts/**/*.test.ts', 'web/src/**/*.test.{ts,tsx}'] },
 });

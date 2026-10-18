@@ -13,6 +13,7 @@
     "dev": "node --watch-path=server --watch-path=shared server/index.ts --dev",
     "demo": "node server/index.ts --dev --demo",
     "start": "node server/index.ts",
+    "setup": "node -e \"const [a, b] = process.versions.node.split('.').map(Number); if (a < 22 || (a === 22 && b < 18)) { console.error('Node 22.18 이상이 필요합니다 (지금 ' + process.version + ')'); process.exit(1); }\" && env -u npm_config_allow_scripts npm install && node scripts/setup.ts",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
