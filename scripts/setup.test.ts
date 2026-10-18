@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plistText, serveTarget, serveUpstream, unitText } from './setup.ts';
+import { FUNNEL, plistText, relayHost, serveTarget, unitText } from './setup.ts';
 
 describe('serveTarget', () => {
   const name = 'mac.tail1.ts.net';
@@ -8,6 +8,10 @@ describe('serveTarget', () => {
   it('443 이 비어 있으면 null', () => {
     expect(serveTarget('{}', name)).toBeNull();
     expect(serveTarget('', name)).toBeNull();
+  });
+  it('같은 곳을 가리켜도 Funnel 로 공개 중이면 받아들이지 않는다', () => {
+    const funnel = { ...JSON.parse(status('http://127.0.0.1:4477')), AllowFunnel: { [`${name}:443`]: true } };
+    expect(serveTarget(JSON.stringify(funnel), name)).toBe(FUNNEL);
   });
   it('읽을 수 없으면 비었다고 보지 않는다 (덮어쓰지 않게)', () => {
     expect(serveTarget('No serve config', name)).not.toBeNull();
@@ -27,12 +31,12 @@ it('plist 에 넣는 경로는 XML 로 이스케이프한다', () => {
 });
 
 it('tailscale serve 는 서버가 받는 로컬 주소로 중계한다', () => {
-  expect(serveUpstream('127.0.0.1', 4477)).toBe('http://127.0.0.1:4477');
-  expect(serveUpstream('::1', 4477)).toBe('http://[::1]:4477');
-  expect(serveUpstream('100.94.187.77', 4477)).toBe('http://127.0.0.1:4477');
-  expect(serveUpstream('192.168.0.10', 4477)).toBeNull();
-  expect(serveUpstream('127.0.0.2', 4477)).toBe('http://127.0.0.2:4477');
-  expect(serveUpstream('localhost', 4477)).toBeNull();
+  expect(relayHost('127.0.0.1')).toBe('127.0.0.1');
+  expect(relayHost('127.0.0.2')).toBe('127.0.0.2');
+  expect(relayHost('::1')).toBe('::1');
+  expect(relayHost('100.94.187.77')).toBe('127.0.0.1');
+  expect(relayHost('192.168.0.10')).toBeNull();
+  expect(relayHost('localhost')).toBeNull();
 });
 
 it('systemd 가 서비스를 다시 띄울 때 NightShift 가 띄운 tmux 까지 죽이지 않는다', () => {

@@ -27,6 +27,8 @@ const quiet = (bin: string, args: string[]) => spawnSync(bin, args, { encoding: 
 const works = (bin: string, args: string[]) => quiet(bin, args).status === 0;
 const show = (bin: string, args: string[]) => spawnSync(bin, args, { stdio: 'inherit' }).status === 0;
 
+export const FUNNEL = 'tailscale funnel 로 인터넷에 공개 중';
+
 /** tailscale serve status --json 에서 이 기기의 https(443)가 중계하는 곳. 443 이 비어 있으면 null. */
 export function serveTarget(json: string, name: string): string | null {
   let s;
@@ -36,17 +38,20 @@ export function serveTarget(json: string, name: string): string | null {
     return '읽을 수 없는 설정'; // 비었다고 보고 덮어쓰지 않는다
   }
   if (!s?.TCP?.['443']) return null;
+  // 인증 없는 대시보드가 인터넷에 열린다: 같은 곳을 가리켜도 받아들이지 않는다
+  if (s.AllowFunnel?.[`${name}:443`]) return FUNNEL;
   return s.Web?.[`${name}:443`]?.Handlers?.['/']?.Proxy ?? '다른 용도';
 }
 
-/** tailscale serve 가 중계할 주소. 정할 수 없는 바인딩(LAN 주소, localhost)이면 null. */
-export function serveUpstream(host: string, port: number): string | null {
-  if (host === '::1') return `http://[::1]:${port}`;
-  if (host.startsWith('127.')) return `http://${host}:${port}`;
+/** tailscale serve 가 중계할 로컬 주소. 정할 수 없는 바인딩(LAN 주소, localhost)이면 null. */
+export function relayHost(host: string): string | null {
+  if (host === '::1' || host.startsWith('127.')) return host;
   // Tailscale 주소에 바인딩해도 https 이름(allowedHosts)을 적으면 127.0.0.1 에서도 받는다 (server/index.ts)
-  if (['0.0.0.0', '::'].includes(host) || isTailscaleAddress(host)) return `http://127.0.0.1:${port}`;
+  if (['0.0.0.0', '::'].includes(host) || isTailscaleAddress(host)) return '127.0.0.1';
   return null; // localhost 는 node 가 ::1 로 받을 수도 있어 어디로 중계할지 정할 수 없다
 }
+
+export const urlOf = (host: string, port: number) => `http://${host.includes(':') ? `[${host}]` : host}:${port}`;
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
 
@@ -149,6 +154,7 @@ function tailscale(target: string | null): string | null {
     return null;
   }
   const current = serveTarget(status.stdout, name);
+  if (current === FUNNEL) fail(`https://${name} 이(가) tailscale funnel 로 인터넷에 공개되어 있습니다. NightShift 는 인증이 없어 공개하면 안 됩니다: tailscale funnel --https=443 off 로 끈 뒤 다시 실행하세요.`);
   if (current === target) {
     console.log(`  https://${name} → ${target} (이미 열려 있음)`);
     return name;
@@ -273,12 +279,15 @@ async function main() {
   };
   const config = load();
   const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
-  const local = `http://${host.includes(':') ? `[${host}]` : host}:${config.port}`;
-  const upstream = serveUpstream(config.host, config.port);
+  const local = urlOf(host, config.port);
+  const relay = relayHost(config.host);
+  const upstream = relay && urlOf(relay, config.port);
 
   // 이 포트를 다른 프로그램이 쓰고 있으면 Tailscale 로 그것을 열어 버리기 전에 멈춘다
-  for (const base of new Set([local, upstream ?? local])) {
-    if ((await probe(base)) === 'other') fail(`${base} 를 NightShift 가 아닌 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나 config 의 port 를 바꾼 뒤 다시 실행하세요.`);
+  for (const h of new Set([host, relay ?? host])) {
+    const who = await probe(urlOf(h, config.port));
+    // 답이 없어도(연결을 끊거나 응답이 멈춤) 누가 잡고 있으면 NightShift 가 아니다
+    if (who === 'other' || (who === null && !(await portFree(h, config.port)))) fail(`${urlOf(h, config.port)} 를 NightShift 가 아닌 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나 config 의 port 를 바꾼 뒤 다시 실행하세요.`);
   }
 
   const name = tailscale(upstream);
