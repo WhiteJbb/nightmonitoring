@@ -326,6 +326,21 @@ test('wheel in a full-screen program without mouse support turns into PgUp/PgDn;
   expect(wheel(-120)).toBe(true);
 });
 
+test('Codex without mouse support gets a wheel report per row at the pointer instead of PgUp/PgDn', async () => {
+  const view = await renderTab(project([{ ...ONE[0]!, command: 'codex' }]));
+  await init(120, 30);
+  // 120x30 칸을 800x300px 에 그렸다: 한 줄 10px
+  view.container.querySelector('.xterm-host')!.getBoundingClientRect = () => ({ left: 0, top: 0, width: 800, height: 300 }) as DOMRect;
+  const t = xterm();
+  t.buffer.active.type = 'alternate';
+  const wheel = (deltaY: number) => t.wheel!(new WheelEvent('wheel', { deltaY, clientX: 405, clientY: 105, cancelable: true }));
+  expect(wheel(-25)).toBe(false); // 두 줄 위로, 5px 남는다
+  expect(wheel(15)).toBe(false); // 남은 것과 합쳐 한 줄 아래로
+  await tick();
+  await tick();
+  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x1b[<64;61;11M\x1b[<64;61;11M\x1b[<65;61;11M');
+});
+
 test('a read-only project gets a terminal without stdin, no input bar, and the config hint', async () => {
   await renderTab(project(ONE, false));
   expect(xterm().options.disableStdin).toBe(true);
