@@ -24,7 +24,18 @@ function safeDecode(s: string): string {
   }
 }
 
-const lastActivity = (p: ProjectSnapshot) => p.tmux.lastOutputChangeAt ?? p.tmux.lastActivityAt ?? p.lastGitChangeAt;
+/** 마지막으로 일한 시각: 화면 출력과 Git(파일 변경·커밋) 중 늦게 바뀐 것. 둘 다 모르면 tmux 의 활동 시각 */
+const lastActivity = (p: ProjectSnapshot): string | null => {
+  const out = p.tmux.lastOutputChangeAt;
+  const git = p.lastGitChangeAt;
+  if (out && git) return Date.parse(git) > Date.parse(out) ? git : out;
+  return out ?? git ?? p.tmux.lastActivityAt;
+};
+const URGENCY: Record<ProjectSnapshot['status']['state'], number> = { error: 0, waiting: 1, stalled: 2, running: 3, idle: 4 };
+// 일하는 중인 것끼리는 시각이 갱신마다 앞서거니 뒤서거니 해 자리가 뒤섞이므로 같게 보고 설정 순서 그대로 둔다
+const recency = (p: ProjectSnapshot) => (p.status.state === 'running' ? 0 : Date.parse(lastActivity(p) ?? '') || 0);
+/** 봐야 할 것부터(오류·입력 대기·정지 의심 → 작업 중 → 유휴), 같은 상태끼리는 최근에 일한 것부터 */
+const byAttention = (projects: ProjectSnapshot[]) => projects.toSorted((a, b) => URGENCY[a.status.state] - URGENCY[b.status.state] || recency(b) - recency(a));
 
 type Theme = 'dark' | 'light';
 const storedTheme = (): Theme => (localStorage.getItem('theme') === 'light' ? 'light' : 'dark');
@@ -174,7 +185,7 @@ export function App() {
         {snapshot && snapshot.projects.length > 0 && (
           <div className="side-list" role="navigation" aria-label="프로젝트">
             <h4>프로젝트</h4>
-            {snapshot.projects.map((p) => (
+            {byAttention(snapshot.projects).map((p) => (
               <a key={p.id} className={`side-item state-${p.status.state}`} href={`#/project/${encodeURIComponent(p.id)}`} aria-current={p.id === projectId ? 'page' : undefined} title={p.status.reasons[0]}>
                 <span className="dot" aria-hidden="true" />
                 <span className="clip">{p.name}</span>
@@ -222,8 +233,6 @@ export function ConfigErrorBanner({ message }: { message: string }) {
   );
 }
 
-const URGENCY: Record<ProjectSnapshot['status']['state'], number> = { error: 0, waiting: 1, stalled: 2, running: 3, idle: 4 };
-
 export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   const s = snapshot.summary;
   // 상태 타일을 누르면 그 상태의 줄만 남는다. 다시 누르거나 "전체 보기"를 누르면 전체.
@@ -261,8 +270,7 @@ export function Dashboard({ snapshot }: { snapshot: Snapshot }) {
   ];
   const active = states.filter(([, value, state]) => value > 0 || state === filter);
   const filterLabel = states.find(([, , state]) => state === filter)?.[0];
-  // 봐야 할 것부터: 오류·입력 대기·정지 의심 → 작업 중 → 유휴. 같은 상태끼리는 설정 순서 그대로
-  const shown = (filter ? snapshot.projects.filter((p) => p.status.state === filter) : snapshot.projects).toSorted((a, b) => URGENCY[a.status.state] - URGENCY[b.status.state]);
+  const shown = byAttention(filter ? snapshot.projects.filter((p) => p.status.state === filter) : snapshot.projects);
   return (
     <>
       <div className="page-head">
