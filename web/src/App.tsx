@@ -24,9 +24,12 @@ function safeDecode(s: string): string {
   }
 }
 
-/** 마지막으로 일한 시각: 화면 출력과 Git(파일 변경·커밋) 중 늦게 바뀐 것. 둘 다 모르면 tmux 의 활동 시각 */
+/**
+ * 마지막으로 일한 시각: 화면 출력과 Git(파일 변경·커밋) 중 늦게 바뀐 것. 둘 다 모르면 tmux 의 활동 시각.
+ * 에이전트 세션은 화면 대신 작업 중 표시를 마지막으로 띄운 때를 본다 (스크롤해 보기만 해도 화면은 바뀐다)
+ */
 const lastActivity = (p: ProjectSnapshot): string | null => {
-  const out = p.tmux.lastOutputChangeAt;
+  const out = p.tmux.lastBusyAt ?? p.tmux.lastOutputChangeAt;
   const git = p.lastGitChangeAt;
   if (out && git) return Date.parse(git) > Date.parse(out) ? git : out;
   return out ?? git ?? p.tmux.lastActivityAt;

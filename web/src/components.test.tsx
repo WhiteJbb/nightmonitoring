@@ -373,6 +373,14 @@ test('dashboard: urgent first, then working, then the most recently active (outp
   expect([...container.querySelectorAll('.card-link')].map((a) => a.textContent)).toEqual(['ask', 'run-a', 'run-b', 'committed', 'new', 'old']);
 });
 
+test('dashboard: an agent is placed by when it last worked, not by a later scroll that changed its screen', () => {
+  const ago = (h: number) => new Date(Date.parse(NOW) - h * 3600_000).toISOString();
+  const agent = (name: string, worked: string, screen: string) =>
+    project({ id: name, name, status: { state: 'idle', reasons: [] }, tmux: { ...project().tmux, agent: 'ready', lastBusyAt: worked, lastOutputChangeAt: screen } });
+  const { container } = render(<Dashboard snapshot={dash({ projects: [agent('scrolled', ago(5), ago(0)), agent('finished', ago(1), ago(1))] })} />);
+  expect([...container.querySelectorAll('.card-link')].map((a) => a.textContent)).toEqual(['finished', 'scrolled']);
+});
+
 test('dashboard: hiding a discovered session offers an undo that un-hides it', async () => {
   fetchMock.mockImplementation(async () => new Response(JSON.stringify({ ok: true })));
   const alert = vi.fn();

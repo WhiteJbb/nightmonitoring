@@ -93,6 +93,8 @@ interface Tracked {
   agent: boolean;
   /** 작업 중 표시가 연달아 보이지 않은 tick 수 (도구 호출 사이의 잠깐 빈 틈을 "끝남"으로 보지 않게) */
   quietTicks: number;
+  /** 작업 중 표시를 마지막으로 본 시각. 스크롤·입력칸 타이핑도 화면을 바꾸지만 그건 일이 아니다 (대시보드 순서에 쓴다) */
+  busyAt: string | null;
 }
 
 /** 크기 변경 뒤 화면을 다시 그리는 데 걸리는 tick 수 (그동안의 출력 변화는 활동이 아니다) */
@@ -143,7 +145,7 @@ export class Monitor {
     for (const p of opts.config.projects) {
       const saved = opts.restore?.tracked[p.id];
       // 경로가 달라졌으면 collectOne 이 기준점을 버린다. 따라간 저장소(followRepo)는 여기서 그대로 이어받는다.
-      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, logErrors: saved.logErrors ?? [], outputChangedAt: saved.outputChangedAt ?? null, agent: saved.agent ?? false });
+      if (saved) this.tracked.set(p.id, { ...newTracked(saved.repoPath), baseline: saved.baseline, gitChangedAt: saved.gitChangedAt, logFile: saved.logFile, logPos: saved.logPos, logErrors: saved.logErrors ?? [], outputChangedAt: saved.outputChangedAt ?? null, agent: saved.agent ?? false, busyAt: saved.busyAt ?? null });
     }
     this.snapshot = this.build();
   }
@@ -191,7 +193,7 @@ export class Monitor {
     const tracked: MonitorState['tracked'] = {};
     for (const p of this.opts.config.projects) {
       const tr = this.tracked.get(p.id);
-      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, logErrors: tr.logErrors, outputChangedAt: tr.outputChangedAt, agent: tr.agent };
+      if (tr) tracked[p.id] = { repoPath: tr.repoPath, baseline: tr.baseline, gitChangedAt: tr.gitChangedAt, logFile: tr.logFile, logPos: tr.logPos, logErrors: tr.logErrors, outputChangedAt: tr.outputChangedAt, agent: tr.agent, busyAt: tr.busyAt };
     }
     return { startedAt: this.startedAt, tracked };
   }
@@ -341,9 +343,12 @@ export class Monitor {
       // 이후에는 정규화한 출력 비교로만 갱신한다. demo 수집기는 이 값을 직접 제어한다.
       if (this.opts.demo) lastOutputChangeAt = latest(tr.outputChangedAt, raw.lastActivityAt);
       else lastOutputChangeAt = tr.outputChangedAt ??= raw.lastActivityAt;
+      // 처음 보는(또는 예전 상태 파일의) 세션은 그때까지의 출력 시각에서 시작한다
+      tr.busyAt = busy ? nowIso : (tr.busyAt ?? lastOutputChangeAt);
     } else {
       tr.output = null;
       tr.outputChangedAt = null;
+      tr.busyAt = null;
     }
 
     return {
@@ -351,7 +356,7 @@ export class Monitor {
       git,
       since,
       lastGitChangeAt: latest(git.recentCommits[0]?.date ?? null, tr.gitChangedAt),
-      tmux: { ...raw, lastOutputChangeAt, waitingPrompt, ...(waitingChoices ? { waitingChoices } : {}), ...(agent ? { agent } : {}) },
+      tmux: { ...raw, lastOutputChangeAt, waitingPrompt, ...(waitingChoices ? { waitingChoices } : {}), ...(agent ? { agent, lastBusyAt: tr.busyAt } : {}) },
       logErrors,
     };
   }
@@ -424,7 +429,7 @@ const tailRun = (r: RunResult | null): RunResult | null => {
   if (!r || (r.stdout.length <= SNAPSHOT_OUTPUT_CHARS && r.stderr.length <= SNAPSHOT_OUTPUT_CHARS)) return r;
   return { ...r, stdout: r.stdout.slice(-SNAPSHOT_OUTPUT_CHARS), stderr: r.stderr.slice(-SNAPSHOT_OUTPUT_CHARS), truncated: true };
 };
-const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0, agent: false, quietTicks: READY_TICKS });
+const newTracked = (repoPath: string): Tracked => ({ repoPath, baseline: null, fingerprint: null, gitChangedAt: null, logFile: null, logPos: null, logEnd: null, logErrors: [], output: null, outputChangedAt: null, sizeKey: null, settle: 0, agent: false, quietTicks: READY_TICKS, busyAt: null });
 
 const EMPTY_GIT: GitInfo = {
   ok: false,

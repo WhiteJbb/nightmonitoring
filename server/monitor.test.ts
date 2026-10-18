@@ -85,6 +85,38 @@ describe('Monitor', () => {
     expect(m.snapshot.projects[0]!.status).toEqual({ state: 'waiting', reasons: ['입력 대기: Overwrite file? (y/n)'] });
   });
 
+  it('remembers when an agent last worked; scrolling its screen afterwards does not move it, and it survives a restart', async () => {
+    let now = T0;
+    const pane = (lines: string[]) => ({ id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, lines });
+    const state = { panes: [pane(['old answer', '› Ask Codex'])] };
+    const collector = fakeCollector({ output: [], git: git() });
+    collector.tmux = async () => new Map([['app', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: new Date(T0 - 60_000).toISOString(), output: [], panes: state.panes, waitingPrompt: null, attachCommand: 'x' }]]);
+    const m = new Monitor({ config, collector, runs: noRuns, now: () => now });
+    const app = () => m.snapshot.projects.find((p) => p.id === 'app')!;
+    await m.tick();
+    // 처음 보는 세션은 그때까지의 출력 시각에서 시작한다
+    expect(app().tmux.lastBusyAt).toBe(new Date(T0 - 60_000).toISOString());
+
+    now += 5000;
+    state.panes = [pane(['• Working (3s • esc to interrupt)'])];
+    await m.tick();
+    const worked = new Date(now).toISOString();
+    expect(app().tmux.lastBusyAt).toBe(worked);
+
+    // 일을 마친 뒤 휴대폰에서 위로 쓸어 봄: 화면은 바뀌지만 마지막으로 일한 시각은 그대로
+    for (const lines of [['done', '› Ask Codex'], ['earlier output', '↓ Back to bottom']]) {
+      now += 5000;
+      state.panes = [pane(lines)];
+      await m.tick();
+    }
+    expect(app().tmux.lastOutputChangeAt).toBe(new Date(now).toISOString());
+    expect(app().tmux.lastBusyAt).toBe(worked);
+
+    const again = new Monitor({ config, collector, runs: noRuns, now: () => now, restore: JSON.parse(JSON.stringify(m.exportState())) });
+    await again.tick();
+    expect(again.snapshot.projects.find((p) => p.id === 'app')!.tmux.lastBusyAt).toBe(worked);
+  });
+
   it('does not count the redraw after a pane resize as activity', async () => {
     let now = T0;
     const pane = (cols: number, lines: string[]) => ({ id: '%1', window: 0, windowName: 'w', index: 0, command: 'claude', active: true, cols, lines });

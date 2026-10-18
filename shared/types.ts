@@ -113,6 +113,8 @@ export interface TmuxInfo {
    * 이런 세션은 화면이 바뀌었는지(스크롤·입력·크기 변경도 바꾼다)가 아니라 이 표시로 상태를 정한다.
    */
   agent?: 'busy' | 'ready';
+  /** 에이전트 세션이 작업 중 표시를 마지막으로 띄운 시각. 스크롤·입력으로는 바뀌지 않아 "마지막으로 일한 때"로 쓴다 */
+  lastBusyAt?: string | null;
   /** 예: tmux attach -t session-name */
   attachCommand: string | null;
   error?: string;
