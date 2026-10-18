@@ -187,8 +187,14 @@ async function waitFree(host: string, port: number) {
   fail(`${host}:${port} 를 다른 프로그램이 쓰고 있습니다. 직접 띄운 NightShift(npm start)라면 끄고 다시 실행하세요.`);
 }
 
-/** 서비스가 쓸 node: PATH 의 것(Homebrew 는 버전이 바뀌어도 그대로인 /opt/homebrew/bin/node). */
-const nodePath = () => quiet('sh', ['-c', 'command -v node']).stdout.trim() || process.execPath;
+/**
+ * 서비스가 쓸 node: PATH 의 것(Homebrew 는 버전이 바뀌어도 그대로인 /opt/homebrew/bin/node).
+ * fnm 은 셸마다 임시 링크(/run/user/…/fnm_multishells)를 주는데 재부팅하면 사라지므로 실제 파일을 쓴다.
+ */
+function nodePath(): string {
+  const found = quiet('sh', ['-c', 'command -v node']).stdout.trim();
+  return found && !/fnm_multishells|^\/run\//.test(found) ? found : process.execPath;
+}
 
 /** 서비스 환경. launchd·systemd 는 셸의 PATH 를 모르므로 지금 PATH 를 넘긴다 (git·tmux·claude·codex 를 찾게). */
 function serviceEnv(node: string, configPath: string): Record<string, string> {
@@ -226,7 +232,7 @@ async function service(host: string, port: number, configPath: string): Promise<
     fail('사용자 systemd 에 연결할 수 없습니다. 이 사용자로 직접 로그인한 터미널(ssh 등)에서 다시 실행하세요 (sudo, sudo -u 로는 안 됩니다).');
   }
   if (userBus) {
-    const unit = path.join(os.homedir(), '.config/systemd/user/nightshift.service');
+    const unit = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'systemd/user/nightshift.service');
     mkdirSync(path.dirname(unit), { recursive: true });
     writeFileSync(unit, unitText(node, ROOT, env));
     // 멈추기 전에 새 unit 을 읽힌다: 옛 unit(KillMode 없음)으로 멈추면 NightShift 가 띄운 tmux 까지 죽는다
