@@ -25,7 +25,7 @@ export function versionOf(file: string): string {
   return existsSync(file) ? createHash('sha1').update(readFileSync(file)).digest('hex') : 'none';
 }
 
-function readRaw(file: string): Obj {
+export function readRaw(file: string): Obj {
   if (!existsSync(file)) return {};
   const text = readFileSync(file, 'utf8');
   let raw: unknown;
@@ -163,7 +163,7 @@ export function mergeUpdate(raw: Obj, current: Config, update: unknown, baseDir:
 }
 
 /** 임시 파일에 쓴 뒤 rename. YAML 은 바뀐 최상위 키만 갈아 끼워 다른 곳의 주석을 보존한다. */
-function writeRaw(file: string, before: Obj, next: Obj): void {
+export function writeRaw(file: string, before: Obj, next: Obj): void {
   let text: string;
   if (isYaml(file)) {
     const parsed = parseDocument(existsSync(file) ? readFileSync(file, 'utf8') : '');

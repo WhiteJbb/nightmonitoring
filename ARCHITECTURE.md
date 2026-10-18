@@ -13,6 +13,7 @@ tmux에서 돌아가는 AI 코딩 에이전트(Claude Code, Codex)를 휴대폰�
 
 ```
 shared/types.ts        서버·UI가 공유하는 API 타입 (type-only)
+scripts/setup.ts       npm run setup: 도구 확인·빌드·Tailscale serve·launchd/systemd 등록 (설치할 때만 돈다)
 server/
   index.ts             진입점: 인자 파싱, config 로드, 상태 복원, 알림·감시 연결, listen(127.0.0.1)
   config.ts            JSON/YAML config 로드·검증·기본값

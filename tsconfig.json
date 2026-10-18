@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["server", "shared", "web/src", "vite.config.ts"]
+  "include": ["server", "scripts", "shared", "web/src", "vite.config.ts"]
 }
