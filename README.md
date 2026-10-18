@@ -63,7 +63,9 @@ TypeScript · React · Vite · Express · xterm.js. 자세한 설계는 [ARCHITE
 
 - macOS, Linux(Ubuntu·Debian·라즈베리파이, [Linux에서](#linux에서-ubuntu-라즈베리파이)), 또는 Windows의 WSL2 ([Windows에서 (WSL2)](#windows에서-wsl2))
 - Node.js **22.18 이상** (서버를 TypeScript 그대로 실행합니다)
-- `git`, `tmux` (demo mode에는 필요 없음)
+- `git`, `tmux` (없으면 setup이 설치합니다. demo mode에는 필요 없음)
+- 지켜볼 에이전트: [Claude Code](https://docs.claude.com/en/docs/claude-code) 또는 [Codex](https://github.com/openai/codex) (셸만 띄워도 됩니다)
+- 휴대폰에서 보려면 [Tailscale](https://tailscale.com/download) (개인 무료): 이 컴퓨터와 휴대폰에 깔고 같은 계정으로 로그인
 
 ## 빠른 시작
 
@@ -95,11 +97,25 @@ nightshift update    # git pull 뒤 setup
 
 자동 시작 없이 직접 띄우려면 `npm install && npm run build && npm start`.
 
-브라우저에서 <http://127.0.0.1:4477> 을 엽니다. 설정 파일은 아직 필요 없습니다.
+자동 시작 등록 없이 화면만 먼저 보려면 clone한 폴더에서 `npm install && npm run demo` 뒤 <http://127.0.0.1:4477> (가짜 데이터, [Demo mode](#demo-mode)).
+
+### 처음 쓰기
+
+브라우저에서 <http://127.0.0.1:4477> 을 엽니다(`nightshift open`). 설정 파일은 아직 필요 없습니다.
 
 1. 돌고 있는 tmux 세션이 **미등록** 카드로 보입니다. **등록**을 누르면 프로젝트가 되고, 그때 `config/nightshift.json`이 만들어집니다.
-2. 아직 세션이 없으면 **+ tmux 세션 만들기**로 새 세션을 띄우고(Git 주소를 주면 복제까지), `tmux attach`로 들어가 에이전트를 시작하세요.
-3. 임계값·알림·휴대폰 푸시는 상단 **설정**에서 바꿉니다.
+2. 아직 세션이 없으면 **+ tmux 세션 만들기**에서 세션 이름과 에이전트(셸만 / Claude Code / Codex)를 고릅니다. 세션을 띄워 에이전트를 시작하고 터미널 화면으로 갑니다. Git 주소를 주면 clone부터 합니다.
+3. 임계값·알림은 상단 **설정**에서 바꿉니다.
+
+### 휴대폰에서 열기
+
+1. 휴대폰에 Tailscale 앱을 깔고 이 컴퓨터와 같은 계정으로 로그인합니다.
+2. setup 마지막에 나온 https 주소(`https://<기기>.<tailnet>.ts.net`, 다시 보려면 `nightshift status`)를 휴대폰 브라우저로 엽니다. 홈 화면에 추가해 두면 바로 열 수 있습니다.
+3. 할 일이 끝나거나 입력을 기다릴 때 푸시를 받으려면 설정의 **휴대폰 알림**에 ntfy 주소를 적습니다([휴대폰 알림 (ntfy)](#휴대폰-알림-ntfy)).
+
+- setup을 돌릴 때 Tailscale이 꺼져 있었으면 켜고 로그인한 뒤 `nightshift setup`을 다시 돌리면 됩니다.
+- 이 tailnet에서 처음 https를 열면 Tailscale이 HTTPS를 켜라는 링크를 보여 줍니다. 링크를 열어 허용하세요. 그 사이 setup이 실패했으면 허용한 뒤 다시 돌리면 됩니다.
+- 주소는 내 tailnet의 기기에서만 열립니다. 인터넷에 공개되지 않습니다.
 
 설정 파일을 직접 쓰고 싶으면 `cp config/nightshift.example.json config/nightshift.json` 뒤 [config 작성](#config-작성)을 보세요. 서버를 켜 둔 채 저장해도 바로 반영됩니다.
 
@@ -123,7 +139,7 @@ npm run dev                  # 개발 모드 (프론트엔드 HMR 포함, 빌드
 - **config를 저장하면 1~2초 안에 자동으로 반영됩니다** (재시작 불필요). 다시 읽다 실패하면 이전 설정으로 계속 동작하고 화면 위쪽에 오류가 표시됩니다. `host`·`port`만은 재시작해야 바뀝니다.
 - **모니터링 세션은 재시작해도 이어집니다.** 기준점(최초 브랜치·커밋), 실행 결과·이력이 `.nightshift/state.json`에 저장됩니다. 처음부터 다시 보려면 대시보드의 "모니터링 새로 시작" 버튼을 누르거나 `--fresh`로 실행하세요.
 
-### 백그라운드로 실행 (로그인하면 자동 시작)
+### 백그라운드로 실행 (macOS, 로그인하면 자동 시작)
 
 `npm run setup`이 `~/Library/LaunchAgents/com.nightshift.plist`를 만들어 등록합니다. 서비스는 setup을 돌린 터미널의 `node`와 `PATH`를 씁니다. 그래서 node나 에이전트를 다른 곳에 새로 깔았으면 setup을 다시 돌리세요.
 
@@ -149,7 +165,7 @@ git clone https://github.com/WhiteJbb/nightshift.git ~/nightshift && cd ~/nights
 
 - **Node 버전:** 배포판 apt의 `nodejs`는 너무 오래됐습니다(Ubuntu 24.04는 18). 위처럼 NodeSource나 nvm으로 22.18 이상을 까세요.
 - **라즈베리파이:** 64비트 OS(arm64)가 필요하고, 라즈베리파이 4·5를 권합니다. 1세대 Pi Zero·Pi 1(armv6)용 Node 22는 없습니다. 같은 기기에서 Claude Code·Codex도 돌린다면 램 2GB 이상이 편합니다.
-- **휴대폰에서 접속:** Linux 기기에 Tailscale을 깔고 [다른 기기에서 접속 (Tailscale)](#다른-기기에서-접속-tailscale)을 그대로 따릅니다.
+- **휴대폰에서 접속:** Linux 기기에 Tailscale을 깔고 로그인한 뒤 setup을 돌리면 https 주소를 엽니다. 권한 오류가 나면 `sudo tailscale set --operator=$USER`를 한 번 실행하고 `nightshift setup`을 다시 돌리세요.
 - **자동 시작:** `npm run setup`이 systemd 사용자 서비스(`~/.config/systemd/user/nightshift.service`)를 등록하고, 로그아웃해도 돌도록 linger를 켭니다(권한이 없으면 `sudo loginctl enable-linger $USER`를 안내합니다). 관리 명령은 아래 WSL2의 4번과 같습니다.
 
 ## Windows에서 (WSL2)
@@ -337,7 +353,7 @@ npm run demo
 대시보드의 **+ tmux 세션 만들기**에서 **세션 이름**만 적고 **바로 시작할 에이전트**(셸만 / Claude Code / Codex)를 고르면 새 tmux 세션을 만들어 그 에이전트를 띄우고, 바로 프로젝트로 등록한 뒤 터미널 화면으로 이동합니다. 에이전트를 고르면 터미널 입력 허용도 함께 켜집니다(끌 수 있음). Git 저장소 주소·저장소 경로·프로젝트 이름은 **자세히**를 펼쳐 적습니다. 비워 두면 프로젝트 이름은 세션 이름, 경로는 홈 폴더(`~`)입니다.
 
 - 세션은 만드는 순간 보고 있던 화면의 폭에 맞는 크기로 만들어져, 터미널 탭에서 가로 스크롤이 생기지 않습니다. 이미 있는 세션이 화면보다 넓으면 터미널 위에 **화면에 맞추기** 버튼이 나옵니다(터미널이 붙어 있지 않은 세션에서만. 붙어 있으면 그 터미널 화면까지 바뀌기 때문입니다). 맞춘 뒤에도 나중에 터미널을 붙이면 그 터미널 크기를 따라갑니다.
-- **Git 저장소 주소**를 적으면 저장소 경로에 먼저 `git clone` 한 뒤 세션을 만듭니다. 주소를 넣으면 프로젝트·세션 이름은 저장소 이름, 경로는 `~/repos/<저장소 이름>`으로 채워집니다. `https://`, `ssh://`, `git@host:path` 형식만 받고, 경로에 이미 저장소가 있으면 clone 을 건너뜁니다. 자격 증명을 묻는 상황이면 멈추지 않고 실패합니다(비공개 저장소는 이 Mac에 SSH 키나 자격 증명이 있어야 합니다). 시간 제한은 `commandTimeoutSec`과 같습니다.
+- **Git 저장소 주소**를 적으면 저장소 경로에 먼저 `git clone` 한 뒤 세션을 만듭니다. 주소를 넣으면 프로젝트·세션 이름은 저장소 이름, 경로는 `~/repos/<저장소 이름>`으로 채워집니다. `https://`, `ssh://`, `git@host:path` 형식만 받고, 경로에 이미 저장소가 있으면 clone 을 건너뜁니다. 자격 증명을 묻는 상황이면 멈추지 않고 실패합니다(비공개 저장소는 이 컴퓨터에 SSH 키나 자격 증명이 있어야 합니다). 시간 제한은 `commandTimeoutSec`과 같습니다.
 - 임의의 명령은 받지 않습니다. 기본 셸을 띄우고, 에이전트를 골랐을 때만 정해진 명령(`claude` 또는 `codex`)을 새로 만든 세션에 칩니다(이미 있던 세션에는 치지 않음). 꺼진 세션의 **세션 시작**에서도 같은 선택을 할 수 있고, 다 쓴 세션은 상세 화면 오른쪽 위 **세션 종료**로 끝냅니다(글자를 보내는 일이 아니라 입력 허용과 상관없음). 세션이 꺼지면 그 버튼이 **삭제**로 바뀌어 프로젝트를 목록에서 바로 지울 수 있습니다(폴더는 그대로). 설정 화면에서 삭제하면 목록에서만 빠지고 tmux 세션은 계속 돌아 미등록 세션으로 보입니다.
 - 같은 이름의 세션이 이미 있으면 새로 만들지 않고 그 세션을 등록합니다. 이미 프로젝트로 등록된 세션 이름은 거부합니다.
 - 등록된 세션이 꺼져 있으면 프로젝트의 터미널 탭에 **세션 시작** 버튼이 나타나 같은 이름으로 다시 만들 수 있습니다.
@@ -380,7 +396,7 @@ npm run demo
 - **바로 답하기**: 에이전트가 번호 선택지 프롬프트(`❯ 1. Yes` 등)를 띄워 입력 대기가 되면 터미널 위에 선택지 버튼이 나옵니다. 누르면 그 번호 키를 프롬프트가 뜬 pane에 보냅니다.
 - 보낸 입력은 모두 `.nightshift/input.log`에 한 줄씩 기록됩니다. 5MB를 넘으면 `input.log.1`로 한 번 돌려 두고 새로 씁니다(그 전 것은 지워짐).
 
-**이 기능은 "웹 화면에서 임의 명령 실행"과 같습니다.** 켜 둔 프로젝트에 대해서는 대시보드에 접속할 수 있는 사람이 곧 이 Mac 계정으로 명령을 실행할 수 있는 사람입니다. 그래서 기본은 꺼져 있고 다음 조건을 모두 만족할 때만 동작합니다.
+**이 기능은 "웹 화면에서 임의 명령 실행"과 같습니다.** 켜 둔 프로젝트에 대해서는 대시보드에 접속할 수 있는 사람이 곧 이 컴퓨터 계정으로 명령을 실행할 수 있는 사람입니다. 그래서 기본은 꺼져 있고 다음 조건을 모두 만족할 때만 동작합니다.
 
 - 그 프로젝트의 터미널 입력 허용이 켜져 있을 것
 - 서버가 loopback(`127.0.0.1`) 또는 Tailscale 주소(`100.64.0.0/10`)에 바인딩되어 있을 것 — `0.0.0.0`이나 LAN 주소에 열면 입력은 거부됩니다
@@ -391,12 +407,12 @@ npm run demo
 
 ### 다른 기기에서 접속 (Tailscale)
 
-서버를 `0.0.0.0`에 여는 대신 Tailscale을 거치면 tailnet에 속한 내 기기에서만 접속됩니다.
+서버를 `0.0.0.0`에 여는 대신 Tailscale을 거치면 tailnet에 속한 내 기기에서만 접속됩니다. Tailscale이 켜져 있으면 `npm run setup`이 아래 방법 1을 대신 해 줍니다. 아래는 직접 하거나 사정을 알고 싶을 때 보세요.
 
 **방법 1 — `tailscale serve` (권장)**: 서버는 `127.0.0.1`에 그대로 두고 Tailscale이 HTTPS로 중계합니다.
 
 ```bash
-tailscale serve --bg 4477          # https://<기기이름>.<tailnet>.ts.net 으로 노출
+tailscale serve --bg --https=443 http://127.0.0.1:4477   # https://<기기이름>.<tailnet>.ts.net 으로 노출
 ```
 
 중계를 거치면 Host 헤더가 그 이름으로 들어오므로 config **파일**에 허용할 이름을 적어야 합니다(적지 않으면 "허용되지 않은 Host"로 거부).
@@ -405,7 +421,7 @@ tailscale serve --bg 4477          # https://<기기이름>.<tailnet>.ts.net 으
 { "allowedHosts": ["my-mac.tailnet-name.ts.net"] }
 ```
 
-**방법 2 — Tailscale 주소에 직접 바인딩**: config 파일의 `host`를 이 Mac의 Tailscale 주소로 바꿉니다(`tailscale ip -4`로 확인). 이 경우 로컬에서는 `127.0.0.1`이 아니라 그 주소로 접속해야 하고, HTTPS가 아닙니다.
+**방법 2 — Tailscale 주소에 직접 바인딩**: config 파일의 `host`를 이 컴퓨터의 Tailscale 주소로 바꿉니다(`tailscale ip -4`로 확인). 이 경우 로컬에서는 `127.0.0.1`이 아니라 그 주소로 접속해야 하고, HTTPS가 아닙니다.
 
 ```json
 { "host": "100.101.102.103" }
@@ -476,7 +492,9 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | 카드가 "Git 저장소가 아닙니다" | 오류로 치지는 않음. Git 정보도 보려면 해당 경로에서 `git status`가 되는지 확인 |
 | "tmux 세션이 종료되었거나 없습니다" | `tmux ls`의 세션 이름과 `tmuxSession`이 정확히 같은지 확인. 세션 없는 프로젝트를 오류로 보고 싶지 않으면 `sessionExitIsError: false` |
 | launchd로 띄웠더니 다운로드·문서·데스크탑 폴더의 프로젝트가 "Git 이 응답하지 않습니다" | macOS가 그 폴더 접근을 막고 있음. 시스템 설정 → 개인정보 보호 및 보안 → **전체 디스크 접근 권한**에서 `+`를 누르고 ⌘⇧G로 node의 실제 경로(`readlink -f $(which node)`, Homebrew는 node를 올리면 경로가 바뀜)를 추가한 뒤 `nightshift restart` |
-| launchd로 띄웠더니 tmux 세션이 안 보임 | plist의 `PATH`에 `tmux`가 있는 디렉터리(Homebrew는 `/opt/homebrew/bin`)가 있는지 확인. `.nightshift/server.log` 확인 |
+| 자동 시작으로 띄웠더니 tmux 세션이 안 보이거나 에이전트를 못 찾음 | 서비스는 setup을 돌린 터미널의 `PATH`를 씁니다. tmux·claude·codex가 잡히는 터미널에서 `nightshift setup`을 다시 돌리세요. 로그는 `nightshift logs` |
+| `nightshift: command not found` | 전역 npm 폴더의 bin(`npm prefix -g` 뒤에 `/bin`)이 `PATH`에 있는지 확인. 저장소 폴더에서 `npm link`(권한이 없으면 `sudo npm link`) |
+| 휴대폰에서 https 주소가 안 열림 | 휴대폰 Tailscale 앱이 켜져 있고 같은 계정인지 확인. 컴퓨터에서 `nightshift status`로 서버와 주소 확인 |
 | 터미널 출력이 비어 있음 | 세션의 활성 pane이 비어 있는지 확인 (`tmux capture-pane -p -t =세션이름:`) |
 | 로그 때문에 계속 오류로 표시됨 | Git 탭에서 "확인 처리", 또는 `errorIgnorePatterns`에 제외할 문구 추가, `errorPatterns`를 정규식으로 좁히기 |
 | 입력 대기가 잘못 뜨거나 안 뜸 | `promptPatterns`를 에이전트의 프롬프트 문구에 맞게 수정 |
@@ -484,10 +502,10 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | config를 고쳤는데 반영이 안 됨 | 화면 위쪽의 config 오류 배너와 서버 로그 확인. `host`·`port`는 재시작 필요 |
 | 재시작했더니 이전 기록이 그대로 남아 있음 | 정상 동작. "모니터링 새로 시작" 버튼 또는 `--fresh` |
 | 터미널 아래에 입력 줄이 안 보임 | 설정 화면에서 그 프로젝트의 "터미널 입력 허용"을 켜기. demo mode, 그리고 loopback·Tailscale이 아닌 `host`에서는 동작하지 않음 |
-| Tailscale 주소로 열면 `허용되지 않은 Host` | `tailscale serve`를 쓰는 경우 config 파일의 `allowedHosts`에 `<기기>.<tailnet>.ts.net`을 추가하고 재시작 |
+| Tailscale 주소로 열면 `허용되지 않은 Host` | `nightshift setup`을 다시 돌리면 그 이름을 `allowedHosts`에 적습니다. 직접 하려면 config 파일의 `allowedHosts`에 `<기기>.<tailnet>.ts.net`을 추가하고 `nightshift restart` |
 | 입력했는데 반응이 없음 | 올바른 pane을 선택했는지 확인. `.nightshift/input.log`에 기록이 남는지 확인 |
 | 휴대폰 알림이 오지 않음 | 설정 화면의 "시험 알림 보내기"로 확인. 앱에서 구독한 주제와 주소의 주제가 같은지, 휴대폰의 ntfy 알림 권한이 켜져 있는지 확인 |
-| 알림이 오지 않음 | 시스템 설정 → 알림에서 "스크립트 편집기" 허용 여부 확인. 서버 시작 직후의 상태는 알리지 않고 이후의 **변화**만 알립니다 |
+| Mac 알림이 오지 않음 | 시스템 설정 → 알림에서 "스크립트 편집기" 허용 여부 확인. 서버 시작 직후의 상태는 알리지 않고 이후의 **변화**만 알립니다 |
 | TypeScript 문법 오류로 서버가 안 뜸 | `node -v`가 22.18 이상인지 확인 |
 | 화면에 "연결 끊김" | 서버가 종료된 상태. 다시 시작하면 자동으로 재연결됩니다 |
 
