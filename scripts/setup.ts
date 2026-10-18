@@ -77,14 +77,18 @@ ${vars.join('\n')}
 `;
 }
 
+// systemd 는 % 를 지정자(%n 등)로 풀고, 따옴표 안에서는 \ 와 " 를 이스케이프로 읽는다
+const sd = (s: string) => s.replace(/%/g, '%%');
+const sdQuoted = (s: string) => `"${sd(s).replace(/[\\"]/g, '\\$&')}"`;
+
 export function unitText(node: string, root: string, env: Record<string, string>): string {
-  const vars = Object.entries(env).map(([k, v]) => `Environment="${k}=${v}"`);
+  const vars = Object.entries(env).map(([k, v]) => `Environment=${sdQuoted(`${k}=${v}`)}`);
   return `[Unit]
 Description=NightShift
 
 [Service]
-WorkingDirectory=${root}
-ExecStart="${node}" server/index.ts
+WorkingDirectory=${sd(root)}
+ExecStart=${sdQuoted(node)} server/index.ts
 ${vars.join('\n')}
 Restart=always
 # NightShift 가 띄운 tmux 서버(와 그 안의 에이전트)는 서비스를 다시 띄워도 살려 둔다

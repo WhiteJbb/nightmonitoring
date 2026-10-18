@@ -35,3 +35,10 @@ it('tailscale serve 는 서버가 받는 로컬 주소로 중계한다', () => {
 it('systemd 가 서비스를 다시 띄울 때 NightShift 가 띄운 tmux 까지 죽이지 않는다', () => {
   expect(unitText('/usr/bin/node', '/home/u/nightshift', { PATH: '/bin' })).toContain('KillMode=process');
 });
+
+it('systemd unit 의 경로·환경 값은 % 와 따옴표를 이스케이프한다', () => {
+  const text = unitText('/opt/my "node"/node', '/home/u/release%n', { PATH: '/a%b:/c\\d' });
+  expect(text).toContain('WorkingDirectory=/home/u/release%%n\n');
+  expect(text).toContain('ExecStart="/opt/my \\"node\\"/node" server/index.ts');
+  expect(text).toContain('Environment="PATH=/a%%b:/c\\\\d"');
+});
