@@ -6,6 +6,9 @@
   "license": "MIT",
   "repository": "github:WhiteJbb/nightmonitoring",
   "type": "module",
+  "bin": {
+    "nightshift": "scripts/nightshift.ts"
+  },
   "engines": {
     "node": ">=22.18"
   },

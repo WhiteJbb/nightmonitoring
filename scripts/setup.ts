@@ -12,9 +12,29 @@ import { isTailscaleAddress } from '../server/app.ts';
 import { ConfigError, defaultConfigPath, loadConfig } from '../server/config.ts';
 import { readRaw, writeRaw } from '../server/configEdit.ts';
 
-const ROOT = path.resolve(import.meta.dirname, '..');
+export const ROOT = path.resolve(import.meta.dirname, '..');
 const LABEL = 'com.nightshift';
 const mac = process.platform === 'darwin';
+const domain = `gui/${os.userInfo().uid}`;
+const PLIST = path.join(os.homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
+const UNIT = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'systemd/user/nightshift.service');
+
+/** setup 이 등록한 서비스를 다루는 명령 (nightshift 명령과 setup 의 안내가 같이 쓴다). stop 은 다음 로그인·부팅 때 다시 뜬다. */
+export const SERVICE = mac
+  ? {
+      file: PLIST,
+      start: ['launchctl', 'bootstrap', domain, PLIST],
+      stop: ['launchctl', 'bootout', `${domain}/${LABEL}`],
+      restart: ['launchctl', 'kickstart', '-k', `${domain}/${LABEL}`],
+      logs: ['tail', '-n', '50', '-f', path.join(ROOT, '.nightshift/server.log')],
+    }
+  : {
+      file: UNIT,
+      start: ['systemctl', '--user', 'start', 'nightshift'],
+      stop: ['systemctl', '--user', 'stop', 'nightshift'],
+      restart: ['systemctl', '--user', 'restart', 'nightshift'],
+      logs: ['journalctl', '--user', '-u', 'nightshift', '-n', '50', '-f'],
+    };
 
 const step = (s: string) => console.log(`\n▸ ${s}`);
 const warn = (s: string) => console.log(`  ! ${s}`);
@@ -204,27 +224,25 @@ function serviceEnv(node: string, configPath: string): Record<string, string> {
   return { PATH, LANG: process.env.LANG || 'C.UTF-8', ...(process.env.NIGHTSHIFT_CONFIG ? { NIGHTSHIFT_CONFIG: configPath } : {}) };
 }
 
-/** 서비스를 등록하고 다시 띄운다. 끄고 켜는 방법을 돌려준다. 자동 시작을 못 하면 null. */
-async function service(host: string, port: number, configPath: string): Promise<string[] | null> {
+/** 서비스를 등록하고 다시 띄운다. 자동 시작을 못 하면 false. */
+async function service(host: string, port: number, configPath: string): Promise<boolean> {
   step('자동 시작 등록');
   const node = nodePath();
   const env = serviceEnv(node, configPath);
   mkdirSync(path.join(ROOT, '.nightshift'), { recursive: true });
 
   if (mac) {
-    const domain = `gui/${os.userInfo().uid}`;
-    const plist = path.join(os.homedir(), 'Library/LaunchAgents', `${LABEL}.plist`);
-    mkdirSync(path.dirname(plist), { recursive: true });
-    writeFileSync(plist, plistText(node, ROOT, env));
-    quiet('launchctl', ['bootout', `${domain}/${LABEL}`]); // 처음이면 등록된 게 없어 실패한다
+    mkdirSync(path.dirname(PLIST), { recursive: true });
+    writeFileSync(PLIST, plistText(node, ROOT, env));
+    quiet(SERVICE.stop[0]!, SERVICE.stop.slice(1)); // 처음이면 등록된 게 없어 실패한다
     await waitFree(host, port);
     // 내린 직후에는 잠깐 다시 올리지 못할 때가 있다 (Bootstrap failed: 5)
-    for (let i = 0; !works('launchctl', ['bootstrap', domain, plist]); i++) {
-      if (i === 10) fail(`launchd 등록에 실패했습니다: launchctl bootstrap ${domain} ${plist}`);
+    for (let i = 0; !works(SERVICE.start[0]!, SERVICE.start.slice(1)); i++) {
+      if (i === 10) fail(`launchd 등록에 실패했습니다: ${SERVICE.start.join(' ')}`);
       await sleep(500);
     }
-    console.log(`  ${plist}`);
-    return [`tail -f .nightshift/server.log`, `launchctl kickstart -k ${domain}/${LABEL}`, `launchctl bootout ${domain}/${LABEL}`];
+    console.log(`  ${PLIST}`);
+    return true;
   }
 
   const userBus = process.platform === 'linux' && works('systemctl', ['--user', 'show-environment']);
@@ -232,28 +250,67 @@ async function service(host: string, port: number, configPath: string): Promise<
     fail('사용자 systemd 에 연결할 수 없습니다. 이 사용자로 직접 로그인한 터미널(ssh 등)에서 다시 실행하세요 (sudo, sudo -u 로는 안 됩니다).');
   }
   if (userBus) {
-    const unit = path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'systemd/user/nightshift.service');
-    mkdirSync(path.dirname(unit), { recursive: true });
-    writeFileSync(unit, unitText(node, ROOT, env));
+    mkdirSync(path.dirname(UNIT), { recursive: true });
+    writeFileSync(UNIT, unitText(node, ROOT, env));
     // 멈추기 전에 새 unit 을 읽힌다: 옛 unit(KillMode 없음)으로 멈추면 NightShift 가 띄운 tmux 까지 죽는다
     if (!show('systemctl', ['--user', 'daemon-reload'])) fail('systemctl --user daemon-reload 에 실패했습니다');
-    quiet('systemctl', ['--user', 'stop', 'nightshift']);
+    quiet(SERVICE.stop[0]!, SERVICE.stop.slice(1));
     await waitFree(host, port);
     if (!show('systemctl', ['--user', 'enable', '--now', 'nightshift'])) fail('systemd 등록에 실패했습니다');
-    console.log(`  ${unit}`);
+    console.log(`  ${UNIT}`);
     // 로그아웃해도(라즈베리파이를 화면 없이 켜 둬도) 돌게 한다
     if (!quiet('loginctl', ['show-user', os.userInfo().username, '--property=Linger']).stdout.includes('yes') && !works('loginctl', ['enable-linger'])) {
       warn('로그아웃하면 서버도 멈춥니다. 계속 돌게 하려면: sudo loginctl enable-linger $USER');
     }
-    return ['journalctl --user -u nightshift -f', 'systemctl --user restart nightshift', 'systemctl --user disable --now nightshift'];
+    return true;
   }
 
   warn('systemd 가 없어 자동 시작은 건너뜁니다 (WSL 은 /etc/wsl.conf 에 systemd=true 를 넣고 wsl --shutdown 뒤 다시). 지금은 npm start 로 띄우세요.');
-  return null;
+  return false;
 }
 
+const CLI = path.join(ROOT, 'scripts/nightshift.ts');
+
+/** nightshift 명령을 PATH 에 건다 (npm link). 다른 프로그램이 그 이름을 쓰고 있으면 건드리지 않는다. */
+function link(): boolean {
+  step('nightshift 명령');
+  const which = () => quiet('sh', ['-c', 'command -v nightshift']).stdout.trim();
+  const found = which();
+  if (found && realpathSync(found) === realpathSync(CLI)) {
+    console.log(`  ${found}`);
+    return true;
+  }
+  // 다른 폴더에 받아 둔 NightShift 면 이 폴더로 옮겨 건다
+  if (found && !realpathSync(found).endsWith(path.join('scripts', 'nightshift.ts'))) {
+    warn(`이미 다른 프로그램이 nightshift 라는 이름을 쓰고 있어 건너뜁니다: ${found}`);
+    return false;
+  }
+  const env = { ...process.env };
+  delete env.npm_config_allow_scripts; // npm 12: npm run 이 넘긴 이 값이 있으면 npm 이 거부한다
+  if (spawnSync('npm', ['link'], { cwd: ROOT, stdio: 'inherit', env }).status !== 0) {
+    warn('npm link 에 실패했습니다. 전역 폴더에 쓸 권한이 없으면 sudo npm link 를 실행하세요.');
+    return false;
+  }
+  if (!which()) {
+    warn(`nightshift 를 걸었지만 PATH 에 없습니다. ${quiet('npm', ['prefix', '-g']).stdout.trim()}/bin 을 PATH 에 넣으세요.`);
+    return false;
+  }
+  console.log(`  ${which()}`);
+  return true;
+}
+
+/** 서버가 받는 이 컴퓨터의 주소와 휴대폰용 https 주소(알림 링크와 같은 첫 *.ts.net). */
+export function addresses(config: { host: string; port: number; allowedHosts: string[] }) {
+  const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
+  const phone = config.allowedHosts.find((h) => h.endsWith('.ts.net'));
+  return { host, local: urlOf(host, config.port), phone: phone && `https://${phone}` };
+}
+
+/** 서버와 같은 규칙: NIGHTSHIFT_CONFIG 가 있으면 그 파일. */
+export const configFile = () => path.resolve(ROOT, process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath(path.join(ROOT, 'config')));
+
 /** base 에서 누가 답하는지. 아무도 안 받으면 null. 응답이 멈춰도 3초 안에 끝난다 (본문 읽기까지). */
-const probe = (base: string) =>
+export const probe = (base: string) =>
   fetch(`${base}/api/snapshot`, { signal: AbortSignal.timeout(3000) }).then(
     async (r) => (r.ok && Array.isArray((await r.json().catch(() => null))?.projects) ? 'nightshift' : 'other'),
     () => null,
@@ -274,8 +331,7 @@ async function main() {
   step('빌드');
   if (!show('npm', ['run', 'build'])) fail('빌드에 실패했습니다');
 
-  // 서버와 같은 규칙: NIGHTSHIFT_CONFIG 가 있으면 그 파일 (서비스에도 넘긴다)
-  const configPath = path.resolve(ROOT, process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath(path.join(ROOT, 'config')));
+  const configPath = configFile(); // 서비스에도 넘긴다
   const load = () => {
     try {
       return loadConfig(configPath, ROOT).config;
@@ -284,8 +340,7 @@ async function main() {
     }
   };
   const config = load();
-  const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
-  const local = urlOf(host, config.port);
+  const { host, local } = addresses(config);
   const relay = relayHost(config.host);
   const upstream = relay && urlOf(relay, config.port);
 
@@ -310,23 +365,23 @@ async function main() {
     }
   }
 
-  const commands = await service(host, config.port, configPath);
-  if (commands) {
+  const registered = await service(host, config.port, configPath);
+  if (registered) {
     step('확인');
     // Tailscale 주소에 바인딩했으면 중계용 127.0.0.1 은 따로 뜬다 (실패해도 서버는 로그만 남기고 돈다)
     for (const base of new Set([local, name && upstream ? upstream : local])) {
-      if (!(await up(base))) fail(`${base} 에서 서버가 답하지 않습니다. 로그를 보세요: ${commands[0]}`);
+      if (!(await up(base))) fail(`${base} 에서 서버가 답하지 않습니다. 로그를 보세요: ${SERVICE.logs.join(' ')}`);
     }
   }
+  const linked = link();
+  const cmd = (c: 'logs' | 'restart' | 'stop') => (linked ? `nightshift ${c}` : SERVICE[c].join(' '));
 
   console.log(`\n✓ 준비됐습니다\n`);
   console.log(`  이 컴퓨터   ${local}`);
   if (name) console.log(`  휴대폰      https://${name}  (휴대폰 Tailscale 앱을 같은 계정으로 켠 채로)`);
-  if (commands) {
-    const [logs, restart, stop] = commands;
-    console.log(`\n  로그        ${logs}\n  재시작      ${restart}\n  끄기        ${stop}`);
-  }
-  console.log(`  업데이트    git pull && npm run setup`);
+  if (registered) console.log(`\n  로그        ${cmd('logs')}\n  재시작      ${cmd('restart')}\n  끄기        ${cmd('stop')}`);
+  console.log(`  업데이트    ${linked ? 'nightshift update' : 'git pull && npm run setup'}`);
+  if (linked) console.log(`  그 밖에     nightshift help`);
   if (mac) {
     // launchd 로 띄운 node 는 터미널의 권한을 물려받지 못한다
     console.log(`\n  다운로드·문서·데스크탑 폴더의 저장소를 보려면: 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한 → + → ⌘⇧G 로\n  ${realpathSync(nodePath())} 를 추가하세요 (node 를 업그레이드하면 다시).`);
@@ -334,4 +389,5 @@ async function main() {
   console.log(`\n  처음이라면: 브라우저로 열고 돌고 있는 tmux 세션을 등록하거나 "+ tmux 세션 만들기"로 시작하세요.`);
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) await main();
+// 직접 실행했을 때만 (nightshift 명령이 불러 쓸 때는 아니다). 심볼릭 링크로 받은 폴더에서도 맞게 비교한다
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) await main();
