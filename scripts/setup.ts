@@ -8,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
+import { isTailscaleAddress } from '../server/app.ts';
 import { ConfigError, defaultConfigPath, loadConfig } from '../server/config.ts';
 import { readRaw, writeRaw } from '../server/configEdit.ts';
 
@@ -36,6 +37,14 @@ export function serveTarget(json: string, name: string): string | null {
   }
   if (!s?.TCP?.['443']) return null;
   return s.Web?.[`${name}:443`]?.Handlers?.['/']?.Proxy ?? '다른 용도';
+}
+
+/** tailscale serve 가 중계할 주소. 서버가 로컬 주소에서 받지 않는 바인딩(LAN 주소 등)이면 null. */
+export function serveUpstream(host: string, port: number): string | null {
+  if (host === '::1') return `http://[::1]:${port}`;
+  // Tailscale 주소에 바인딩해도 https 이름(allowedHosts)을 적으면 127.0.0.1 에서도 받는다 (server/index.ts)
+  if (['0.0.0.0', '::', 'localhost'].includes(host) || host.startsWith('127.') || isTailscaleAddress(host)) return `http://127.0.0.1:${port}`;
+  return null;
 }
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -77,6 +86,8 @@ WorkingDirectory=${root}
 ExecStart="${node}" server/index.ts
 ${vars.join('\n')}
 Restart=always
+# NightShift 가 띄운 tmux 서버(와 그 안의 에이전트)는 서비스를 다시 띄워도 살려 둔다
+KillMode=process
 
 [Install]
 WantedBy=default.target
@@ -104,8 +115,12 @@ function tailscaleBin(): string | null {
 }
 
 /** 휴대폰에서 열 https 이름(<기기>.<tailnet>.ts.net). 열 수 없으면 이유를 말하고 null. */
-function tailscale(port: number): string | null {
+function tailscale(target: string | null): string | null {
   step('휴대폰 접속 (Tailscale)');
+  if (!target) {
+    warn('config 의 host 가 이 컴퓨터 밖 주소라 Tailscale 중계를 건너뜁니다. host 를 지우거나(127.0.0.1) Tailscale 주소로 바꾼 뒤 다시 실행하세요.');
+    return null;
+  }
   const ts = tailscaleBin();
   if (!ts) {
     warn('Tailscale 이 없어 건너뜁니다. 휴대폰에서 보려면 https://tailscale.com/download 에서 이 컴퓨터와 휴대폰에 깔고 같은 계정으로 로그인한 뒤 다시 실행하세요.');
@@ -123,7 +138,6 @@ function tailscale(port: number): string | null {
     warn('Tailscale 이 꺼져 있거나 로그인되어 있지 않아 건너뜁니다. 켜고 로그인한 뒤 다시 실행하세요.');
     return null;
   }
-  const target = `http://127.0.0.1:${port}`;
   const current = serveTarget(quiet(ts, ['serve', 'status', '--json']).stdout, name);
   if (current === target) {
     console.log(`  https://${name} → ${target} (이미 열려 있음)`);
@@ -161,18 +175,18 @@ async function waitFree(host: string, port: number) {
 const nodePath = () => quiet('sh', ['-c', 'command -v node']).stdout.trim() || process.execPath;
 
 /** 서비스 환경. launchd·systemd 는 셸의 PATH 를 모르므로 지금 PATH 를 넘긴다 (git·tmux·claude·codex 를 찾게). */
-function serviceEnv(node: string): Record<string, string> {
+function serviceEnv(node: string, configPath: string): Record<string, string> {
   const dirs = (process.env.PATH ?? '').split(':').filter((d) => d && !d.includes('node_modules'));
   const PATH = [...new Set([path.dirname(node), ...dirs, '/usr/local/bin', '/usr/bin', '/bin'])].join(':');
   // tmux 서버가 없을 때 NightShift 가 띄우면 그 안의 셸이 이 값을 물려받는다 (한글 입력)
-  return { PATH, LANG: process.env.LANG || 'C.UTF-8' };
+  return { PATH, LANG: process.env.LANG || 'C.UTF-8', ...(process.env.NIGHTSHIFT_CONFIG ? { NIGHTSHIFT_CONFIG: configPath } : {}) };
 }
 
 /** 서비스를 등록하고 다시 띄운다. 끄고 켜는 방법을 돌려준다. 자동 시작을 못 하면 null. */
-async function service(host: string, port: number): Promise<string[] | null> {
+async function service(host: string, port: number, configPath: string): Promise<string[] | null> {
   step('자동 시작 등록');
   const node = nodePath();
-  const env = serviceEnv(node);
+  const env = serviceEnv(node, configPath);
   mkdirSync(path.join(ROOT, '.nightshift'), { recursive: true });
 
   if (mac) {
@@ -225,7 +239,8 @@ async function main() {
   step('빌드');
   if (!show('npm', ['run', 'build'])) fail('빌드에 실패했습니다');
 
-  const configPath = defaultConfigPath(path.join(ROOT, 'config'));
+  // 서버와 같은 규칙: NIGHTSHIFT_CONFIG 가 있으면 그 파일 (서비스에도 넘긴다)
+  const configPath = path.resolve(ROOT, process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath(path.join(ROOT, 'config')));
   const load = () => {
     try {
       return loadConfig(configPath, ROOT).config;
@@ -235,7 +250,7 @@ async function main() {
   };
   let config = load();
 
-  const name = tailscale(config.port);
+  const name = tailscale(serveUpstream(config.host, config.port));
   if (name && !config.allowedHosts.includes(name)) {
     // tailscale serve 로 들어오는 이름을 받게 한다 (안 적으면 DNS rebinding 방어로 거부)
     const raw = readRaw(configPath);
@@ -246,7 +261,7 @@ async function main() {
 
   const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
   const local = `http://${host.includes(':') ? `[${host}]` : host}:${config.port}`;
-  const commands = await service(host, config.port);
+  const commands = await service(host, config.port, configPath);
 
   if (commands) {
     step('확인');

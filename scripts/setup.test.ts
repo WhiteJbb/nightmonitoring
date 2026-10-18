@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plistText, serveTarget } from './setup.ts';
+import { plistText, serveTarget, serveUpstream, unitText } from './setup.ts';
 
 describe('serveTarget', () => {
   const name = 'mac.tail1.ts.net';
@@ -21,4 +21,15 @@ it('plist 에 넣는 경로는 XML 로 이스케이프한다', () => {
   const text = plistText('/opt/node', '/Users/me/A&B <x>', { PATH: '/bin' });
   expect(text).toContain('<string>/Users/me/A&amp;B &lt;x></string>');
   expect(text).not.toContain('A&B');
+});
+
+it('tailscale serve 는 서버가 받는 로컬 주소로 중계한다', () => {
+  expect(serveUpstream('127.0.0.1', 4477)).toBe('http://127.0.0.1:4477');
+  expect(serveUpstream('::1', 4477)).toBe('http://[::1]:4477');
+  expect(serveUpstream('100.94.187.77', 4477)).toBe('http://127.0.0.1:4477');
+  expect(serveUpstream('192.168.0.10', 4477)).toBeNull();
+});
+
+it('systemd 가 서비스를 다시 띄울 때 NightShift 가 띄운 tmux 까지 죽이지 않는다', () => {
+  expect(unitText('/usr/bin/node', '/home/u/nightshift', { PATH: '/bin' })).toContain('KillMode=process');
 });
