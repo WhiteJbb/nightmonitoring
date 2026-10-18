@@ -19,6 +19,8 @@ export interface TrackedState {
   outputChangedAt?: string | null;
   /** 에이전트(작업 중 표시를 띄운 적 있는) 세션인지 */
   agent?: boolean;
+  /** 에이전트가 작업 중 표시를 마지막으로 띄운 시각 (예전 파일에는 없다) */
+  busyAt?: string | null;
 }
 
 export interface MonitorState {
