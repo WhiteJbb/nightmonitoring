@@ -78,7 +78,20 @@ npm run setup
 - Node 버전을 확인하고, 의존성을 설치하고, 빌드합니다. git·tmux가 없으면 설치합니다(Homebrew, Linux는 apt).
 - Tailscale이 켜져 있으면 `tailscale serve`로 휴대폰용 https 주소를 열고 그 이름을 config의 `allowedHosts`에 적습니다. 그 기기의 443을 이미 다른 데 쓰고 있으면 건드리지 않습니다.
 - 로그인하면 자동으로 뜨게 등록합니다(macOS launchd, Linux systemd 사용자 서비스). 서버가 떴는지 확인한 뒤 접속 주소와 로그·재시작·끄기 명령을 보여 줍니다.
-- 다시 돌려도 됩니다. 업데이트는 `git pull && npm run setup`입니다.
+- `nightshift` 명령을 PATH에 겁니다(`npm link`). 그다음부터는 어느 폴더에서나 아래처럼 씁니다.
+- 다시 돌려도 됩니다. 업데이트는 `nightshift update`(= `git pull && npm run setup`)입니다.
+
+```bash
+nightshift status    # 돌고 있는지와 접속 주소 (이 컴퓨터·휴대폰)
+nightshift open      # 브라우저로 열기
+nightshift logs      # 서버 로그
+nightshift restart   # 다시 띄우기
+nightshift stop      # 끄기 (다음 로그인·부팅 때 다시 뜬다)
+nightshift start     # 켜기
+nightshift update    # git pull 뒤 setup
+```
+
+`npm link`가 전역 폴더에 쓸 권한이 없으면(Linux에서 apt로 받은 node 등) setup이 `sudo npm link`를 안내합니다. 명령이 없어도 아래의 `launchctl`·`systemctl` 명령으로 똑같이 할 수 있습니다.
 
 자동 시작 없이 직접 띄우려면 `npm install && npm run build && npm start`.
 
@@ -115,9 +128,9 @@ npm run dev                  # 개발 모드 (프론트엔드 HMR 포함, 빌드
 `npm run setup`이 `~/Library/LaunchAgents/com.nightshift.plist`를 만들어 등록합니다. 서비스는 setup을 돌린 터미널의 `node`와 `PATH`를 씁니다. 그래서 node나 에이전트를 다른 곳에 새로 깔았으면 setup을 다시 돌리세요.
 
 ```bash
-launchctl kickstart -k gui/$(id -u)/com.nightshift                             # 재시작 (코드를 바꿔 npm run build 한 뒤)
-launchctl bootout gui/$(id -u)/com.nightshift                                  # 중지하고 등록 해제
-tail -f .nightshift/server.log                                                 # 로그
+launchctl kickstart -k gui/$(id -u)/com.nightshift   # nightshift restart (코드를 바꿔 npm run build 한 뒤)
+launchctl bootout gui/$(id -u)/com.nightshift        # nightshift stop
+tail -f .nightshift/server.log                       # nightshift logs
 ```
 
 launchd로 띄운 node는 터미널의 폴더 권한을 물려받지 않습니다. 다운로드·문서·데스크탑 아래 저장소를 보려면 node에 전체 디스크 접근 권한을 주세요(setup 마지막에 경로가 나옵니다, [문제 해결](#문제-해결) 참고).
@@ -186,8 +199,8 @@ networkingMode=mirrored
 **4. 자동 시작 (systemd)** — `/etc/wsl.conf`에 `[boot]` 아래 `systemd=true`를 넣고 PowerShell에서 `wsl --shutdown` 후 다시 엽니다. 그다음 `npm run setup`을 다시 돌리면 systemd 사용자 서비스로 등록됩니다.
 
 ```bash
-journalctl --user -u nightshift -f         # 로그
-systemctl --user restart nightshift        # 재시작 (npm run build 한 뒤)
+journalctl --user -u nightshift -f         # nightshift logs
+systemctl --user restart nightshift        # nightshift restart (npm run build 한 뒤)
 ```
 
 WSL은 열린 창이 없으면 잠시 뒤 꺼질 수 있습니다. 계속 돌게 하려면 Windows 작업 스케줄러에 "로그온할 때 `wsl.exe -d Ubuntu --exec sleep infinity`"를 등록해 두세요. 밤새 돌릴 때는 Windows 절전도 꺼 둡니다.
@@ -462,7 +475,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | 카드가 "저장소 경로가 존재하지 않습니다" | `repoPath` 오타, `~` 경로 확인 |
 | 카드가 "Git 저장소가 아닙니다" | 오류로 치지는 않음. Git 정보도 보려면 해당 경로에서 `git status`가 되는지 확인 |
 | "tmux 세션이 종료되었거나 없습니다" | `tmux ls`의 세션 이름과 `tmuxSession`이 정확히 같은지 확인. 세션 없는 프로젝트를 오류로 보고 싶지 않으면 `sessionExitIsError: false` |
-| launchd로 띄웠더니 다운로드·문서·데스크탑 폴더의 프로젝트가 "Git 이 응답하지 않습니다" | macOS가 그 폴더 접근을 막고 있음. 시스템 설정 → 개인정보 보호 및 보안 → **전체 디스크 접근 권한**에서 `+`를 누르고 ⌘⇧G로 node의 실제 경로(`readlink -f $(which node)`, Homebrew는 node를 올리면 경로가 바뀜)를 추가한 뒤 `launchctl kickstart -k gui/$(id -u)/com.nightshift` |
+| launchd로 띄웠더니 다운로드·문서·데스크탑 폴더의 프로젝트가 "Git 이 응답하지 않습니다" | macOS가 그 폴더 접근을 막고 있음. 시스템 설정 → 개인정보 보호 및 보안 → **전체 디스크 접근 권한**에서 `+`를 누르고 ⌘⇧G로 node의 실제 경로(`readlink -f $(which node)`, Homebrew는 node를 올리면 경로가 바뀜)를 추가한 뒤 `nightshift restart` |
 | launchd로 띄웠더니 tmux 세션이 안 보임 | plist의 `PATH`에 `tmux`가 있는 디렉터리(Homebrew는 `/opt/homebrew/bin`)가 있는지 확인. `.nightshift/server.log` 확인 |
 | 터미널 출력이 비어 있음 | 세션의 활성 pane이 비어 있는지 확인 (`tmux capture-pane -p -t =세션이름:`) |
 | 로그 때문에 계속 오류로 표시됨 | Git 탭에서 "확인 처리", 또는 `errorIgnorePatterns`에 제외할 문구 추가, `errorPatterns`를 정규식으로 좁히기 |
