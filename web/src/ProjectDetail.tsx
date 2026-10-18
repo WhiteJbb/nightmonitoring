@@ -627,7 +627,7 @@ function SplitCell({ project: p, pane: x, no, selected, cols, share, span, full,
         )}
       </div>
       <div ref={viewRef} className="term-view">
-        <Term projectId={p.id} pane={x.id} canInput={p.allowInput} full={full} focus={selected} heightShare={share} feed={feed} onNotice={onNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+        <Term projectId={p.id} pane={x.id} canInput={p.allowInput} command={x.command} full={full} focus={selected} heightShare={share} feed={feed} onNotice={onNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
       </div>
     </div>
   );
@@ -977,7 +977,7 @@ export function TerminalTab({ project: p, now }: Props) {
             <div ref={viewRef} className="term-view">
               {pane ? (
                 visible && !away ? (
-                  <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+                  <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} command={pane.command} full={full} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
                 ) : (
                   <p className="dim term-paused">{pausedText}</p>
                 )

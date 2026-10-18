@@ -25,6 +25,10 @@ const LINE_HEIGHT = 1.2;
 const WHEEL_PAGE_PX = 120;
 /** 터치로 한 줄 높이를 쓸 때 보내는 휠 횟수 (마우스를 받는 프로그램). 느리면 올린다 */
 const TOUCH_SPEED = 1.5;
+/** 손을 뗄 때 이보다 빠르면(px/ms) 관성으로 더 미끄러진다. 1ms 마다 빠르기에 FLING_DECAY 를 곱하고 FLING_STOP 아래에서 멈춘다 */
+const FLING_MIN = 0.3;
+const FLING_DECAY = 0.996;
+const FLING_STOP = 0.03;
 /**
  * 클립보드에 쓴다. 이 서버는 보통 http(비보안 출처)로 열려 navigator.clipboard 가 없으니
  * 숨긴 입력칸을 골라 execCommand('copy') 로 쓴다 (클릭 직후라 브라우저가 허용한다).
@@ -71,9 +75,10 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  */
 /**
  * focus: 첫 화면을 받으면 키 입력을 받게 한다 (나란히 보기에서는 고른 칸만). heightShare: 쓸 수 있는 높이 중 이 터미널의 몫.
- * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다
+ * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다.
+ * command: pane 에서 도는 프로그램 (TmuxPane.command). 휠을 어떻게 보낼지 고른다
  */
-export function Term({ projectId, pane, canInput, full = false, focus = true, heightShare = 1, feed, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize, onNotice });
@@ -83,6 +88,9 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
   fullRef.current = full;
   const layout = useRef({ focus, heightShare });
   layout.current = { focus, heightShare };
+  // Codex 는 tmux 의 mouse 옵션이 꺼져 있으면 마우스를 켜지 않지만, 휠 보고를 받으면 대화를 한 줄씩 움직인다
+  const wheelReports = useRef(false);
+  wheelReports.current = command === 'codex';
   const xterm = useRef<Terminal | null>(null);
 
   useEffect(() => {
@@ -306,25 +314,72 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
     // xterm 이 먼저 받아 멈추지 않게 잡는 단계에서 듣는다
     el.addEventListener('contextmenu', onContextMenu, { capture: true });
 
-    // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램(Codex)엔
-    // xterm 이 화살표 키로 바꿔 보내는데, 거기선 화살표가 입력 기록 탐색이다. 대신 PgUp/PgDn 으로 넘긴다
+    // 휠: 마우스를 받는 프로그램(Claude Code)엔 xterm 이 휠 보고를 보낸다. 마우스를 안 받는 전체 화면 프로그램엔
+    // xterm 이 화살표 키로 바꿔 보내는데, Codex 에선 화살표가 입력 기록 탐색이다. Codex 엔 휠 보고를 직접 만들어 한 줄씩 보내고,
+    // 휠 보고를 글자로 받을 다른 프로그램(less 등)엔 PgUp/PgDn 으로 넘긴다
     let wheelAcc = 0;
     term.attachCustomWheelEventHandler((ev) => {
       if (!canInput || term.buffer.active.type !== 'alternate' || term.modes.mouseTrackingMode !== 'none') return true;
-      wheelAcc += ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
-      while (Math.abs(wheelAcc) >= WHEEL_PAGE_PX) {
-        const down = wheelAcc > 0;
-        wheelAcc -= down ? WHEEL_PAGE_PX : -WHEEL_PAGE_PX;
-        queue += down ? '\x1b[6~' : '\x1b[5~';
+      if (wheelReports.current) {
+        const r = (el.querySelector('.xterm-screen') ?? el).getBoundingClientRect();
+        const rowPx = r.height / term.rows || 16;
+        // Codex 는 포인터 아래 영역(대화·입력칸)을 움직이므로 휠을 굴린 칸을 1부터 센다
+        const cell = (at: number, start: number, size: number, n: number) => (size > 0 ? Math.min(n, Math.max(1, Math.floor(((at - start) / size) * n) + 1)) : 1);
+        const at = `${cell(ev.clientX, r.left, r.width, term.cols)};${cell(ev.clientY, r.top, r.height, term.rows)}M`;
+        wheelAcc += ev.deltaMode === 1 ? ev.deltaY * rowPx : ev.deltaY;
+        while (Math.abs(wheelAcc) >= rowPx) {
+          const down = wheelAcc > 0;
+          wheelAcc -= down ? rowPx : -rowPx;
+          queue += `\x1b[<${down ? 65 : 64};${at}`;
+        }
+      } else {
+        wheelAcc += ev.deltaMode === 1 ? ev.deltaY * 16 : ev.deltaY;
+        while (Math.abs(wheelAcc) >= WHEEL_PAGE_PX) {
+          const down = wheelAcc > 0;
+          wheelAcc -= down ? WHEEL_PAGE_PX : -WHEEL_PAGE_PX;
+          queue += down ? '\x1b[6~' : '\x1b[5~';
+        }
       }
       void flush();
       ev.preventDefault();
       return false;
     });
-    // 터치: 대체 화면엔 xterm 스크롤백이 없어 손가락으로 쓸어도 아무 일이 없다. 쓴 거리만큼 휠 이벤트로 바꿔 위 경로를 탄다
+    // 터치: 대체 화면엔 xterm 스크롤백이 없어 손가락으로 쓸어도 아무 일이 없다. 쓴 거리만큼 휠 이벤트로 바꿔 위 경로를 탄다.
+    // 줄 단위로 움직이는 프로그램은 손을 떼도 휴대폰 스크롤처럼 그 빠르기로 잠깐 더 미끄러진다
     let lastY: number | null = null;
+    let lastX = 0;
+    let lastT = 0;
+    let velocity = 0; // px/ms. 손가락을 위로 올릴수록(아래 내용을 볼수록) +
     let touchAcc = 0;
+    let fling = 0;
+    const stopFling = () => {
+      cancelAnimationFrame(fling);
+      fling = 0;
+    };
+    /** 프로그램 화면을 dy(px) 만큼 움직인다. 한 줄씩 움직였으면 true (관성은 이때만) */
+    const scrollProgram = (dy: number, x: number, y: number): boolean => {
+      const target = el.querySelector('.xterm-screen') ?? el;
+      const wheel = (deltaY: number, deltaMode: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaY, deltaMode, clientX: x, clientY: y, bubbles: true, cancelable: true }));
+      // 마우스를 안 받는 프로그램은 휠이 PgUp/PgDn 이 된다. 손가락으로 터미널 높이의 30% 를 쓸면 한 쪽 넘어가게 맞춘다
+      if (term.modes.mouseTrackingMode === 'none' && !wheelReports.current) {
+        wheel((dy * WHEEL_PAGE_PX) / Math.max(1, el.clientHeight * 0.3), 0);
+        return false;
+      }
+      // 쓴 거리 한 줄 높이마다 휠 한 번(Codex 는 보고 하나에 한 줄이라 손가락을 그대로 따라간다), Claude Code 엔 TOUCH_SPEED 번.
+      // 픽셀 휠을 그대로 넘기면 xterm 이 작은 값을 트랙패드로 보고 0.3 배로 줄여 느리다
+      touchAcc += (dy * (wheelReports.current ? 1 : TOUCH_SPEED)) / Math.max(1, el.clientHeight / term.rows);
+      while (Math.abs(touchAcc) >= 1) {
+        const step = Math.sign(touchAcc);
+        touchAcc -= step;
+        wheel(step, 1);
+      }
+      return true;
+    };
     const onTouchStart = (e: TouchEvent) => {
+      // 미끄러지는 중에 닿으면 멈춘다
+      stopFling();
+      velocity = 0;
+      lastT = e.timeStamp;
       lastY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
     };
     const onTouchMove = (e: TouchEvent) => {
@@ -334,29 +389,39 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       const dy = lastY - t.clientY;
       if (Math.abs(dy) < 8) return;
       lastY = t.clientY;
+      lastX = t.clientX;
       e.preventDefault();
+      const dt = Math.max(1, e.timeStamp - lastT);
+      lastT = e.timeStamp;
       // 컴퓨터의 휠처럼 쓸기는 터미널 안을 움직인다. 보기 전용이라 프로그램에 보낼 수 없거나, 터미널이 화면보다 커서
       // 일부가 영영 안 보일 때만 페이지를 움직인다 (xterm 이 터치 이동을 막아 페이지가 저절로는 안 움직인다)
       const r = el.getBoundingClientRect();
       if (!canInput || (r.height > window.innerHeight && ((dy > 0 && r.bottom > window.innerHeight + 1) || (dy < 0 && r.top < -1)))) {
         window.scrollBy(0, dy);
+        velocity = 0;
         return;
       }
-      const target = el.querySelector('.xterm-screen') ?? el;
-      const wheel = (deltaY: number, deltaMode: number) => target.dispatchEvent(new WheelEvent('wheel', { deltaY, deltaMode, clientX: t.clientX, clientY: t.clientY, bubbles: true, cancelable: true }));
-      // 마우스를 안 받는 프로그램은 휠이 PgUp/PgDn 이 된다. 손가락으로 터미널 높이의 30% 를 쓸면 한 쪽 넘어가게 맞춘다
-      if (term.modes.mouseTrackingMode === 'none') return void wheel((dy * WHEEL_PAGE_PX) / Math.max(1, el.clientHeight * 0.3), 0);
-      // 마우스를 받는 프로그램(Claude Code)엔 쓴 거리 한 줄 높이마다 휠 TOUCH_SPEED 번을 보낸다.
-      // 픽셀 휠을 그대로 넘기면 xterm 이 작은 값을 트랙패드로 보고 0.3 배로 줄여 느리다
-      touchAcc += (dy * TOUCH_SPEED) / Math.max(1, el.clientHeight / term.rows);
-      while (Math.abs(touchAcc) >= 1) {
-        const step = Math.sign(touchAcc);
-        touchAcc -= step;
-        wheel(step, 1);
-      }
+      velocity = scrollProgram(dy, t.clientX, t.clientY) ? 0.6 * (dy / dt) + 0.4 * velocity : 0;
+    };
+    const onTouchEnd = (e: TouchEvent) => {
+      // 멈췄다 뗀 손가락은 미끄러지지 않는다
+      if (lastY === null || Math.abs(velocity) < FLING_MIN || e.timeStamp - lastT > 100) return;
+      const y = lastY;
+      let v = velocity;
+      let prev = performance.now();
+      const step = (now: number) => {
+        const dt = now - prev;
+        prev = now;
+        v *= FLING_DECAY ** dt;
+        if (Math.abs(v) < FLING_STOP || term.buffer.active.type !== 'alternate') return void (fling = 0);
+        scrollProgram(v * dt, lastX, y);
+        fling = requestAnimationFrame(step);
+      };
+      fling = requestAnimationFrame(step);
     };
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: true });
 
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fitFont) : null;
     ro?.observe(el);
@@ -372,6 +437,8 @@ export function Term({ projectId, pane, canInput, full = false, focus = true, he
       el.removeEventListener('contextmenu', onContextMenu, { capture: true });
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      stopFling();
       ro?.disconnect();
       window.removeEventListener('resize', fitFont);
       stopFeed();
