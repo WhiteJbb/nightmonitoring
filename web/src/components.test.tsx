@@ -363,6 +363,16 @@ test('dashboard: the chosen filter survives dropping to 0, with an empty message
   expect(screen.queryByRole('button', { name: '전체 보기' })).toBeNull();
 });
 
+test('dashboard: urgent first, then working, then the most recently active (output or Git, whichever is later)', () => {
+  const ago = (h: number) => new Date(Date.parse(NOW) - h * 3600_000).toISOString();
+  const p = (name: string, state: ProjectSnapshot['status']['state'], out: string, git: string | null = null) =>
+    project({ id: name, name, status: { state, reasons: [] }, lastGitChangeAt: git, tmux: { ...project().tmux, lastOutputChangeAt: out } });
+  const projects = [p('old', 'idle', ago(3)), p('run-a', 'running', ago(0)), p('committed', 'idle', ago(5), ago(1)), p('new', 'idle', ago(2)), p('run-b', 'running', ago(1)), p('ask', 'waiting', ago(9))];
+  const { container } = render(<Dashboard snapshot={dash({ projects })} />);
+  // 작업 중인 것끼리는 시각과 상관없이 설정 순서
+  expect([...container.querySelectorAll('.card-link')].map((a) => a.textContent)).toEqual(['ask', 'run-a', 'run-b', 'committed', 'new', 'old']);
+});
+
 test('dashboard: hiding a discovered session offers an undo that un-hides it', async () => {
   fetchMock.mockImplementation(async () => new Response(JSON.stringify({ ok: true })));
   const alert = vi.fn();
