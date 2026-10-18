@@ -4,7 +4,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { ConfigError, loadConfig } from '../server/config.ts';
-import { addresses, configFile, probe, ROOT, SERVICE } from './setup.ts';
+import { addresses, configFile, probe, ROOT, SERVICE, up } from './setup.ts';
 
 const USAGE = `사용법: nightshift <명령>      (${ROOT})
 
@@ -38,6 +38,16 @@ function service(argv: string[]): number {
   return run(argv);
 }
 
+/** 켠 뒤 실제로 답할 때까지 기다려 주소를 보여 준다 (launchctl·systemctl 은 성공해도 말이 없다). */
+async function andWait(argv: string[]): Promise<number> {
+  const code = service(argv);
+  if (code) return code;
+  const { local } = addresses(config());
+  if (await up(local)) return status();
+  console.error(`${local} 에서 답하지 않습니다. 로그를 보세요: nightshift logs`);
+  return 1;
+}
+
 async function status(): Promise<number> {
   const { local, phone } = addresses(config());
   const who = await probe(local);
@@ -54,10 +64,14 @@ const commands: Record<string, () => number | Promise<number>> = {
   status,
   open: () => run([process.platform === 'darwin' ? 'open' : 'xdg-open', addresses(config()).local]),
   logs: () => service(SERVICE.logs),
-  restart: () => service(SERVICE.restart),
-  stop: () => service(SERVICE.stop),
+  restart: () => andWait(SERVICE.restart),
+  stop: () => {
+    const code = service(SERVICE.stop);
+    if (!code) console.log('껐습니다. 다음 로그인·부팅 때 다시 뜹니다 (지금 켜기: nightshift start)');
+    return code;
+  },
   start: async () => {
-    if ((await probe(addresses(config()).local)) !== 'nightshift') return service(SERVICE.start);
+    if ((await probe(addresses(config()).local)) !== 'nightshift') return andWait(SERVICE.start);
     console.log('이미 돌고 있습니다');
     return 0;
   },

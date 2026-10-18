@@ -316,7 +316,7 @@ export const probe = (base: string) =>
     () => null,
   );
 
-async function up(base: string): Promise<boolean> {
+export async function up(base: string): Promise<boolean> {
   for (let i = 0; i < 40; i++) {
     if ((await probe(base)) === 'nightshift') return true;
     await sleep(250);
