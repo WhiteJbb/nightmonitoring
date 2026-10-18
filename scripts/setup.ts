@@ -2,7 +2,7 @@
 // 도구 확인 → 빌드 → Tailscale 로 휴대폰 접속 열기 → 로그인하면 자동으로 뜨게 등록 → 떴는지 확인.
 // 다시 돌려도 된다. 이미 된 것은 그대로 두고 서버만 새 빌드로 다시 띄운다.
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,7 +33,7 @@ export function serveTarget(json: string, name: string): string | null {
   try {
     s = JSON.parse(json || '{}');
   } catch {
-    return null;
+    return '읽을 수 없는 설정'; // 비었다고 보고 덮어쓰지 않는다
   }
   if (!s?.TCP?.['443']) return null;
   return s.Web?.[`${name}:443`]?.Handlers?.['/']?.Proxy ?? '다른 용도';
@@ -143,13 +143,18 @@ function tailscale(target: string | null): string | null {
     warn('Tailscale 이 꺼져 있거나 로그인되어 있지 않아 건너뜁니다. 켜고 로그인한 뒤 다시 실행하세요.');
     return null;
   }
-  const current = serveTarget(quiet(ts, ['serve', 'status', '--json']).stdout, name);
+  const status = quiet(ts, ['serve', 'status', '--json']);
+  if (status.status !== 0) {
+    warn(`tailscale serve status 를 읽지 못해 건너뜁니다: ${status.stderr.trim()}`);
+    return null;
+  }
+  const current = serveTarget(status.stdout, name);
   if (current === target) {
     console.log(`  https://${name} → ${target} (이미 열려 있음)`);
     return name;
   }
   if (current) {
-    warn(`https://${name} 은(는) 이미 ${current} 에 쓰이고 있어 건드리지 않습니다. 직접 정리한 뒤 다시 실행하세요 (tailscale serve status).`);
+    warn(`https://${name} 의 443 은 이미 다른 데 쓰이고 있어 건드리지 않습니다 (${current}). 직접 정리한 뒤 다시 실행하세요 (tailscale serve status).`);
     return null;
   }
   // 처음이면 tailnet 에 https 를 켜라는 주소가 나오고, 켤 때까지 기다린다
@@ -210,7 +215,11 @@ async function service(host: string, port: number, configPath: string): Promise<
     return [`tail -f .nightshift/server.log`, `launchctl kickstart -k ${domain}/${LABEL}`, `launchctl bootout ${domain}/${LABEL}`];
   }
 
-  if (process.platform === 'linux' && works('systemctl', ['--user', 'show-environment'])) {
+  const userBus = process.platform === 'linux' && works('systemctl', ['--user', 'show-environment']);
+  if (process.platform === 'linux' && existsSync('/run/systemd/system') && !userBus) {
+    fail('사용자 systemd 에 연결할 수 없습니다. 이 사용자로 직접 로그인한 터미널(ssh 등)에서 다시 실행하세요 (sudo, sudo -u 로는 안 됩니다).');
+  }
+  if (userBus) {
     const unit = path.join(os.homedir(), '.config/systemd/user/nightshift.service');
     mkdirSync(path.dirname(unit), { recursive: true });
     writeFileSync(unit, unitText(node, ROOT, env));
@@ -231,9 +240,16 @@ async function service(host: string, port: number, configPath: string): Promise<
   return null;
 }
 
-async function up(url: string): Promise<boolean> {
+/** base 에서 누가 답하는지. 아무도 안 받으면 null. 응답이 멈춰도 3초 안에 끝난다 (본문 읽기까지). */
+const probe = (base: string) =>
+  fetch(`${base}/api/snapshot`, { signal: AbortSignal.timeout(3000) }).then(
+    async (r) => (r.ok && Array.isArray((await r.json().catch(() => null))?.projects) ? 'nightshift' : 'other'),
+    () => null,
+  );
+
+async function up(base: string): Promise<boolean> {
   for (let i = 0; i < 40; i++) {
-    if (await fetch(url).then((r) => r.ok, () => false)) return true;
+    if ((await probe(base)) === 'nightshift') return true;
     await sleep(250);
   }
   return false;
@@ -255,24 +271,37 @@ async function main() {
       return fail(e instanceof ConfigError ? e.message : String(e));
     }
   };
-  let config = load();
-
-  const name = tailscale(serveUpstream(config.host, config.port));
-  if (name && !config.allowedHosts.includes(name)) {
-    // tailscale serve 로 들어오는 이름을 받게 한다 (안 적으면 DNS rebinding 방어로 거부)
-    const raw = readRaw(configPath);
-    writeRaw(configPath, raw, { ...raw, allowedHosts: [...(Array.isArray(raw.allowedHosts) ? raw.allowedHosts : []), name] });
-    console.log(`  ${path.relative(ROOT, configPath)} 의 allowedHosts 에 ${name} 추가`);
-    config = load();
-  }
-
+  const config = load();
   const host = ['0.0.0.0', '::'].includes(config.host) ? '127.0.0.1' : config.host;
   const local = `http://${host.includes(':') ? `[${host}]` : host}:${config.port}`;
-  const commands = await service(host, config.port, configPath);
+  const upstream = serveUpstream(config.host, config.port);
 
+  // 이 포트를 다른 프로그램이 쓰고 있으면 Tailscale 로 그것을 열어 버리기 전에 멈춘다
+  for (const base of new Set([local, upstream ?? local])) {
+    if ((await probe(base)) === 'other') fail(`${base} 를 NightShift 가 아닌 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나 config 의 port 를 바꾼 뒤 다시 실행하세요.`);
+  }
+
+  const name = tailscale(upstream);
+  if (name) {
+    // tailscale serve 로 들어오는 이름을 받게 한다 (안 적으면 DNS rebinding 방어로 거부).
+    // 맨 앞에 둔다: 알림 링크는 첫 *.ts.net 을 쓰므로 기기 이름이 바뀌었으면 새 이름이 앞서야 한다
+    const raw = readRaw(configPath);
+    const hosts: unknown[] = Array.isArray(raw.allowedHosts) ? raw.allowedHosts : [];
+    const next = [name, ...hosts.filter((h) => String(h).toLowerCase() !== name)];
+    if (JSON.stringify(next) !== JSON.stringify(hosts)) {
+      writeRaw(configPath, raw, { ...raw, allowedHosts: next });
+      console.log(`  ${path.relative(ROOT, configPath)} 의 allowedHosts 맨 앞에 ${name}`);
+      load(); // 쓴 결과가 서버가 읽을 수 있는 config 인지
+    }
+  }
+
+  const commands = await service(host, config.port, configPath);
   if (commands) {
     step('확인');
-    if (!(await up(`${local}/api/snapshot`))) fail(`서버가 뜨지 않았습니다. 로그를 보세요: ${commands[0]}`);
+    // Tailscale 주소에 바인딩했으면 중계용 127.0.0.1 은 따로 뜬다 (실패해도 서버는 로그만 남기고 돈다)
+    for (const base of new Set([local, name && upstream ? upstream : local])) {
+      if (!(await up(base))) fail(`${base} 에서 서버가 답하지 않습니다. 로그를 보세요: ${commands[0]}`);
+    }
   }
 
   console.log(`\n✓ 준비됐습니다\n`);

@@ -9,6 +9,9 @@ describe('serveTarget', () => {
     expect(serveTarget('{}', name)).toBeNull();
     expect(serveTarget('', name)).toBeNull();
   });
+  it('읽을 수 없으면 비었다고 보지 않는다 (덮어쓰지 않게)', () => {
+    expect(serveTarget('No serve config', name)).not.toBeNull();
+  });
   it('443 이 중계하는 곳', () => {
     expect(serveTarget(status('http://127.0.0.1:4477'), name)).toBe('http://127.0.0.1:4477');
   });
