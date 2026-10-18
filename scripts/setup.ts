@@ -39,12 +39,13 @@ export function serveTarget(json: string, name: string): string | null {
   return s.Web?.[`${name}:443`]?.Handlers?.['/']?.Proxy ?? '다른 용도';
 }
 
-/** tailscale serve 가 중계할 주소. 서버가 로컬 주소에서 받지 않는 바인딩(LAN 주소 등)이면 null. */
+/** tailscale serve 가 중계할 주소. 정할 수 없는 바인딩(LAN 주소, localhost)이면 null. */
 export function serveUpstream(host: string, port: number): string | null {
   if (host === '::1') return `http://[::1]:${port}`;
+  if (host.startsWith('127.')) return `http://${host}:${port}`;
   // Tailscale 주소에 바인딩해도 https 이름(allowedHosts)을 적으면 127.0.0.1 에서도 받는다 (server/index.ts)
-  if (['0.0.0.0', '::', 'localhost'].includes(host) || host.startsWith('127.') || isTailscaleAddress(host)) return `http://127.0.0.1:${port}`;
-  return null;
+  if (['0.0.0.0', '::'].includes(host) || isTailscaleAddress(host)) return `http://127.0.0.1:${port}`;
+  return null; // localhost 는 node 가 ::1 로 받을 수도 있어 어디로 중계할지 정할 수 없다
 }
 
 const xml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -118,7 +119,7 @@ function tailscaleBin(): string | null {
 function tailscale(target: string | null): string | null {
   step('휴대폰 접속 (Tailscale)');
   if (!target) {
-    warn('config 의 host 가 이 컴퓨터 밖 주소라 Tailscale 중계를 건너뜁니다. host 를 지우거나(127.0.0.1) Tailscale 주소로 바꾼 뒤 다시 실행하세요.');
+    warn('config 의 host 로는 Tailscale 이 어디로 중계할지 정할 수 없어 건너뜁니다. host 를 지우거나(127.0.0.1) Tailscale 주소로 바꾼 뒤 다시 실행하세요.');
     return null;
   }
   const ts = tailscaleBin();
@@ -209,9 +210,11 @@ async function service(host: string, port: number, configPath: string): Promise<
     const unit = path.join(os.homedir(), '.config/systemd/user/nightshift.service');
     mkdirSync(path.dirname(unit), { recursive: true });
     writeFileSync(unit, unitText(node, ROOT, env));
+    // 멈추기 전에 새 unit 을 읽힌다: 옛 unit(KillMode 없음)으로 멈추면 NightShift 가 띄운 tmux 까지 죽는다
+    if (!show('systemctl', ['--user', 'daemon-reload'])) fail('systemctl --user daemon-reload 에 실패했습니다');
     quiet('systemctl', ['--user', 'stop', 'nightshift']);
     await waitFree(host, port);
-    if (!show('systemctl', ['--user', 'daemon-reload']) || !show('systemctl', ['--user', 'enable', '--now', 'nightshift'])) fail('systemd 등록에 실패했습니다');
+    if (!show('systemctl', ['--user', 'enable', '--now', 'nightshift'])) fail('systemd 등록에 실패했습니다');
     console.log(`  ${unit}`);
     // 로그아웃해도(라즈베리파이를 화면 없이 켜 둬도) 돌게 한다
     if (!quiet('loginctl', ['show-user', os.userInfo().username, '--property=Linger']).stdout.includes('yes') && !works('loginctl', ['enable-linger'])) {
