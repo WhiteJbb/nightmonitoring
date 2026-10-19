@@ -250,14 +250,16 @@ const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' 
 const paneNo = (x: TmuxPane, panes: TmuxPane[]) => (panes.some((y) => y.window === x.window && y.id !== x.id) ? `${x.window}.${x.index}` : String(x.window));
 /** 글자 고르기 화면의 좌우 여백(px). styles.css 의 .pick .terminal 과 같다 */
 const PICK_PAD = 14;
+/** 글자 고르기의 최대 글자 크기(px). 터미널(13)보다 한 단계 작게 해 한 화면에 더 많이 담는다 */
+const PICK_FONT_MAX = 12;
 /** 터미널 글을 화면 가득 보통 글로 보여 준다. 휴대폰의 길게 눌러 고르기·복사가 된다. 최근 출력(맨 아래)부터 보인다 */
 function PickText({ text, cols, onDone }: { text: string; cols: number; onDone: () => void }) {
   const ref = useRef<HTMLPreElement>(null);
   // 줄은 터미널 폭(cols)에서 나뉘어 오므로(에이전트는 직접 줄을 바꿔 보낸다) 그 칸 수가 화면 폭에 꽉 차는 크기로 그린다
   const [fontSize] = useState(() => {
-    const [min, max] = fontRange();
+    const [min] = fontRange();
     const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
-    return Math.max(min, Math.min(max, Math.floor(((document.documentElement.clientWidth - 2 * PICK_PAD) / (cols * perPx)) * 10) / 10));
+    return Math.max(min, Math.min(PICK_FONT_MAX, Math.floor(((document.documentElement.clientWidth - 2 * PICK_PAD) / (cols * perPx)) * 10) / 10));
   });
   useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
