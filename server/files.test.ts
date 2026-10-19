@@ -49,6 +49,17 @@ describe('files', () => {
     await expect(listFiles(outside)).rejects.toMatchObject({ status: 400 });
   });
 
+  it('refuses a repository at the home folder (an accidental ~/.git would open every file there)', async () => {
+    const home = process.env.HOME;
+    process.env.HOME = repo;
+    try {
+      await expect(listFiles(path.join(repo, 'src'))).rejects.toMatchObject({ status: 400 });
+      await expect(readText(repo, 'new.md')).rejects.toMatchObject({ status: 400 });
+    } finally {
+      process.env.HOME = home;
+    }
+  });
+
   it('reads and saves a text file; refuses to overwrite a file that changed after it was opened', async () => {
     const opened = await readText(repo, 'src/app.ts');
     expect(opened.content).toBe('export const a = 1;\n');

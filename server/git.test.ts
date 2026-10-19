@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
+import { realpathSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, utimes, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExecResult } from './exec.ts';
@@ -56,6 +57,22 @@ describe('collectGit', () => {
   it('reports a non-git directory', async () => {
     respond({ 'rev-parse --is-inside-work-tree': fail(128, 'fatal: not a git repository') });
     expect(await collectGit(REPO)).toMatchObject({ ok: false, error: 'Git 저장소가 아닙니다' });
+  });
+
+  it('does not take a repository at the home folder (an accidental ~/.git) and never scans it', async () => {
+    respond({ 'rev-parse --is-inside-work-tree': ok(`true\n${realpathSync(homedir())}\n`) });
+    expect(await collectGit(REPO)).toMatchObject({ ok: false, error: 'Git 저장소가 아닙니다' });
+    expect(mockRun).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports a cut-off git status by its cause, not by the warnings printed before it', async () => {
+    respond({
+      'rev-parse --is-inside-work-tree': ok('true\n'),
+      'status --porcelain': fail(null, "warning: could not open directory 'Library/Mail/': Operation not permitted\n"),
+    });
+    const info = await collectGit(REPO);
+    expect(info.error).toMatch(/끝나지 않았습니다/);
+    expect(info.error).not.toMatch(/warning/);
   });
 
   it('collects branch, status, diff and commits', async () => {
@@ -139,8 +156,7 @@ describe('nested repoPath', () => {
       await mkdir(path.join(dir, 'web'));
       await writeFile(path.join(dir, 'web', 'new.ts'), 'a\nb\n');
       respond({
-        'rev-parse --is-inside-work-tree': ok('true\n'),
-        'rev-parse --show-toplevel': ok(`${dir}\n`),
+        'rev-parse --is-inside-work-tree': ok(`true\n${dir}\n`),
         'branch --show-current': ok('main\n'),
         'rev-parse --verify': ok('abc1234\n'),
         'status --porcelain': ok('?? web/new.ts\0'),
