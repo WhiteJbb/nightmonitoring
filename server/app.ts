@@ -44,8 +44,8 @@ export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailsca
  *   tailnet 의 브라우저도 rebinding 에 걸릴 수 있다. 점 없는 이름은 공개 DNS 로 만들 수 없으므로 안전하다.
  *   그 밖의 주소로 바꾼 경우는 사용자가 감수한 것으로 본다.
  * - 변경 요청은 Origin 이 정확히 이 서버일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
- *   직접 접속이면 http://<Host 헤더> 이고 그 포트가 이 서버가 받은 포트여야 한다. 프록시를 거치면 https://<allowedHosts 이름> (443) 이나
- *   요청이 들어온 *.ts.net 이름과 정확히 같은 https 출처만 받는다 (다른 tailnet 의 Funnel 페이지는 출처가 달라 막힌다).
+ *   직접 접속이면 http://<Host 헤더> 이고 그 포트가 이 서버가 받은 포트여야 한다. 프록시를 거쳐 *.ts.net 으로 들어왔으면
+ *   그 이름과 정확히 같은 https 출처만(다른 tailnet 의 Funnel 페이지는 출처가 달라 막힌다), 그 밖의 프록시는 https://<allowedHosts 이름> (443) 만 받는다.
  *   이름만 보면 같은 기기의 다른 포트(다른 개발 서버)에서 온 요청도 통과하므로 scheme·포트까지 비교한다.
  */
 export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
@@ -65,8 +65,9 @@ export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allow
       const o = URL.parse(origin)?.origin;
       const direct = URL.parse(`http://${host}`);
       const viaSelf = direct !== null && Number(direct.port || 80) === req.socket?.localPort && o === direct.origin;
+      // *.ts.net 으로 들어왔으면 출처도 정확히 그 이름이어야 한다 (이름을 바꾼 뒤 allowedHosts 에 남은 옛 이름에서 오는 요청을 막는다)
       const proxied = URL.parse(`https://${host}`);
-      const viaProxy = o?.startsWith('https://') && (allowed.has(o.slice('https://'.length)) || (proxied !== null && proxied.hostname.endsWith('.ts.net') && o === proxied.origin));
+      const viaProxy = o?.startsWith('https://') && (proxied?.hostname.endsWith('.ts.net') ? o === proxied.origin : allowed.has(o.slice('https://'.length)));
       if (!viaSelf && !viaProxy) return void res.status(403).json({ error: '허용되지 않은 Origin' });
     }
     next();
