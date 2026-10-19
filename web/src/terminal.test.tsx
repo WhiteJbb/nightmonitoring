@@ -287,18 +287,18 @@ test('OSC 52 from the program copies to the clipboard and says so', async () => 
 test('글자 고르기 shows the terminal as plain text (wrapped rows joined, trailing blanks dropped) while the stream stays open; 터미널로 goes back', async () => {
   await renderTab(project(ONE));
   await init();
-  // 꺾인 줄 끝의 진짜 빈칸은 남기고, 한글이 안 들어가 비워 둔 칸('' 인 칸)은 뺀다
-  const rows: [string, boolean][] = [['abc  ', false], ['def', true], ['second   ', false], ['abcd\0', false], ['한글', true], ['', false]];
+  // 꺾인 줄 끝의 진짜 빈칸은 남기고, 한글이 안 들어가 비워 둔 칸('' 인 칸 뒤에 두 칸 글자)만 뺀다
+  const rows: [string, boolean][] = [['abc  ', false], ['def', true], ['second   ', false], ['abcd\0', false], ['한글', true], ['wxyz\0', false], ['F', true], ['', false]];
   const getLine = (i: number) => {
     const r = rows[i];
     const text = r?.[0] ?? '';
-    const cell = (c: number) => ({ getWidth: () => 1, getChars: () => (text[c] === '\0' ? '' : (text[c] ?? '')) });
+    const cell = (c: number) => ({ getWidth: () => (/[가-힣]/.test(text[c] ?? '') ? 2 : 1), getChars: () => (text[c] === '\0' ? '' : (text[c] ?? '')) });
     const str = (trim: boolean, start = 0, end = text.length) => text.slice(start, end).replace('\0', ' ')[trim ? 'trimEnd' : 'toString']();
     return r && { isWrapped: r[1], length: text.length, getCell: cell, translateToString: str };
   };
   xterm().buffer = { active: { type: 'normal', length: rows.length, getLine } } as never;
   fireEvent.click(screen.getByRole('button', { name: '글자 고르기' }));
-  expect(screen.getByLabelText(/터미널 글/).textContent).toBe('abc  def\nsecond\nabcd한글');
+  expect(screen.getByLabelText(/터미널 글/).textContent).toBe('abc  def\nsecond\nabcd한글\nwxyz F');
   fireEvent.click(screen.getByRole('button', { name: '터미널로' }));
   expect(screen.queryByLabelText(/터미널 글/)).toBeNull();
   expect(FakeTerminal.all).toHaveLength(1);
