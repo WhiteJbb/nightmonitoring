@@ -8,7 +8,11 @@ import { fsOp, listFiles, listIgnored, MAX_IMAGE_BYTES, readRaw, readText, write
 describe('files', () => {
   let repo: string;
   let outside: string;
+  let shadow: string;
   beforeAll(async () => {
+    // 저장소가 아닌 폴더용 빈 저장소를 NightShift 의 .nightshift 가 아니라 여기에 만든다
+    shadow = await mkdtemp(path.join(tmpdir(), 'nightshift-shadow-'));
+    process.env.NIGHTSHIFT_SHADOW_DIR = shadow;
     repo = await mkdtemp(path.join(tmpdir(), 'nightshift-files-'));
     outside = await mkdtemp(path.join(tmpdir(), 'nightshift-outside-'));
     execFileSync('git', ['init', '-q', repo]);
@@ -39,6 +43,8 @@ describe('files', () => {
   afterAll(async () => {
     await rm(repo, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+    await rm(shadow, { recursive: true, force: true });
+    delete process.env.NIGHTSHIFT_SHADOW_DIR;
   });
 
   it('lists tracked and new files, never ignored or deleted ones', async () => {
@@ -46,15 +52,17 @@ describe('files', () => {
     // 프로젝트 경로가 하위 폴더여도 맨 위 기준 (Git 상태의 바뀐 파일 경로와 맞춘다)
     expect(await listFiles(path.join(repo, 'src'))).toContain('src/app.ts');
     expect((await readText(path.join(repo, 'src'), 'new.md')).content).toBe('# 새 파일\n');
-    await expect(listFiles(outside)).rejects.toMatchObject({ status: 400 });
+    await expect(listFiles(path.join(outside, 'nope'))).rejects.toMatchObject({ status: 400 });
   });
 
-  it('refuses a repository at the home folder (an accidental ~/.git would open every file there)', async () => {
+  it('never opens the whole home folder; under an accidental ~/.git a project folder opens as its own folder', async () => {
     const home = process.env.HOME;
     process.env.HOME = repo;
     try {
-      await expect(listFiles(path.join(repo, 'src'))).rejects.toMatchObject({ status: 400 });
+      expect(await listFiles(path.join(repo, 'src'))).toEqual(['app.ts']);
+      await expect(listFiles(repo)).rejects.toMatchObject({ status: 400 });
       await expect(readText(repo, 'new.md')).rejects.toMatchObject({ status: 400 });
+      await expect(listFiles(path.dirname(repo))).rejects.toMatchObject({ status: 400 }); // 홈 위도
     } finally {
       process.env.HOME = home;
     }
@@ -127,7 +135,64 @@ describe('files', () => {
     await rm(at('docs-copy'), { recursive: true });
   });
 
+  it('opens a folder that is not a Git repository the same way, without creating anything in it', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-plain-'));
+    try {
+      await mkdir(path.join(dir, 'src'));
+      await writeFile(path.join(dir, 'src/main.py'), 'print(1)\n');
+      await writeFile(path.join(dir, '.env'), 'TOKEN=1\n');
+      await mkdir(path.join(dir, 'node_modules/x'), { recursive: true });
+      await writeFile(path.join(dir, 'node_modules/x/i.js'), 'x\n');
+      // .env 와 받아 온 의존성은 무시된 것으로 본다 (입력을 허용한 프로젝트에서만 .env 를 연다)
+      expect(await listFiles(dir)).toEqual(['src/main.py']);
+      expect(await listIgnored(dir)).toEqual(['.env']);
+      await expect(readText(dir, '.env')).rejects.toMatchObject({ status: 404 });
+      expect((await readText(dir, '.env', true)).content).toBe('TOKEN=1\n');
+      const opened = await readText(dir, 'src/main.py');
+      await writeText(dir, 'src/main.py', 'print(2)\n', opened.version);
+      expect(await readFile(path.join(dir, 'src/main.py'), 'utf8')).toBe('print(2)\n');
+      await fsOp(dir, 'newFile', 'notes.md');
+      expect(await listFiles(dir)).toEqual(['notes.md', 'src/main.py']);
+      // 지운 것은 그 폴더가 아니라 NightShift 쪽 빈 저장소의 휴지통에 남는다
+      await fsOp(dir, 'delete', 'notes.md');
+      expect((await readdir(dir)).sort()).toEqual(['.env', 'node_modules', 'src']);
+      const trashed = await Promise.all((await readdir(shadow)).map((d) => readdir(path.join(shadow, d, 'nightshift-trash')).catch(() => [])));
+      expect(trashed.flat()).toHaveLength(1);
+      // 휴지통(.env 같은 비밀이 들어갈 수 있다)은 나만 연다
+      for (const d of await readdir(shadow)) expect((await stat(path.join(shadow, d))).mode & 0o777).toBe(0o700);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('never touches .git or anything outside the repository', async () => {
+    // 프로젝트 경로가 .git 안을 가리켜도 그 안을 보통 폴더처럼 열지 않는다 (설정·훅)
+    await expect(listFiles(path.join(repo, '.git'))).rejects.toMatchObject({ status: 400 });
+    await expect(readText(path.join(repo, '.git'), 'config')).rejects.toMatchObject({ status: 400 });
+    await expect(fsOp(path.join(repo, '.git/hooks'), 'newFile', 'pre-commit')).rejects.toMatchObject({ status: 400 });
+    // git 이 알아보지 못하는 저장소 속(bare 저장소, 설정이 깨진 .git)도 모양으로 막는다
+    const bare = await mkdtemp(path.join(tmpdir(), 'nightshift-bare-'));
+    try {
+      execFileSync('git', ['init', '-q', '--bare', bare]);
+      await expect(listFiles(bare)).rejects.toMatchObject({ status: 400 });
+      await expect(fsOp(path.join(bare, 'hooks'), 'newFile', 'pre-commit')).rejects.toMatchObject({ status: 400 });
+      await writeFile(path.join(bare, 'config'), '[broken');
+      await expect(listFiles(bare)).rejects.toMatchObject({ status: 400 });
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
+    // 설정이 깨진 저장소를 보통 폴더로 열면 .git/info/exclude 로 숨긴 파일이 보이게 된다: 열지 않는다
+    const broken = await mkdtemp(path.join(tmpdir(), 'nightshift-broken-'));
+    try {
+      execFileSync('git', ['init', '-q', broken]);
+      await writeFile(path.join(broken, '.git/info/exclude'), 'secret.txt\n');
+      await writeFile(path.join(broken, 'secret.txt'), 'x\n');
+      await writeFile(path.join(broken, '.git/config'), '[broken');
+      await expect(listFiles(broken)).rejects.toMatchObject({ status: 400 });
+      await expect(readText(broken, 'secret.txt')).rejects.toMatchObject({ status: 400 });
+    } finally {
+      await rm(broken, { recursive: true, force: true });
+    }
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });
