@@ -231,6 +231,47 @@ describe('followRepo', () => {
     await again.tick();
     expect(again.snapshot.projects[0]!.repoPath).toBe('/home/me/repo');
   });
+
+  it('follows where an agent started in the home folder runs its commands, and moves when it works in another repository', async () => {
+    const home = process.env.HOME;
+    process.env.HOME = '/home/me';
+    try {
+      const cfg = parseConfig({ projects: [{ name: 'money', repoPath: '/home/me', tmuxSession: 'money' }, { name: 'plain', repoPath: '/work/plain', tmuxSession: 'plain' }] }, '/base');
+      const repos = ['/home/me/repos/trader', '/home/me/repos/other'];
+      let working: string[] = [];
+      const asked: string[] = [];
+      const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: '/home/me' };
+      const raw = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' };
+      const collector: Collector = {
+        git: async (p) => (repos.includes(p.repoPath) ? git() : { ...git(), ok: false, error: 'Git 저장소가 아닙니다' }),
+        since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
+        tmux: async () => new Map([['money', raw], ['plain', raw]]),
+        logErrors: async () => NO_LOG,
+        workDirs: async (session) => (asked.push(session), working),
+      };
+      const m = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0 });
+      const money = () => m.snapshot.projects.find((p) => p.id === 'money')!;
+
+      // Codex 가 홈에서 떠 있지만 명령은 저장소에서 돌린다 (MCP 서버 같은 건 홈에 있다)
+      working = ['/home/me/repos/trader', '/home/me'];
+      await m.tick();
+      expect(money()).toMatchObject({ repoPath: '/home/me/repos/trader', git: { ok: true } });
+      // 특정 폴더로 등록한 프로젝트는 그 폴더가 의도한 곳이다: 명령 폴더를 따라가지 않는다
+      expect(asked).toEqual(['money']);
+
+      // 명령이 끝나 쉬는 동안에도 유지한다
+      working = [];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/trader');
+
+      // 다른 저장소에서 일하기 시작하면 그리로
+      working = ['/home/me/repos/other'];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
+    } finally {
+      process.env.HOME = home;
+    }
+  });
 });
 
 describe('discover', () => {

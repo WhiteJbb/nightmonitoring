@@ -1,3 +1,5 @@
+import { homedir } from 'node:os';
+import path from 'node:path';
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
@@ -6,7 +8,7 @@ import type { LogPos, LogScan } from './logs.ts';
 import { findPrompt, isBusy, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import type { MonitorState } from './state.ts';
 import { judge } from './status.ts';
-import { capturePane, listPanes, listSessions } from './tmux.ts';
+import { capturePane, listPanes, listSessions, workDirs } from './tmux.ts';
 
 export type RawTmux = Omit<TmuxInfo, 'lastOutputChangeAt'>;
 
@@ -19,6 +21,8 @@ export interface Collector {
   discover?(): Promise<{ name: string; cwd: string }[]>;
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
+  /** 세션 안 에이전트가 돌리는 명령들의 작업 폴더 (새로 돌린 것부터) */
+  workDirs?(session: string): Promise<string[]>;
 }
 
 /** 복사해서 붙여 넣을 명령이므로 셸에 안전하게 인용한다. */
@@ -35,6 +39,7 @@ export function realCollector(config: Config): Collector {
     git: (p) => collectGit(p.repoPath),
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
     logErrors: (p, pos) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns, pos) : Promise.resolve(NO_LOG)),
+    workDirs,
     // ponytail: tmux() 가 같은 목록을 다시 읽는다 (tick 당 ls 두 번). 느려지면 한 tick 안에서 캐시.
     async discover() {
       const [{ sessions }, panes] = await Promise.all([listSessions(), listPanes()]);
@@ -269,13 +274,16 @@ export class Monitor {
 
   /**
    * 저장소가 아닌 경로로 등록된 프로젝트는 pane 이 Git 저장소 안으로 cd 하면 그 저장소를 따라간다 (config 는 바꾸지 않는다).
-   * 한 번 따라간 저장소는 pane 이 다른 곳으로 가도 저장소인 동안 유지한다.
+   * 홈 폴더(나 그 위)로 등록된 세션은 에이전트를 홈에서 띄운 것이라, 에이전트가 명령을 돌리는 폴더(Codex 의 workdir 등)의 저장소도 따라간다.
+   * 한 번 따라간 저장소는 pane 이 다른 곳으로 가도 저장소인 동안 유지하고, 에이전트가 다른 저장소에서 일하기 시작하면 그리로 옮긴다.
    */
   private async followRepo(p: ProjectConfig, raw: RawTmux): Promise<{ project: ProjectConfig; git: GitInfo }> {
     const git = await this.opts.collector.git(p);
     if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
     const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
-    for (const dir of new Set([cwd, this.tracked.get(p.id)?.repoPath])) {
+    const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
+    const working = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : [];
+    for (const dir of new Set([cwd, ...working, this.tracked.get(p.id)?.repoPath])) {
       if (!dir || dir === p.repoPath) continue;
       const project = { ...p, repoPath: dir };
       const found = await this.opts.collector.git(project);

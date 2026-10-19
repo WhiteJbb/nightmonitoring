@@ -1,3 +1,4 @@
+import { readlink } from 'node:fs/promises';
 import type { TmuxPane } from '../shared/types.ts';
 import { run } from './exec.ts';
 import { keepSgr, stripAnsi } from './logs.ts';
@@ -118,6 +119,53 @@ async function nameScriptAgents(panes: PaneMeta[]): Promise<void> {
     const name = tty ? agentOnTty(ps.stdout, tty) : null;
     if (name) p.command = name;
   }
+}
+
+/** ps -o pid=,ppid= 출력에서 roots 아래의 모든 자손 pid. 새로 뜬 것(pid 가 큰 것)부터 */
+export function descendants(ps: string, roots: number[]): number[] {
+  const children = new Map<number, number[]>();
+  for (const line of ps.split('\n')) {
+    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
+    if (pid && ppid !== undefined && !Number.isNaN(ppid)) children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+  }
+  const found = new Set<number>();
+  const stack = [...roots];
+  while (stack.length) {
+    for (const c of children.get(stack.pop()!) ?? []) {
+      if (found.has(c)) continue;
+      found.add(c);
+      stack.push(c);
+    }
+  }
+  return [...found].sort((a, b) => b - a);
+}
+
+/** lsof -Fpn 출력(p<pid>, n<경로> 줄)에서 pid → 경로 */
+export function lsofCwds(out: string): Map<number, string> {
+  const cwds = new Map<number, string>();
+  let pid = 0;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1));
+    else if (line.startsWith('n') && pid) cwds.set(pid, line.slice(1));
+  }
+  return cwds;
+}
+
+/**
+ * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)의 작업 폴더. 새로 뜬 것부터.
+ * 에이전트를 홈에서 띄우고 명령은 다른 폴더에서 돌릴 때(Codex 의 workdir 등) 실제로 일하는 폴더를 찾는다
+ */
+export async function workDirs(session: string): Promise<string[]> {
+  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid='])]);
+  if (panes.code !== 0 || ps.code !== 0) return [];
+  const pids = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean));
+  if (!pids.length) return [];
+  const cwds =
+    process.platform === 'linux'
+      ? new Map(await Promise.all(pids.map(async (pid) => [pid, await readlink(`/proc/${pid}/cwd`).catch(() => '')] as const)))
+      : // 그 사이 끝난 프로세스는 빠진다 (lsof 는 그때 1 로 끝나지만 나머지는 알려 준다)
+        lsofCwds((await run('lsof', ['-a', '-d', 'cwd', '-p', pids.join(','), '-Fpn'])).stdout);
+  return [...new Set(pids.map((pid) => cwds.get(pid)).filter((d): d is string => !!d))];
 }
 
 /** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */

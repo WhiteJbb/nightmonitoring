@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { compileMatcher, findErrors, findPrompt, isBusy, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
-import { agentOnTty, capturePane, cleanOutput, listPanes, listSessions, MAX_PANES, parsePanes, resizeWindow } from './tmux.ts';
+import { agentOnTty, capturePane, cleanOutput, descendants, listPanes, listSessions, lsofCwds, MAX_PANES, parsePanes, resizeWindow, workDirs } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -52,6 +52,29 @@ describe('panes', () => {
   it('returns no panes when tmux fails', async () => {
     mockRun.mockResolvedValue({ code: 1, stdout: '', stderr: 'no server running', timedOut: false });
     expect(await listPanes()).toEqual(new Map());
+  });
+});
+
+describe('workDirs', () => {
+  it('finds every process under the panes, newest first, and reads their folders', async () => {
+    // 10(pane 셸) → 20(codex) → 30(명령) → 40(손자), 50 은 다른 곳
+    const ps = ' 10 1\n 20 10\n 30 20\n 40 30\n 50 1\n 60 50\n';
+    expect(descendants(ps, [10])).toEqual([40, 30, 20]);
+    expect(lsofCwds('p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\n')).toEqual(
+      new Map([
+        [20, '/home/me'],
+        [30, '/home/me/repos/app'],
+      ]),
+    );
+    if (process.platform === 'linux') return; // 리눅스는 /proc 을 읽는다
+    mockRun.mockImplementation(async (bin) => ({
+      code: 0,
+      stdout: bin === 'tmux' ? '10\n' : bin === 'ps' ? ps : 'p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\np40\nfcwd\nn/home/me/repos/app\n',
+      stderr: '',
+      timedOut: false,
+    }));
+    expect(await workDirs('money')).toEqual(['/home/me/repos/app', '/home/me']);
+    expect(mockRun).toHaveBeenCalledWith('lsof', ['-a', '-d', 'cwd', '-p', '40,30,20', '-Fpn']);
   });
 });
 
