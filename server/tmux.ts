@@ -121,23 +121,30 @@ async function nameScriptAgents(panes: PaneMeta[]): Promise<void> {
   }
 }
 
-/** ps -o pid=,ppid= 출력에서 roots 아래의 모든 자손 pid. 새로 뜬 것(pid 가 큰 것)부터 */
-export function descendants(ps: string, roots: number[]): number[] {
-  const children = new Map<number, number[]>();
+/** ps 의 etime ([[일-]시:]분:초) → 초 */
+export function etimeSeconds(etime: string): number {
+  const [days, clock] = etime.includes('-') ? etime.split('-') : ['0', etime];
+  return (clock ?? '').split(':').reduce((sum, part) => sum * 60 + Number(part), 0) + Number(days) * 86400;
+}
+
+/** ps -o pid=,ppid=,etime= 출력에서 roots 아래의 모든 자손. 최근에 뜬 것부터 (pid 는 한 바퀴 돌 수 있어 띄운 지 지난 시간으로 본다) */
+export function descendants(ps: string, roots: number[]): { pid: number; age: number }[] {
+  const children = new Map<number, { pid: number; age: number }[]>();
   for (const line of ps.split('\n')) {
-    const [pid, ppid] = line.trim().split(/\s+/).map(Number);
-    if (pid && ppid !== undefined && !Number.isNaN(ppid)) children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+    const [pid, ppid, etime] = line.trim().split(/\s+/);
+    if (!Number(pid) || !etime) continue;
+    children.set(Number(ppid), [...(children.get(Number(ppid)) ?? []), { pid: Number(pid), age: etimeSeconds(etime) }]);
   }
-  const found = new Set<number>();
+  const found = new Map<number, { pid: number; age: number }>();
   const stack = [...roots];
   while (stack.length) {
     for (const c of children.get(stack.pop()!) ?? []) {
-      if (found.has(c)) continue;
-      found.add(c);
-      stack.push(c);
+      if (found.has(c.pid)) continue;
+      found.set(c.pid, c);
+      stack.push(c.pid);
     }
   }
-  return [...found].sort((a, b) => b - a);
+  return [...found.values()].sort((a, b) => a.age - b.age);
 }
 
 /** lsof -Fpn 출력(p<pid>, n<경로> 줄)에서 pid → 경로 */
@@ -152,20 +159,20 @@ export function lsofCwds(out: string): Map<number, string> {
 }
 
 /**
- * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)의 작업 폴더. 새로 뜬 것부터.
+ * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)와 그 작업 폴더. 최근에 뜬 것부터.
  * 에이전트를 홈에서 띄우고 명령은 다른 폴더에서 돌릴 때(Codex 의 workdir 등) 실제로 일하는 폴더를 찾는다
  */
-export async function workDirs(session: string): Promise<string[]> {
-  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid='])]);
+export async function workDirs(session: string): Promise<{ pid: number; dir: string }[]> {
+  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid=,etime='])]);
   if (panes.code !== 0 || ps.code !== 0) return [];
-  const pids = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean));
+  const pids = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean)).map((p) => p.pid);
   if (!pids.length) return [];
   const cwds =
     process.platform === 'linux'
       ? new Map(await Promise.all(pids.map(async (pid) => [pid, await readlink(`/proc/${pid}/cwd`).catch(() => '')] as const)))
       : // 그 사이 끝난 프로세스는 빠진다 (lsof 는 그때 1 로 끝나지만 나머지는 알려 준다)
         lsofCwds((await run('lsof', ['-a', '-d', 'cwd', '-p', pids.join(','), '-Fpn'])).stdout);
-  return [...new Set(pids.map((pid) => cwds.get(pid)).filter((d): d is string => !!d))];
+  return pids.map((pid) => ({ pid, dir: cwds.get(pid) ?? '' })).filter((p) => p.dir);
 }
 
 /** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */

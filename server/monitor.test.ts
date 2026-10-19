@@ -232,40 +232,65 @@ describe('followRepo', () => {
     expect(again.snapshot.projects[0]!.repoPath).toBe('/home/me/repo');
   });
 
-  it('follows where an agent started in the home folder runs its commands, and moves when it works in another repository', async () => {
+  it('follows where an agent started in the home folder runs its commands, and moves only when new work starts elsewhere', async () => {
     const home = process.env.HOME;
     process.env.HOME = '/home/me';
     try {
       const cfg = parseConfig({ projects: [{ name: 'money', repoPath: '/home/me', tmuxSession: 'money' }, { name: 'plain', repoPath: '/work/plain', tmuxSession: 'plain' }] }, '/base');
       const repos = ['/home/me/repos/trader', '/home/me/repos/other'];
-      let working: string[] = [];
+      let procs: { pid: number; dir: string }[] = [];
       const asked: string[] = [];
       const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: '/home/me' };
       const raw = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' };
       const collector: Collector = {
         git: async (p) => (repos.includes(p.repoPath) ? git() : { ...git(), ok: false, error: 'Git 저장소가 아닙니다' }),
         since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
-        tmux: async () => new Map([['money', raw], ['plain', raw]]),
+        tmux: async () =>
+          new Map([
+            ['money', raw],
+            ['plain', raw],
+          ]),
         logErrors: async () => NO_LOG,
-        workDirs: async (session) => (asked.push(session), working),
+        workDirs: async (session) => {
+          asked.push(session);
+          return procs;
+        },
+        repoRoot: async (dir) => repos.find((r) => dir === r || dir.startsWith(`${r}/`)) ?? null,
       };
       const m = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0 });
       const money = () => m.snapshot.projects.find((p) => p.id === 'money')!;
 
-      // Codex 가 홈에서 떠 있지만 명령은 저장소에서 돌린다 (MCP 서버 같은 건 홈에 있다)
-      working = ['/home/me/repos/trader', '/home/me'];
+      // Codex 가 홈에서 떠 있지만 명령은 저장소의 하위 폴더에서 돌린다 (MCP 서버 같은 건 홈에 있다). 저장소 맨 위를 따라간다
+      procs = [
+        { pid: 30, dir: '/home/me/repos/trader/src' },
+        { pid: 20, dir: '/home/me' },
+      ];
       await m.tick();
       expect(money()).toMatchObject({ repoPath: '/home/me/repos/trader', git: { ok: true } });
+      const baseline = m.exportState().tracked.money?.baseline;
       // 특정 폴더로 등록한 프로젝트는 그 폴더가 의도한 곳이다: 명령 폴더를 따라가지 않는다
       expect(asked).toEqual(['money']);
 
+      // 같은 저장소의 다른 하위 폴더에서 돌려도 같은 프로젝트다 (추적 기록이 이어진다)
+      procs = [{ pid: 31, dir: '/home/me/repos/trader/tests' }];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/trader');
+      expect(m.exportState().tracked.money?.baseline).toEqual(baseline);
+
       // 명령이 끝나 쉬는 동안에도 유지한다
-      working = [];
+      procs = [];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/trader');
 
-      // 다른 저장소에서 일하기 시작하면 그리로
-      working = ['/home/me/repos/other'];
+      // 다른 저장소에서 새 일을 시작하면 그리로. 그사이 trader 에 개발 서버가 뜬다
+      procs = [
+        { pid: 41, dir: '/home/me/repos/other' },
+        { pid: 40, dir: '/home/me/repos/trader' },
+      ];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
+      // other 의 명령이 끝나도, 뒤에서 계속 도는 trader 의 개발 서버가 되돌리지 않는다
+      procs = [{ pid: 40, dir: '/home/me/repos/trader' }];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
     } finally {

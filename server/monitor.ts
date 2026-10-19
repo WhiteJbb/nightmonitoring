@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
-import { collectGit, collectSince } from './git.ts';
+import { collectGit, collectSince, repoRoot } from './git.ts';
 import type { LogPos, LogScan } from './logs.ts';
 import { findPrompt, isBusy, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import type { MonitorState } from './state.ts';
@@ -21,8 +21,10 @@ export interface Collector {
   discover?(): Promise<{ name: string; cwd: string }[]>;
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
-  /** 세션 안 에이전트가 돌리는 명령들의 작업 폴더 (새로 돌린 것부터) */
-  workDirs?(session: string): Promise<string[]>;
+  /** 세션 안 에이전트가 돌리는 명령들과 그 작업 폴더 (최근에 뜬 것부터) */
+  workDirs?(session: string): Promise<{ pid: number; dir: string }[]>;
+  /** dir 이 든 저장소의 맨 위 폴더 (저장소가 아니면 null). 없으면 dir 을 그대로 쓴다 */
+  repoRoot?(dir: string): Promise<string | null>;
 }
 
 /** 복사해서 붙여 넣을 명령이므로 셸에 안전하게 인용한다. */
@@ -40,6 +42,7 @@ export function realCollector(config: Config): Collector {
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
     logErrors: (p, pos) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns, pos) : Promise.resolve(NO_LOG)),
     workDirs,
+    repoRoot,
     // ponytail: tmux() 가 같은 목록을 다시 읽는다 (tick 당 ls 두 번). 느려지면 한 tick 안에서 캐시.
     async discover() {
       const [{ sessions }, panes] = await Promise.all([listSessions(), listPanes()]);
@@ -134,6 +137,8 @@ export class Monitor {
   private now: () => number;
   private startedAt: string;
   private tracked = new Map<string, Tracked>();
+  /** 프로젝트마다 지난 tick 에 본, 에이전트가 돌리던 프로세스들 (followRepo) */
+  private workPids = new Map<string, Set<number>>();
   /** 설정에 없지만 떠 있는 tmux 세션에서 만든 임시 프로젝트. 세션이 사라지면 같이 사라진다. */
   private discovered: ProjectConfig[] = [];
   private collected = new Map<string, Collected>();
@@ -282,10 +287,18 @@ export class Monitor {
     if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
     const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
     const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
-    const working = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : [];
-    for (const dir of new Set([cwd, ...working, this.tracked.get(p.id)?.repoPath])) {
-      if (!dir || dir === p.repoPath) continue;
-      const project = { ...p, repoPath: dir };
+    const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : [];
+    // 지난번에 없던 프로세스만 새 일이다: 뒤에서 계속 도는 옛 프로세스(개발 서버 등)가 따라간 저장소를 되돌리지 않게 한다
+    const seen = this.workPids.get(p.id);
+    this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
+    const fresh = procs.filter((x) => !seen?.has(x.pid)).map((x) => x.dir);
+    const tried = new Set<string>();
+    for (const dir of new Set([cwd, ...fresh, this.tracked.get(p.id)?.repoPath, ...procs.map((x) => x.dir)])) {
+      // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
+      const root = dir && (this.opts.collector.repoRoot ? await this.opts.collector.repoRoot(dir) : dir);
+      if (!root || root === p.repoPath || tried.has(root)) continue;
+      tried.add(root);
+      const project = { ...p, repoPath: root };
       const found = await this.opts.collector.git(project);
       if (found.ok) return { project, git: found };
     }

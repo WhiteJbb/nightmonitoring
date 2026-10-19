@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { run } from './exec.ts';
 import { compileMatcher, findErrors, findPrompt, isBusy, promptChoices, stripAnsi, stripVolatile } from './logs.ts';
-import { agentOnTty, capturePane, cleanOutput, descendants, listPanes, listSessions, lsofCwds, MAX_PANES, parsePanes, resizeWindow, workDirs } from './tmux.ts';
+import { agentOnTty, capturePane, cleanOutput, descendants, etimeSeconds, listPanes, listSessions, lsofCwds, MAX_PANES, parsePanes, resizeWindow, workDirs } from './tmux.ts';
 
 vi.mock('./exec.ts', () => ({ run: vi.fn() }));
 const mockRun = vi.mocked(run);
@@ -56,10 +56,11 @@ describe('panes', () => {
 });
 
 describe('workDirs', () => {
-  it('finds every process under the panes, newest first, and reads their folders', async () => {
-    // 10(pane 셸) → 20(codex) → 30(명령) → 40(손자), 50 은 다른 곳
-    const ps = ' 10 1\n 20 10\n 30 20\n 40 30\n 50 1\n 60 50\n';
-    expect(descendants(ps, [10])).toEqual([40, 30, 20]);
+  it('finds every process under the panes, most recently started first, and reads their folders', async () => {
+    expect([etimeSeconds('05'), etimeSeconds('01:05'), etimeSeconds('02:01:05'), etimeSeconds('3-02:01:05')]).toEqual([5, 65, 7265, 266465]);
+    // 10(pane 셸) → 20(codex) → 30(명령) → 40(손자), 50 은 다른 곳. 9 는 pid 가 한 바퀴 돌아 작지만 가장 최근에 떴다
+    const ps = ' 10 1 2-00:00:00\n 20 10 1-00:00:00\n 30 20 01:00\n 40 30 00:10\n 9 20 00:02\n 50 1 00:01\n 60 50 00:01\n';
+    expect(descendants(ps, [10]).map((p) => p.pid)).toEqual([9, 40, 30, 20]);
     expect(lsofCwds('p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\n')).toEqual(
       new Map([
         [20, '/home/me'],
@@ -69,12 +70,16 @@ describe('workDirs', () => {
     if (process.platform === 'linux') return; // 리눅스는 /proc 을 읽는다
     mockRun.mockImplementation(async (bin) => ({
       code: 0,
-      stdout: bin === 'tmux' ? '10\n' : bin === 'ps' ? ps : 'p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\np40\nfcwd\nn/home/me/repos/app\n',
+      stdout: bin === 'tmux' ? '10\n' : bin === 'ps' ? ps : 'p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\np40\nfcwd\nn/home/me/repos/app/src\n',
       stderr: '',
       timedOut: false,
     }));
-    expect(await workDirs('money')).toEqual(['/home/me/repos/app', '/home/me']);
-    expect(mockRun).toHaveBeenCalledWith('lsof', ['-a', '-d', 'cwd', '-p', '40,30,20', '-Fpn']);
+    expect(await workDirs('money')).toEqual([
+      { pid: 40, dir: '/home/me/repos/app/src' },
+      { pid: 30, dir: '/home/me/repos/app' },
+      { pid: 20, dir: '/home/me' },
+    ]);
+    expect(mockRun).toHaveBeenCalledWith('lsof', ['-a', '-d', 'cwd', '-p', '9,40,30,20', '-Fpn']);
   });
 });
 
