@@ -259,7 +259,7 @@ function PickText({ text, onDone }: { text: string; onDone: () => void }) {
       <pre ref={ref} className="terminal wrap-lines" tabIndex={0} aria-label="터미널 글 (길게 눌러 골라 복사)">
         {text}
       </pre>
-      <button type="button" className="pick-done" onClick={onDone}>
+      <button type="button" className="more-rows pick-done" onClick={onDone}>
         터미널로
       </button>
     </>
