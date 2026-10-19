@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { type RefObject, useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
@@ -57,6 +57,25 @@ export function copyText(text: string): boolean {
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 /** pane 의 출력 이벤트를 받는 곳. on 은 이벤트마다, down 은 연결이 끊길 때 불린다. 돌려주는 함수로 그만 받는다 */
+/** 터미널에 있는 글 (일반 화면이면 스크롤백까지). 폭이 넘쳐 꺾인 줄은 다시 한 줄로 잇는다 */
+export function bufferText(term: Terminal): string {
+  const b = term.buffer.active;
+  const lines: string[] = [];
+  for (let i = 0; i < b.length; i++) {
+    const line = b.getLine(i);
+    if (!line) continue;
+    // 다음 줄로 이어지는 줄 끝의 빈칸은 글의 일부다. 다만 두 칸 글자(한글)가 안 들어가 비워 둔 마지막 칸은 아니다
+    const next = b.getLine(i + 1);
+    const joins = next?.isWrapped === true;
+    const last = line.getCell(line.length - 1);
+    const pad = joins && last?.getWidth() === 1 && last.getChars() === '' && next.getCell(0)?.getWidth() === 2;
+    const s = line.translateToString(!joins, 0, pad ? line.length - 1 : undefined);
+    if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += s;
+    else lines.push(s);
+  }
+  return lines.join('\n').trimEnd();
+}
+
 export type TermFeed = (pane: string, on: (e: TermEvent) => void, down: () => void) => () => void;
 /** 기본: pane 하나에 SSE 하나 */
 const paneFeed =
@@ -78,7 +97,7 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다.
  * command: pane 에서 도는 프로그램 (TmuxPane.command). 휠을 어떻게 보낼지 고른다
  */
-export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, textOf, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; /** 지금 터미널의 글을 꺼내는 함수를 여기에 둔다 */ textOf?: RefObject<(() => string) | null>; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize, onNotice });
@@ -113,6 +132,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     });
     term.open(el);
     xterm.current = term;
+    if (textOf) textOf.current = () => bufferText(term);
     // 출력의 http(s) 주소를 눌러 새 탭으로 연다 (PR 링크 등). 프로그램이 마우스를 받으면 Cmd(⌘)+클릭
     term.loadAddon(new WebLinksAddon((_ev, uri) => void window.open(uri, '_blank', 'noopener,noreferrer')));
 
@@ -413,7 +433,8 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
         const dt = now - prev;
         prev = now;
         v *= FLING_DECAY ** dt;
-        if (Math.abs(v) < FLING_STOP || term.buffer.active.type !== 'alternate') return void (fling = 0);
+        // 글자 고르기로 터미널을 숨기면(높이 0) 멈춘다. 한 줄 높이를 못 재 휠이 부풀어 간다
+        if (Math.abs(v) < FLING_STOP || term.buffer.active.type !== 'alternate' || !el.clientHeight) return void (fling = 0);
         scrollProgram(v * dt, lastX, y);
         fling = requestAnimationFrame(step);
       };
@@ -443,6 +464,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       window.removeEventListener('resize', fitFont);
       stopFeed();
       xterm.current = null;
+      if (textOf) textOf.current = null;
       term.dispose();
     };
   }, [projectId, pane, canInput]);

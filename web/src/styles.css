@@ -1083,6 +1083,10 @@ pre {
     display: none;
   }
 }
+/* 글자 고르기: 터미널은 연결을 둔 채 숨기고 그 글을 보여 준다 */
+.term-view.picking .xterm-host {
+  display: none;
+}
 .term-paused {
   margin: 0;
   padding: 40px 10px;
