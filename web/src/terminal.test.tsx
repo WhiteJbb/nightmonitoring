@@ -284,6 +284,23 @@ test('OSC 52 from the program copies to the clipboard and says so', async () => 
   expect(screen.getByText('복사됨')).toBeTruthy();
 });
 
+test('글자 고르기 shows the terminal as plain text (wrapped rows joined, trailing blanks dropped) while the stream stays open; 터미널로 goes back', async () => {
+  await renderTab(project(ONE));
+  await init();
+  const rows: [string, boolean][] = [['abc  ', false], ['def', true], ['second   ', false], ['', false]];
+  const getLine = (i: number) => {
+    const r = rows[i];
+    return r && { isWrapped: r[1], translateToString: (trim: boolean) => (trim ? r[0].trimEnd() : r[0]) };
+  };
+  xterm().buffer = { active: { type: 'normal', length: rows.length, getLine } } as never;
+  fireEvent.click(screen.getByRole('button', { name: '글자 고르기' }));
+  expect(screen.getByLabelText(/터미널 글/).textContent).toBe('abc  def\nsecond');
+  fireEvent.click(screen.getByRole('button', { name: '터미널로' }));
+  expect(screen.queryByLabelText(/터미널 글/)).toBeNull();
+  expect(FakeTerminal.all).toHaveLength(1);
+  expect(es().closed).toBe(false);
+});
+
 test('a failed raw send drops what was queued behind it and says so', async () => {
   let fail: ((e: Error) => void) | null = null;
   fetchMock.mockImplementationOnce(() => new Promise<Response>((_, reject) => (fail = reject)));
