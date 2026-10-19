@@ -162,7 +162,7 @@ launchd로 띄운 node는 터미널의 폴더 권한을 물려받지 않습니�
 
 ## Linux에서 (Ubuntu, 라즈베리파이)
 
-고칠 것 없이 그대로 돌아갑니다. 맥 데스크톱 알림만 빠지고, 휴대폰 알림(ntfy)은 그대로입니다. Ubuntu 24.04(x86_64·arm64)와 Debian bookworm arm64(라즈베리파이 OS와 같은 기반)에서 빌드·테스트·실시간 터미널까지 확인했습니다. 실제 라즈베리파이 기기에서는 아직 검증 전입니다.
+고칠 것 없이 그대로 돌아갑니다. 맥 데스크톱 알림만 빠지고, 휴대폰 알림(ntfy)은 그대로입니다. Ubuntu 24.04(x86_64·arm64)와 Debian bookworm arm64(라즈베리파이 OS와 같은 기반)에서 빌드·테스트·실시간 터미널까지 확인했고, 실제 라즈베리파이 기기에서도 검증했습니다.
 
 ```bash
 sudo apt update && sudo apt install -y git tmux

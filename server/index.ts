@@ -180,8 +180,8 @@ const terminal = demo ? undefined : { send: sendInput, sendRaw, stream: (session
   if (dev) {
     const { createServer } = await import('vite');
     // Vite 개발 서버는 낯선 Host 헤더를 스스로 차단한다. Host 검사는 guard 가 이미 하므로 같은 기준을 넘겨준다:
-    // loopback 이면 allowedHosts 만, Tailscale 이면 그 주소·*.ts.net·allowedHosts, 그 밖의 주소면 모든 이름을 받는다.
-    const allowedHosts = ['127.0.0.1', 'localhost', '::1'].includes(config.host) ? config.allowedHosts : isTailscaleAddress(config.host) ? [config.host, '.ts.net', ...config.allowedHosts] : true;
+    // loopback 이면 *.ts.net·allowedHosts, Tailscale 이면 그 주소도, 그 밖의 주소면 모든 이름을 받는다.
+    const allowedHosts = ['127.0.0.1', 'localhost', '::1'].includes(config.host) ? ['.ts.net', ...config.allowedHosts] : isTailscaleAddress(config.host) ? [config.host, '.ts.net', ...config.allowedHosts] : true;
     const vite = await createServer({ server: { middlewareMode: true, hmr: { server }, allowedHosts }, appType: 'spa' });
     app.use(vite.middlewares);
   } else {

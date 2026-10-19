@@ -37,13 +37,15 @@ export const isPrivateBind = (host: string) => isLoopbackBind(host) || isTailsca
 
 /**
  * 방어선.
- * - loopback 바인딩이면 Host 헤더가 loopback 이거나 allowedHosts 에 있어야 한다 (DNS rebinding 방어).
- *   allowedHosts 는 `tailscale serve` 같은 프록시를 거쳐 들어오는 이름을 허용하기 위한 것.
+ * - loopback 바인딩이면 Host 헤더가 loopback, *.ts.net(`tailscale serve` 가 중계한 이름), allowedHosts 중 하나여야 한다 (DNS rebinding 방어).
+ *   *.ts.net 은 Tailscale 만 DNS 를 정하고 127.0.0.1 로 풀리지 않는다. 그래서 serve 를 손으로 켜거나 기기 이름이 바뀌어도 따로 적을 필요가 없다.
+ *   allowedHosts 는 그 밖의 프록시 이름을 위한 것.
  * - Tailscale 바인딩이면 그 주소, MagicDNS 이름(*.ts.net 또는 점 없는 짧은 이름), allowedHosts 만 받는다.
  *   tailnet 의 브라우저도 rebinding 에 걸릴 수 있다. 점 없는 이름은 공개 DNS 로 만들 수 없으므로 안전하다.
  *   그 밖의 주소로 바꾼 경우는 사용자가 감수한 것으로 본다.
  * - 변경 요청은 Origin 이 정확히 이 서버일 때만 허용 (다른 웹사이트가 명령 실행을 유발하지 못하게).
- *   직접 접속이면 http://<Host 헤더> 이고 그 포트가 이 서버가 받은 포트여야 한다. 프록시를 거치면 https://<allowedHosts 이름> (443) 만 받는다.
+ *   직접 접속이면 http://<Host 헤더> 이고 그 포트가 이 서버가 받은 포트여야 한다. 프록시를 거치면 https://<allowedHosts 이름> (443) 이나
+ *   요청이 들어온 *.ts.net 이름과 정확히 같은 https 출처만 받는다 (다른 tailnet 의 Funnel 페이지는 출처가 달라 막힌다).
  *   이름만 보면 같은 기기의 다른 포트(다른 개발 서버)에서 온 요청도 통과하므로 scheme·포트까지 비교한다.
  */
 export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allowedHosts'>>) {
@@ -53,7 +55,7 @@ export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allow
   const self = new Set([config.host.toLowerCase(), `[${config.host.toLowerCase()}]`]);
   const hostOk = (host: string) => {
     const name = hostname(host);
-    return isLoopback(host) || allowed.has(name) || (tailscale && (self.has(name) || name.endsWith('.ts.net') || !name.includes('.')));
+    return isLoopback(host) || allowed.has(name) || name.endsWith('.ts.net') || (tailscale && (self.has(name) || !name.includes('.')));
   };
   return (req: Request, res: Response, next: NextFunction) => {
     const host = req.headers.host ?? '';
@@ -63,7 +65,8 @@ export function guard(config: Pick<Config, 'host'> & Partial<Pick<Config, 'allow
       const o = URL.parse(origin)?.origin;
       const direct = URL.parse(`http://${host}`);
       const viaSelf = direct !== null && Number(direct.port || 80) === req.socket?.localPort && o === direct.origin;
-      const viaProxy = o?.startsWith('https://') && allowed.has(o.slice('https://'.length));
+      const proxied = URL.parse(`https://${host}`);
+      const viaProxy = o?.startsWith('https://') && (allowed.has(o.slice('https://'.length)) || (proxied !== null && proxied.hostname.endsWith('.ts.net') && o === proxied.origin));
       if (!viaSelf && !viaProxy) return void res.status(403).json({ error: '허용되지 않은 Origin' });
     }
     next();

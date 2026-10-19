@@ -353,7 +353,7 @@ async function main() {
 
   const name = tailscale(upstream);
   if (name) {
-    // tailscale serve 로 들어오는 이름을 받게 한다 (안 적으면 DNS rebinding 방어로 거부).
+    // 휴대폰 알림의 링크를 이 https 주소로 연다 (Host 검사는 *.ts.net 을 따로 적지 않아도 받는다).
     // 맨 앞에 둔다: 알림 링크는 첫 *.ts.net 을 쓰므로 기기 이름이 바뀌었으면 새 이름이 앞서야 한다
     const raw = readRaw(configPath);
     const hosts: unknown[] = Array.isArray(raw.allowedHosts) ? raw.allowedHosts : [];
