@@ -1,6 +1,7 @@
-import { statSync } from 'node:fs';
+import { realpathSync, statSync } from 'node:fs';
 import { NOT_A_REPO } from '../shared/types.ts';
 import { lstat, open } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import type { Commit, FileChange, FileStat, GitBaseline, GitInfo, SinceBaseline } from '../shared/types.ts';
 import { run } from './exec.ts';
@@ -121,31 +122,47 @@ function failed(error: string): GitInfo {
   };
 }
 
+/**
+ * 홈 폴더 전체가 저장소(~/.git, 대개 실수로 만든 것)인 경우. 저장소로 치지 않는다: 홈 전체를 훑느라 git status 가 끝나지 않고
+ * (macOS 는 보호된 폴더마다 경고를 낸다), 파일 탭이 홈의 모든 파일을 열게 된다.
+ */
+export function isHomeRoot(top: string): boolean {
+  try {
+    return top === realpathSync(homedir());
+  } catch {
+    return top === homedir();
+  }
+}
+
 export async function collectGit(repoPath: string): Promise<GitInfo> {
   try {
     if (!statSync(repoPath).isDirectory()) return failed('저장소 경로가 디렉터리가 아닙니다');
   } catch {
     return failed('저장소 경로가 존재하지 않습니다');
   }
-  const inside = await git(repoPath, 'rev-parse', '--is-inside-work-tree');
+  const inside = await git(repoPath, 'rev-parse', '--is-inside-work-tree', '--show-toplevel');
   // macOS 는 launchd 로 띄운 서버가 다운로드·문서·데스크탑 폴더를 읽으려 하면 허락이 날 때까지 멈춰 세운다 (시간 초과로 끝난다)
   if (inside.timedOut) return failed('Git 이 응답하지 않습니다. macOS 가 이 폴더 접근을 막고 있을 수 있습니다 (다운로드·문서·데스크탑 등): 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한에 node 를 추가하세요');
   if (inside.code === null) return failed(`git 을 실행할 수 없습니다: ${inside.stderr.trim()}`);
-  if (inside.code !== 0 || inside.stdout.trim() !== 'true') return failed(NOT_A_REPO);
+  // 둘째 줄부터가 맨 위 폴더다 (폴더 이름에 줄바꿈이 있을 수 있다)
+  const [isInside, ...rest] = inside.stdout.replace(/\n$/, '').split('\n');
+  const top = rest.join('\n');
+  if (inside.code !== 0 || isInside !== 'true' || isHomeRoot(top)) return failed(NOT_A_REPO);
 
   // 커밋이 하나도 없는 저장소에서는 HEAD 관련 명령이 실패한다 → 빈 값으로 취급.
-  const [branch, head, status, numstat, recent, today, top] = await Promise.all([
+  const [branch, head, status, numstat, recent, today] = await Promise.all([
     git(repoPath, 'branch', '--show-current'),
     git(repoPath, 'rev-parse', '--verify', '-q', 'HEAD'),
     git(repoPath, 'status', '--porcelain', '-z', '-uall'),
     git(repoPath, 'diff', '--numstat', '-z', 'HEAD'),
     git(repoPath, 'log', '-n', '10', LOG_FORMAT),
     git(repoPath, 'log', '--since=midnight', LOG_FORMAT),
-    git(repoPath, 'rev-parse', '--show-toplevel'),
   ]);
+  // 시간 초과나 출력 상한 초과로 끊겼으면 stderr 는 원인이 아니라 그때까지 나온 경고들이다
+  if (status.code === null) return failed('git status 가 끝나지 않았습니다 (시간 초과 또는 출력이 너무 큼): 추적하지 않는 파일이 지나치게 많은지 확인하세요');
   if (status.code !== 0) return failed(`git status 실패: ${status.stderr.trim()}`);
   // porcelain 의 경로는 저장소 최상위 기준이다. repoPath 가 하위 디렉터리(자동 발견 세션의 cwd 등)여도 파일을 제대로 찾게 한다.
-  const root = (top.code === 0 && top.stdout.trim()) || repoPath;
+  const root = top || repoPath;
 
   const headSha = head.code === 0 ? head.stdout.trim() : null;
   const changedFiles = parseStatus(status.stdout);

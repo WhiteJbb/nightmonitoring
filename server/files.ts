@@ -5,6 +5,7 @@ import { chmod, cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat,
 import path from 'node:path';
 import type { FsOp } from '../shared/types.ts';
 import { run } from './exec.ts';
+import { isHomeRoot } from './git.ts';
 
 export const MAX_FILE_BYTES = 1024 * 1024;
 /** 그림은 보기만 하니 글보다 크게 받는다 */
@@ -28,7 +29,9 @@ const versionOf = (buf: Buffer) => createHash('sha1').update(buf).digest('hex');
 async function rootOf(repo: string): Promise<string> {
   const r = await run('git', ['-C', repo, 'rev-parse', '--show-toplevel']);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
-  return r.stdout.trim();
+  const root = r.stdout.trim();
+  if (isHomeRoot(root)) throw new FileError('Git 저장소가 아닙니다', 400);
+  return root;
 }
 
 /** 저장소 맨 위 기준 상대 경로 목록 (정렬). 저장소가 아니면 FileError */
