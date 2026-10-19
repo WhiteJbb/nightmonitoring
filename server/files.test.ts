@@ -181,6 +181,18 @@ describe('files', () => {
     } finally {
       await rm(bare, { recursive: true, force: true });
     }
+    // 설정이 깨진 저장소를 보통 폴더로 열면 .git/info/exclude 로 숨긴 파일이 보이게 된다: 열지 않는다
+    const broken = await mkdtemp(path.join(tmpdir(), 'nightshift-broken-'));
+    try {
+      execFileSync('git', ['init', '-q', broken]);
+      await writeFile(path.join(broken, '.git/info/exclude'), 'secret.txt\n');
+      await writeFile(path.join(broken, 'secret.txt'), 'x\n');
+      await writeFile(path.join(broken, '.git/config'), '[broken');
+      await expect(listFiles(broken)).rejects.toMatchObject({ status: 400 });
+      await expect(readText(broken, 'secret.txt')).rejects.toMatchObject({ status: 400 });
+    } finally {
+      await rm(broken, { recursive: true, force: true });
+    }
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });

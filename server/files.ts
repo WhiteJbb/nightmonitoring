@@ -55,13 +55,17 @@ function shadowOf(root: string): Promise<string> {
 
 type Git = (...args: string[]) => ReturnType<typeof run>;
 
-/** 폴더나 그 위가 Git 의 속(.git 이나 bare 저장소)인지. git 이 저장소로 못 알아봐도(설정이 깨졌거나 bare 를 막아 둔 경우) 모양으로 본다 */
-async function inGitMeta(dir: string): Promise<boolean> {
+/**
+ * 폴더부터 위로 올라가며 Git 흔적을 찾는다. git 이 저장소로 못 알아봤어도(설정이 깨졌거나 소유자 검사·bare 막기에 걸림) 모양으로 본다.
+ * meta: Git 의 속(.git 이나 bare 저장소) 안이다. repo: 위 어딘가에 .git 이 있다 (홈 폴더의 것은 빼고)
+ */
+async function gitTrace(dir: string, home: string): Promise<'meta' | 'repo' | null> {
   for (let d = dir; ; d = path.dirname(d)) {
-    if (path.basename(d).toLowerCase() === '.git') return true;
-    const [head, objects, refs] = await Promise.all(['HEAD', 'objects', 'refs'].map((n) => lstat(path.join(d, n)).catch(() => null)));
-    if (head?.isFile() && objects?.isDirectory() && refs?.isDirectory()) return true;
-    if (path.dirname(d) === d) return false;
+    if (path.basename(d).toLowerCase() === '.git') return 'meta';
+    const [head, objects, refs, dotGit] = await Promise.all(['HEAD', 'objects', 'refs', '.git'].map((n) => lstat(path.join(d, n)).catch(() => null)));
+    if (head?.isFile() && objects?.isDirectory() && refs?.isDirectory()) return 'meta';
+    if (dotGit && d !== home) return 'repo';
+    if (path.dirname(d) === d) return null;
   }
 }
 
@@ -77,11 +81,14 @@ async function rootOf(repo: string): Promise<{ root: string; git: Git }> {
   if (top && !isHomeRoot(top)) return { root: top, git: (...args) => run('git', ['-C', top, ...args]) };
   const root = await realpath(repo).catch(() => null);
   if (!root || !(await stat(root)).isDirectory()) throw new FileError('프로젝트 폴더가 없습니다', 400);
-  // .git 안을 보통 폴더처럼 열면 설정·훅을 고칠 수 있게 된다 (다음 git 명령이 그 훅을 돌린다)
-  if (await inGitMeta(root)) throw new FileError('.git 안은 열지 않습니다', 400);
   // 홈 폴더 전체(와 그 위)는 열지 않는다: 홈의 모든 파일(.ssh 등)이 목록에 오르고, 훑는 데도 한참 걸린다
-  const home = path.relative(root, await realpath(homedir()).catch(() => homedir()));
-  if (!home.startsWith('..')) throw new FileError('홈 폴더 전체는 파일 탭으로 열지 않습니다. 프로젝트 폴더를 경로로 지정하세요', 400);
+  const home = await realpath(homedir()).catch(() => homedir());
+  if (!path.relative(root, home).startsWith('..')) throw new FileError('홈 폴더 전체는 파일 탭으로 열지 않습니다. 프로젝트 폴더를 경로로 지정하세요', 400);
+  const trace = await gitTrace(root, home);
+  // .git 안을 보통 폴더처럼 열면 설정·훅을 고칠 수 있게 된다 (다음 git 명령이 그 훅을 돌린다)
+  if (trace === 'meta') throw new FileError('.git 안은 열지 않습니다', 400);
+  // 있는 저장소를 git 이 못 읽었다: 보통 폴더로 열면 그 저장소의 무시 규칙(.git/info/exclude 등)을 잃는다
+  if (trace === 'repo') throw new FileError(`Git 저장소를 읽지 못했습니다: ${r.stderr.trim()}`, 400);
   const shadow = await shadowOf(root);
   return { root, git: (...args) => run('git', ['--git-dir', shadow, '--work-tree', root, '-C', root, ...args]) };
 }
