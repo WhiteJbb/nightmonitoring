@@ -1,3 +1,6 @@
+import { mkdtempSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import type { GitInfo, Snapshot } from '../shared/types.ts';
 import { parseConfig } from './config.ts';
@@ -322,6 +325,35 @@ describe('followRepo', () => {
       expect(again.exportState().tracked.money?.baseline).toEqual(kept);
     } finally {
       process.env.HOME = home;
+    }
+  });
+});
+
+describe('followRepo with a linked home folder', () => {
+  it('still follows commands when the home folder is a link and the project path is the real folder', async () => {
+    const real = realpathSync(mkdtempSync(path.join(tmpdir(), 'nightshift-home-')));
+    const link = `${real}-link`;
+    symlinkSync(real, link);
+    const home = process.env.HOME;
+    process.env.HOME = link;
+    try {
+      const cfg = parseConfig({ projects: [{ name: 'money', repoPath: real, tmuxSession: 'money' }] }, '/base');
+      const repo = path.join(real, 'repos/trader');
+      const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: real };
+      const collector: Collector = {
+        git: async (p) => (p.repoPath === repo ? git() : { ...git(), ok: false, error: 'Git 저장소가 아닙니다' }),
+        since: async (_p, baseline) => ({ baseline, commits: [], files: [], additions: 0, deletions: 0 }),
+        tmux: async () => new Map([['money', { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' }]]),
+        logErrors: async () => NO_LOG,
+        workDirs: async () => [{ pid: 30, ppid: 20, dir: repo }],
+      };
+      const m = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0 });
+      await m.tick();
+      expect(m.snapshot.projects[0]!.repoPath).toBe(repo);
+    } finally {
+      process.env.HOME = home;
+      rmSync(link);
+      rmSync(real, { recursive: true });
     }
   });
 });

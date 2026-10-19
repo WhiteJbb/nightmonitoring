@@ -1,3 +1,4 @@
+import { realpath } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
@@ -287,7 +288,10 @@ export class Monitor {
     if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
     const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
     const followed = this.tracked.get(p.id)?.repoPath;
-    const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
+    // 홈이 링크일 수 있다 (설정 경로는 실제 폴더로 적었을 수 있다)
+    const real = (dir: string) => realpath(dir).catch(() => dir);
+    const [where, home] = await Promise.all([real(p.repoPath), real(homedir())]);
+    const fromHome = !path.relative(where, home).startsWith('..');
     const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : null;
     // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
     const roots = new Map<string, string | null>();
