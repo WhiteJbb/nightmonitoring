@@ -3,7 +3,7 @@ import { Terminal } from '@xterm/xterm';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
 import type { TermEvent } from '../../shared/types.ts';
-import { api, errorMessage } from './api.ts';
+import { api, DOWN_GRACE_MS, errorMessage } from './api.ts';
 import { charWidth, fontRange, ROW_RATIO, termHeight } from './termsize.ts';
 
 /** 'connecting' | 'live' | 'down' | 'exit' 또는 서버가 보낸 오류 메시지 */
@@ -163,7 +163,14 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     };
 
     let stopFeed = () => {};
+    // 잠깐 끊겼다 곧 다시 붙으면(첫 화면이 다시 온다) 알리지 않는다. 그동안 다시 붙지 못할 때만 끊김을 띄운다
+    let downTimer: ReturnType<typeof setTimeout> | undefined;
+    const settle = () => {
+      clearTimeout(downTimer);
+      downTimer = undefined;
+    };
     const onEvent = (e: TermEvent) => {
+      settle();
       if (e.type === 'init') {
         // 다시 연결될 때마다 첫 화면이 다시 오므로 깨끗이 지우고 그린다
         term.reset();
@@ -185,7 +192,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
         stopFeed();
       }
     };
-    stopFeed = (feed ?? paneFeed(projectId))(pane, onEvent, () => cb.current.onStatus('down'));
+    stopFeed = (feed ?? paneFeed(projectId))(pane, onEvent, () => void (downTimer ??= setTimeout(() => cb.current.onStatus('down'), DOWN_GRACE_MS)));
 
     // 키·마우스 보고는 묶어서 한 번에 하나씩 보낸다. 보내는 동안 모인 것은 다음 요청에 합친다
     const pasteOnRightClick = window.isSecureContext && typeof navigator.clipboard?.readText === 'function';
@@ -482,6 +489,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       el.removeEventListener('touchcancel', cancelPress);
       stopFling();
       cancelPress();
+      settle();
       ro?.disconnect();
       window.removeEventListener('resize', fitFont);
       stopFeed();

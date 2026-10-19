@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import type { ProjectSnapshot, RunResult, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
-import { ConfigErrorBanner, Dashboard, ProjectCard } from './App.tsx';
+import { App, ConfigErrorBanner, Dashboard, ProjectCard } from './App.tsx';
 import { GitTab, ProjectDetail, RunPanel, TerminalTab } from './ProjectDetail.tsx';
 
 const NOW = '2026-10-04T03:00:00.000Z';
@@ -416,4 +416,48 @@ test('RunPanel loads the full output on demand when the snapshot only has the ta
   await waitFor(() => expect(screen.getByText('head...tail')).toBeTruthy());
   expect(fetchMock).toHaveBeenCalledWith('/api/projects/api/run/test', { method: 'GET' });
   expect(screen.queryByRole('button', { name: '전체 출력 보기' })).toBeNull();
+});
+
+test('app: a short drop of the live connection shows no banner, one that lasts does, and coming back to the page reconnects at once', async () => {
+  vi.useFakeTimers();
+  const sources: FakeSource[] = [];
+  class FakeSource {
+    static OPEN = 1;
+    static CLOSED = 2;
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onmessage: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    constructor() {
+      sources.push(this);
+    }
+    close() {
+      this.readyState = 2;
+    }
+  }
+  vi.stubGlobal('EventSource', FakeSource);
+  respond(200, dash());
+  render(<App />);
+  const es = () => sources.at(-1)!;
+  const open = () => act(() => void ((es().readyState = 1), es().onopen?.()));
+  const drop = () => act(() => void ((es().readyState = 0), es().onerror?.()));
+  const banner = () => screen.queryByText(/서버와 연결이 끊겼습니다/);
+  const wait = (ms: number) => act(() => vi.advanceTimersByTimeAsync(ms));
+  open();
+  drop();
+  await wait(4000);
+  open();
+  await wait(2000);
+  expect(banner()).toBeNull();
+  drop();
+  await wait(4900);
+  expect(banner()).toBeNull();
+  await wait(100);
+  expect(banner()).not.toBeNull();
+  // 페이지로 돌아오면(휴대폰에서 브라우저를 다시 열면) 끊김을 거두고 기다리지 않고 새로 연결한다
+  const count = sources.length;
+  act(() => void document.dispatchEvent(new Event('visibilitychange')));
+  expect(sources).toHaveLength(count + 1);
+  expect(banner()).toBeNull();
+  vi.useRealTimers();
 });

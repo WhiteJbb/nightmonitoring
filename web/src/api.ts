@@ -30,6 +30,12 @@ async function req<T>(url: string, method: 'GET' | 'POST' | 'PUT' | 'DELETE' = '
   return body as T;
 }
 
+/**
+ * 연결이 끊긴 뒤 이만큼(ms) 안에 다시 붙으면 끊김을 알리지 않는다. 휴대폰에서 브라우저를 나갔다 오면 OS 가 연결을 끊었다가
+ * 곧 다시 붙는데, 그때마다 "끊김"이 깜박이면 진짜 끊김과 구별되지 않는다
+ */
+export const DOWN_GRACE_MS = 5000;
+
 export const errorMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export const api = {
