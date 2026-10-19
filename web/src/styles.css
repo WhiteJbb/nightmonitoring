@@ -81,6 +81,8 @@
 }
 * {
   box-sizing: border-box;
+  /* JetBrains Mono 의 코드 합자(// => !=)는 입력칸·편집기에서 치는 동안 앞 글자가 지워져 보인다. 코드는 친 글자 그대로 보인다 */
+  font-variant-ligatures: none;
 }
 html {
   background: var(--bg);
