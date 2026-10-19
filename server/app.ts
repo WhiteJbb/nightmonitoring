@@ -134,6 +134,11 @@ export function createApp({ config, monitor, runner, configEditor, terminal, tes
   const app = express();
   app.disable('x-powered-by');
   app.use(guard(config));
+  // 다른 페이지가 대시보드를 투명하게 덮어 실행 버튼을 누르게 하지 못하게 (clickjacking: 그 클릭은 대시보드 자신의 출처라 guard 를 지난다)
+  app.use((_req, res, next) => {
+    res.setHeader('Content-Security-Policy', "frame-ancestors 'none'");
+    next();
+  });
 
   const api = express.Router();
 

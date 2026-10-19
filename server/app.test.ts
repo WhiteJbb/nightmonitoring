@@ -139,5 +139,6 @@ describe('API', () => {
     const res = await fetch(`${base}/api/nope`);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: '없는 API 입니다' });
+    expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
   });
 });
