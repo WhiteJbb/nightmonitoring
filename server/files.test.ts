@@ -158,12 +158,18 @@ describe('files', () => {
       expect((await readdir(dir)).sort()).toEqual(['.env', 'node_modules', 'src']);
       const trashed = await Promise.all((await readdir(shadow)).map((d) => readdir(path.join(shadow, d, 'nightshift-trash')).catch(() => [])));
       expect(trashed.flat()).toHaveLength(1);
+      // 휴지통(.env 같은 비밀이 들어갈 수 있다)은 나만 연다
+      for (const d of await readdir(shadow)) expect((await stat(path.join(shadow, d))).mode & 0o777).toBe(0o700);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
   });
 
   it('never touches .git or anything outside the repository', async () => {
+    // 프로젝트 경로가 .git 안을 가리켜도 그 안을 보통 폴더처럼 열지 않는다 (설정·훅)
+    await expect(listFiles(path.join(repo, '.git'))).rejects.toMatchObject({ status: 400 });
+    await expect(readText(path.join(repo, '.git'), 'config')).rejects.toMatchObject({ status: 400 });
+    await expect(fsOp(path.join(repo, '.git/hooks'), 'newFile', 'pre-commit')).rejects.toMatchObject({ status: 400 });
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });

@@ -41,6 +41,8 @@ function shadowOf(root: string): Promise<string> {
         const r = await run('git', ['init', '-q', '--bare', '--template=', dir]);
         if (r.code !== 0) throw new FileError(r.stderr.trim() || '파일 목록을 만들 준비를 하지 못했습니다', 500);
       }
+      // 휴지통에 든 파일(.env 등)을 다른 사용자가 읽지 못하게 나만 들어갈 수 있게 한다 (원래 폴더는 막혀 있었을 수 있다)
+      await chmod(dir, 0o700);
       await mkdir(path.join(dir, 'info'), { recursive: true });
       await writeFile(path.join(dir, 'info', 'exclude'), SHADOW_EXCLUDES);
       return dir;
@@ -58,10 +60,14 @@ type Git = (...args: string[]) => ReturnType<typeof run>;
  * 저장소가 아니면(홈 폴더 전체가 저장소인 곳의 하위 폴더 포함) 그 폴더 자체를 밖에 둔 빈 저장소의 작업 폴더로 본다
  */
 async function rootOf(repo: string): Promise<{ root: string; git: Git }> {
-  const r = await run('git', ['-C', repo, 'rev-parse', '--show-toplevel']);
+  const r = await run('git', ['-C', repo, 'rev-parse', '--is-inside-git-dir', '--show-toplevel']);
   // 시간 초과(macOS 가 폴더 접근을 막아 세운 경우 등)는 저장소가 아닌 것과 다르다
   if (r.code === null) throw new FileError(r.timedOut ? 'Git 이 응답하지 않습니다. macOS 가 이 폴더 접근을 막고 있을 수 있습니다' : r.stderr.trim(), 400);
-  const top = r.code === 0 ? r.stdout.trim() : null;
+  // 첫 줄은 .git 안(이나 bare 저장소)인지, 그다음이 맨 위 폴더다 (이름에 줄바꿈이 있을 수 있다). .git 안에서는 맨 위를 못 구해 실패한다
+  const [inGitDir, ...rest] = r.stdout.replace(/\n$/, '').split('\n');
+  // .git 안을 보통 폴더처럼 열면 설정·훅을 고칠 수 있게 된다 (다음 git 명령이 그 훅을 돌린다)
+  if (inGitDir === 'true') throw new FileError('.git 안은 열지 않습니다', 400);
+  const top = r.code === 0 ? rest.join('\n') : null;
   if (top && !isHomeRoot(top)) return { root: top, git: (...args) => run('git', ['-C', top, ...args]) };
   const root = await realpath(repo).catch(() => null);
   if (!root || !(await stat(root)).isDirectory()) throw new FileError('프로젝트 폴더가 없습니다', 400);
