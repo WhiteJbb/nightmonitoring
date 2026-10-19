@@ -178,9 +178,20 @@ test('streams the pane: init resets, resizes and writes the seed; out appends; r
   expect(xterm().writes.at(-1)).toBe('again');
 });
 
-test('shows the connection loss, a server error and the pane exit; error and exit close the stream', async () => {
+test('shows the connection loss only when it lasts, a server error and the pane exit; error and exit close the stream', async () => {
   await renderTab(project(ONE));
+  // 잠깐 끊겼다 다시 붙으면(첫 화면이 다시 온다) 끊김을 띄우지 않는다
+  await init();
   act(() => es().onerror?.());
+  await tick(4000);
+  await init();
+  await tick(2000);
+  expect(screen.getByRole('status').textContent).toContain('실시간');
+  // 다시 붙지 못한 채 5초가 지나면 띄운다
+  act(() => es().onerror?.());
+  await tick(4900);
+  expect(screen.getByRole('status').textContent).toContain('실시간');
+  await tick(200);
   expect(screen.getByRole('status').textContent).toContain('연결 끊김');
   act(() => es().emit({ type: 'error', message: "can't find session" }));
   expect(screen.getByRole('status').textContent).toContain("can't find session");

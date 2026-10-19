@@ -2,7 +2,7 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { GearSix, GitBranch, GitCommit, MoonStars, SquaresFour, Sun, TerminalWindow } from '@phosphor-icons/react';
 import type { ProjectSnapshot, Snapshot } from '../../shared/types.ts';
 import { NOT_A_REPO } from '../../shared/types.ts';
-import { api, errorMessage } from './api.ts';
+import { api, DOWN_GRACE_MS, errorMessage } from './api.ts';
 import { dateTime, relTime, STATE_LABEL } from './format.ts';
 import { Badge, ProjectDetail, QuickAnswers, Reasons } from './ProjectDetail.tsx';
 import { NewSession } from './NewSession.tsx';
@@ -85,6 +85,13 @@ export function App() {
     let alive = true;
     let es: EventSource | null = null;
     let retry: ReturnType<typeof setTimeout> | undefined;
+    let downTimer: ReturnType<typeof setTimeout> | undefined;
+    const settle = () => {
+      clearTimeout(downTimer);
+      downTimer = undefined;
+    };
+    // 잠깐의 끊김은 알리지 않는다. 이만큼 지나도 다시 붙지 못할 때만 끊김을 띄운다
+    const arm = () => (downTimer ??= setTimeout(() => setConn('down'), DOWN_GRACE_MS));
 
     api.snapshot().then(
       (s) => {
@@ -97,7 +104,10 @@ export function App() {
 
     const connect = () => {
       es = new EventSource('/api/events');
-      es.onopen = () => setConn('live');
+      es.onopen = () => {
+        settle();
+        setConn('live');
+      };
       es.onmessage = (ev: MessageEvent<string>) => {
         try {
           setSnapshot(JSON.parse(ev.data) as Snapshot);
@@ -107,7 +117,7 @@ export function App() {
         }
       };
       es.onerror = () => {
-        setConn('down');
+        arm();
         // EventSource 는 네트워크 오류면 스스로 재연결하지만, HTTP 오류 응답이면 영구히 닫힌다
         if (es?.readyState === EventSource.CLOSED) {
           es.close();
@@ -116,10 +126,24 @@ export function App() {
       };
     };
     connect();
+    // 브라우저로 돌아왔는데 연결이 살아 있지 않으면 브라우저의 재연결(몇 초 뒤)을 기다리지 않고 바로 다시 붙는다.
+    // 숨어 있는 동안 띄운 끊김은 거두고 처음부터 다시 기다린다 (숨은 동안은 연결이 끊기는 게 정상이다)
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || es?.readyState === EventSource.OPEN) return;
+      clearTimeout(retry);
+      settle();
+      arm();
+      setConn((c) => (c === 'down' ? 'connecting' : c));
+      es?.close();
+      connect();
+    };
+    document.addEventListener('visibilitychange', onVisible);
 
     return () => {
       alive = false;
       clearTimeout(retry);
+      settle();
+      document.removeEventListener('visibilitychange', onVisible);
       es?.close();
     };
   }, []);
