@@ -99,7 +99,7 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다.
  * command: pane 에서 도는 프로그램 (TmuxPane.command). 휠을 어떻게 보낼지 고른다
  */
-export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, onPick, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; /** 꾹 누르면 그때의 터미널 글을 넘긴다 (휴대폰 글자 고르기) */ onPick?: (text: string) => void; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, onPick, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; /** 꾹 누르면 그때의 터미널 글과 칸 수를 넘긴다 (휴대폰 글자 고르기) */ onPick?: (text: string, cols: number) => void; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
   const cb = useRef({ onStatus, onSize, onNotice, onPick });
@@ -415,7 +415,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
         // 같은 손가락을 계속 움직여도 숨긴 터미널을 스크롤하지 않게 이 동작은 여기서 끝낸다
         lastY = null;
         velocity = 0;
-        cb.current.onPick?.(bufferText(term));
+        cb.current.onPick?.(bufferText(term), term.cols);
       }, LONG_PRESS_MS);
     };
     const onTouchMove = (e: TouchEvent) => {
