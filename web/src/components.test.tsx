@@ -459,5 +459,8 @@ test('app: a short drop of the live connection shows no banner, one that lasts d
   act(() => void document.dispatchEvent(new Event('visibilitychange')));
   expect(sources).toHaveLength(count + 1);
   expect(banner()).toBeNull();
+  // 새 연결도 붙지 못하고 멈춰 있으면 5초 뒤에 다시 띄운다
+  await wait(5000);
+  expect(banner()).not.toBeNull();
   vi.useRealTimers();
 });

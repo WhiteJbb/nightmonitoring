@@ -90,6 +90,8 @@ export function App() {
       clearTimeout(downTimer);
       downTimer = undefined;
     };
+    // 잠깐의 끊김은 알리지 않는다. 이만큼 지나도 다시 붙지 못할 때만 끊김을 띄운다
+    const arm = () => (downTimer ??= setTimeout(() => setConn('down'), DOWN_GRACE_MS));
 
     api.snapshot().then(
       (s) => {
@@ -115,8 +117,7 @@ export function App() {
         }
       };
       es.onerror = () => {
-        // 잠깐의 끊김은 알리지 않는다. 그동안 다시 붙지 못할 때만 끊김을 띄운다
-        downTimer ??= setTimeout(() => setConn('down'), DOWN_GRACE_MS);
+        arm();
         // EventSource 는 네트워크 오류면 스스로 재연결하지만, HTTP 오류 응답이면 영구히 닫힌다
         if (es?.readyState === EventSource.CLOSED) {
           es.close();
@@ -126,11 +127,12 @@ export function App() {
     };
     connect();
     // 브라우저로 돌아왔는데 연결이 살아 있지 않으면 브라우저의 재연결(몇 초 뒤)을 기다리지 않고 바로 다시 붙는다.
-    // 숨어 있는 동안 띄운 끊김은 거두고 다시 기다린다 (숨은 동안은 연결이 끊기는 게 정상이다)
+    // 숨어 있는 동안 띄운 끊김은 거두고 처음부터 다시 기다린다 (숨은 동안은 연결이 끊기는 게 정상이다)
     const onVisible = () => {
       if (document.visibilityState !== 'visible' || es?.readyState === EventSource.OPEN) return;
       clearTimeout(retry);
       settle();
+      arm();
       setConn((c) => (c === 'down' ? 'connecting' : c));
       es?.close();
       connect();
