@@ -123,7 +123,8 @@ export class TermStreams {
   /** 첫 화면: 스크롤백 + 현재 화면 + 커서·모드. 화면과 커서를 한 번에 읽고, 그 뒤에 온 출력부터 이어진다 */
   private seed(client: Client, sub: Sub) {
     let lines: string[] | null = null; // capture 가 실패하면 null 로 남아 상태 응답을 무시한다
-    const capture = `capture-pane -p -e -t ${sub.pane} -S -${SEED_SCROLLBACK}`;
+    // -J: 폭이 넘쳐 꺾인 줄은 한 줄로 받는다. 같은 폭의 xterm 이 똑같이 꺾어 그리면서 이어진 줄임을 알아, 복사할 때 다시 잇는다
+    const capture = `capture-pane -p -e -J -t ${sub.pane} -S -${SEED_SCROLLBACK}`;
     const state = `display -p -t ${sub.pane} '${STATE_FORMAT}'`;
     this.command(
       client,

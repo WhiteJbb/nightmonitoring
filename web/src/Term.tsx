@@ -433,7 +433,8 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
         const dt = now - prev;
         prev = now;
         v *= FLING_DECAY ** dt;
-        if (Math.abs(v) < FLING_STOP || term.buffer.active.type !== 'alternate') return void (fling = 0);
+        // 글자 고르기로 터미널을 숨기면(높이 0) 멈춘다. 한 줄 높이를 못 재 휠이 부풀어 간다
+        if (Math.abs(v) < FLING_STOP || term.buffer.active.type !== 'alternate' || !el.clientHeight) return void (fling = 0);
         scrollProgram(v * dt, lastX, y);
         fling = requestAnimationFrame(step);
       };
