@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import '@xterm/xterm/css/xterm.css';
@@ -29,6 +29,8 @@ const TOUCH_SPEED = 1.5;
 const FLING_MIN = 0.3;
 const FLING_DECAY = 0.996;
 const FLING_STOP = 0.03;
+/** 터치로 이만큼(ms) 움직이지 않고 누르고 있으면 글자 고르기 */
+const LONG_PRESS_MS = 500;
 /**
  * 클립보드에 쓴다. 이 서버는 보통 http(비보안 출처)로 열려 navigator.clipboard 가 없으니
  * 숨긴 입력칸을 골라 execCommand('copy') 로 쓴다 (클릭 직후라 브라우저가 허용한다).
@@ -97,11 +99,11 @@ const encode = (bytes: Uint8Array) => btoa(Array.from(bytes, (b) => String.fromC
  * feed: 출력을 받는 곳 (나란히 보기는 여러 pane 이 연결 하나를 나눠 쓴다). 없으면 pane 마다 SSE 를 연다.
  * command: pane 에서 도는 프로그램 (TmuxPane.command). 휠을 어떻게 보낼지 고른다
  */
-export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, textOf, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; /** 지금 터미널의 글을 꺼내는 함수를 여기에 둔다 */ textOf?: RefObject<(() => string) | null>; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
+export function Term({ projectId, pane, canInput, command, full = false, focus = true, heightShare = 1, feed, onPick, onStatus, onSize, onNotice }: { projectId: string; pane: string; canInput: boolean; command?: string; full?: boolean; focus?: boolean; heightShare?: number; feed?: TermFeed; /** 꾹 누르면 그때의 터미널 글을 넘긴다 (휴대폰 글자 고르기) */ onPick?: (text: string) => void; onStatus: (s: TermStatus) => void; onSize: (cols: number, rows: number) => void; onNotice?: (msg: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   // 콜백이 바뀌어도 터미널을 다시 만들지 않는다
-  const cb = useRef({ onStatus, onSize, onNotice });
-  cb.current = { onStatus, onSize, onNotice };
+  const cb = useRef({ onStatus, onSize, onNotice, onPick });
+  cb.current = { onStatus, onSize, onNotice, onPick };
   // 전체 화면 여부는 글자 크기 계산에만 쓴다. 바뀌어도 터미널을 다시 만들지 않는다
   const fullRef = useRef(full);
   fullRef.current = full;
@@ -132,7 +134,6 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     });
     term.open(el);
     xterm.current = term;
-    if (textOf) textOf.current = () => bufferText(term);
     // 출력의 http(s) 주소를 눌러 새 탭으로 연다 (PR 링크 등). 프로그램이 마우스를 받으면 Cmd(⌘)+클릭
     term.loadAddon(new WebLinksAddon((_ev, uri) => void window.open(uri, '_blank', 'noopener,noreferrer')));
 
@@ -395,14 +396,31 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       }
       return true;
     };
+    // 꾹 누르기: 휴대폰은 xterm 글자를 손가락으로 고를 수 없어, 움직이지 않고 누르고 있으면 터미널 글을 보통 글로 넘긴다
+    let press: ReturnType<typeof setTimeout> | undefined;
+    let pressX = 0;
+    let pressY = 0;
+    const cancelPress = () => clearTimeout(press);
     const onTouchStart = (e: TouchEvent) => {
       // 미끄러지는 중에 닿으면 멈춘다
       stopFling();
       velocity = 0;
       lastT = e.timeStamp;
       lastY = e.touches.length === 1 ? e.touches[0]!.clientY : null;
+      cancelPress();
+      if (e.touches.length !== 1 || !cb.current.onPick) return;
+      pressX = e.touches[0]!.clientX;
+      pressY = e.touches[0]!.clientY;
+      press = setTimeout(() => {
+        // 같은 손가락을 계속 움직여도 숨긴 터미널을 스크롤하지 않게 이 동작은 여기서 끝낸다
+        lastY = null;
+        velocity = 0;
+        cb.current.onPick?.(bufferText(term));
+      }, LONG_PRESS_MS);
     };
     const onTouchMove = (e: TouchEvent) => {
+      const p = e.touches[0];
+      if (!p || Math.hypot(p.clientX - pressX, p.clientY - pressY) > 8) cancelPress();
       // 일반 화면은 xterm 이 스크롤백을 손가락으로 직접 움직인다
       if (lastY === null || term.buffer.active.type !== 'alternate') return;
       const t = e.touches[0]!;
@@ -424,6 +442,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       velocity = scrollProgram(dy, t.clientX, t.clientY) ? 0.6 * (dy / dt) + 0.4 * velocity : 0;
     };
     const onTouchEnd = (e: TouchEvent) => {
+      cancelPress();
       // 멈췄다 뗀 손가락은 미끄러지지 않는다
       if (lastY === null || Math.abs(velocity) < FLING_MIN || e.timeStamp - lastT > 100) return;
       const y = lastY;
@@ -443,6 +462,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     el.addEventListener('touchstart', onTouchStart, { passive: true });
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
+    el.addEventListener('touchcancel', cancelPress, { passive: true });
 
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(fitFont) : null;
     ro?.observe(el);
@@ -459,12 +479,13 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', cancelPress);
       stopFling();
+      cancelPress();
       ro?.disconnect();
       window.removeEventListener('resize', fitFont);
       stopFeed();
       xterm.current = null;
-      if (textOf) textOf.current = null;
       term.dispose();
     };
   }, [projectId, pane, canInput]);
