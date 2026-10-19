@@ -144,17 +144,19 @@ function tailscaleBin(): string | null {
   return ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'].find((b) => works(b, ['version'])) ?? null;
 }
 
-/** 휴대폰에서 열 https 이름(<기기>.<tailnet>.ts.net). 열 수 없으면 이유를 말하고 null. */
-function tailscale(target: string | null): string | null {
+/** 휴대폰에서 열 https 이름(<기기>.<tailnet>.ts.net). 열 수 없으면 그 이유(마지막 안내에 다시 보인다). */
+function tailscale(target: string | null): { name: string } | { skipped: string } {
   step('휴대폰 접속 (Tailscale)');
+  const skip = (skipped: string) => {
+    warn(skipped);
+    return { skipped };
+  };
   if (!target) {
-    warn('config 의 host 로는 Tailscale 이 어디로 중계할지 정할 수 없어 건너뜁니다. host 를 지우거나(127.0.0.1) Tailscale 주소로 바꾼 뒤 다시 실행하세요.');
-    return null;
+    return skip('config 의 host 로는 Tailscale 이 어디로 중계할지 정할 수 없어 건너뜁니다. host 를 지우거나(127.0.0.1) Tailscale 주소로 바꾼 뒤 다시 실행하세요.');
   }
   const ts = tailscaleBin();
   if (!ts) {
-    warn('Tailscale 이 없어 건너뜁니다. 휴대폰에서 보려면 https://tailscale.com/download 에서 이 컴퓨터와 휴대폰에 깔고 같은 계정으로 로그인한 뒤 다시 실행하세요.');
-    return null;
+    return skip('Tailscale 이 없어 건너뜁니다. 휴대폰에서 보려면 https://tailscale.com/download 에서 이 컴퓨터와 휴대폰에 깔고 같은 계정으로 로그인한 뒤 다시 실행하세요.');
   }
   const st = quiet(ts, ['status', '--json']);
   let self: { BackendState?: string; Self?: { DNSName?: string } } = {};
@@ -165,30 +167,26 @@ function tailscale(target: string | null): string | null {
   }
   const name = self.BackendState === 'Running' ? (self.Self?.DNSName ?? '').replace(/\.$/, '').toLowerCase() : '';
   if (!name) {
-    warn('Tailscale 이 꺼져 있거나 로그인되어 있지 않아 건너뜁니다. 켜고 로그인한 뒤 다시 실행하세요.');
-    return null;
+    return skip('Tailscale 이 꺼져 있거나 로그인되어 있지 않아 건너뜁니다. 켜고 로그인한 뒤 다시 실행하세요.');
   }
   const status = quiet(ts, ['serve', 'status', '--json']);
   if (status.status !== 0) {
-    warn(`tailscale serve status 를 읽지 못해 건너뜁니다: ${status.stderr.trim()}`);
-    return null;
+    return skip(`tailscale serve status 를 읽지 못해 건너뜁니다: ${status.stderr.trim()}`);
   }
   const current = serveTarget(status.stdout, name);
   if (current === FUNNEL) fail(`https://${name} 이(가) tailscale funnel 로 인터넷에 공개되어 있습니다. NightShift 는 인증이 없어 공개하면 안 됩니다: tailscale funnel --https=443 off 로 끈 뒤 다시 실행하세요.`);
   if (current === target) {
     console.log(`  https://${name} → ${target} (이미 열려 있음)`);
-    return name;
+    return { name };
   }
   if (current) {
-    warn(`https://${name} 의 443 은 이미 다른 데 쓰이고 있어 건드리지 않습니다 (${current}). 직접 정리한 뒤 다시 실행하세요 (tailscale serve status).`);
-    return null;
+    return skip(`https://${name} 의 443 은 이미 다른 데 쓰이고 있어 건드리지 않습니다 (${current}). 직접 정리한 뒤 다시 실행하세요 (tailscale serve status).`);
   }
   // 처음이면 tailnet 에 https 를 켜라는 주소가 나오고, 켤 때까지 기다린다
   if (!show(ts, ['serve', '--bg', '--https=443', target])) {
-    warn(mac ? 'tailscale serve 에 실패했습니다. 위 메시지를 확인하세요.' : 'tailscale serve 에 실패했습니다. 권한 문제라면 `sudo tailscale set --operator=$USER` 를 한 번 실행한 뒤 다시 실행하세요.');
-    return null;
+    return skip(mac ? 'tailscale serve 에 실패했습니다. 위 메시지를 확인하세요.' : 'tailscale serve 에 실패했습니다. 권한 문제라면 `sudo tailscale set --operator=$USER` 를 한 번 실행한 뒤 다시 실행하세요.');
   }
-  return name;
+  return { name };
 }
 
 /** 주소가 비었는지. 다른 프로그램(직접 npm start 로 띄운 서버 등)이 쓰고 있으면 false. */
@@ -309,9 +307,9 @@ export function addresses(config: { host: string; port: number; allowedHosts: st
 /** 서버와 같은 규칙: NIGHTSHIFT_CONFIG 가 있으면 그 파일. */
 export const configFile = () => path.resolve(ROOT, process.env.NIGHTSHIFT_CONFIG ?? defaultConfigPath(path.join(ROOT, 'config')));
 
-/** base 에서 누가 답하는지. 아무도 안 받으면 null. 응답이 멈춰도 3초 안에 끝난다 (본문 읽기까지). */
-export const probe = (base: string) =>
-  fetch(`${base}/api/snapshot`, { signal: AbortSignal.timeout(3000) }).then(
+/** base 에서 누가 답하는지. 아무도 안 받으면 null. 응답이 멈춰도 ms(기본 3초) 안에 끝난다 (본문 읽기까지). */
+export const probe = (base: string, ms = 3000) =>
+  fetch(`${base}/api/snapshot`, { signal: AbortSignal.timeout(ms) }).then(
     async (r) => (r.ok && Array.isArray((await r.json().catch(() => null))?.projects) ? 'nightshift' : 'other'),
     () => null,
   );
@@ -351,7 +349,8 @@ async function main() {
     if (who === 'other' || (who === null && !(await portFree(h, config.port)))) fail(`${urlOf(h, config.port)} 를 NightShift 가 아닌 다른 프로그램이 쓰고 있습니다. 그 프로그램을 끄거나 config 의 port 를 바꾼 뒤 다시 실행하세요.`);
   }
 
-  const name = tailscale(upstream);
+  const tailnet = tailscale(upstream);
+  const name = 'name' in tailnet ? tailnet.name : null;
   if (name) {
     // 휴대폰 알림의 링크를 이 https 주소로 연다 (Host 검사는 *.ts.net 을 따로 적지 않아도 받는다).
     // 맨 앞에 둔다: 알림 링크는 첫 *.ts.net 을 쓰므로 기기 이름이 바뀌었으면 새 이름이 앞서야 한다
@@ -373,12 +372,18 @@ async function main() {
       if (!(await up(base))) fail(`${base} 에서 서버가 답하지 않습니다. 로그를 보세요: ${SERVICE.logs.join(' ')}`);
     }
   }
+  // 휴대폰 주소도 끝까지 열어 본다. 처음엔 Tailscale 이 인증서를 받느라 몇 초 걸린다
+  const phoneOk = Boolean(name && registered && (await probe(`https://${name}`, 30_000)) === 'nightshift');
   const linked = link();
   const cmd = (c: 'logs' | 'restart' | 'stop') => (linked ? `nightshift ${c}` : SERVICE[c].join(' '));
 
-  console.log(`\n✓ 준비됐습니다\n`);
+  console.log(registered ? `\n✓ 준비됐습니다\n` : `\n✓ 설치했습니다. 자동 시작은 못 했으니 npm start 로 띄운 뒤 아래 주소로 여세요\n`);
   console.log(`  이 컴퓨터   ${local}`);
-  if (name) console.log(`  휴대폰      https://${name}  (휴대폰 Tailscale 앱을 같은 계정으로 켠 채로)`);
+  if (name) {
+    const note = phoneOk ? '  (같은 Tailscale 계정으로 로그인한 휴대폰·컴퓨터에서)' : registered ? '  (이 컴퓨터에서는 아직 열리지 않습니다. 인증서를 받는 중일 수 있으니 잠시 뒤 열어 보세요)' : '';
+    console.log(`  휴대폰      https://${name}${note}`);
+    console.log(`  다른 사람   이 기기를 Tailscale 로 공유하면 같은 주소로 들어옵니다 (대시보드를 똑같이 쓰니 믿는 사람에게만)`);
+  } else if ('skipped' in tailnet) console.log(`  휴대폰      열지 못했습니다 — ${tailnet.skipped}`);
   if (registered) console.log(`\n  로그        ${cmd('logs')}\n  재시작      ${cmd('restart')}\n  끄기        ${cmd('stop')}`);
   console.log(`  업데이트    ${linked ? 'nightshift update' : 'git pull && npm run setup'}`);
   if (linked) console.log(`  그 밖에     nightshift help`);
@@ -386,7 +391,7 @@ async function main() {
     // launchd 로 띄운 node 는 터미널의 권한을 물려받지 못한다
     console.log(`\n  다운로드·문서·데스크탑 폴더의 저장소를 보려면: 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한 → + → ⌘⇧G 로\n  ${realpathSync(nodePath())} 를 추가하세요 (node 를 업그레이드하면 다시).`);
   }
-  console.log(`\n  처음이라면: 브라우저로 열고 돌고 있는 tmux 세션을 등록하거나 "+ tmux 세션 만들기"로 시작하세요.`);
+  console.log(`\n  처음이라면: 위 주소를 브라우저로 열고 돌고 있는 tmux 세션을 등록하거나 "+ tmux 세션 만들기"로 시작하세요.`);
 }
 
 // 직접 실행했을 때만 (nightshift 명령이 불러 쓸 때는 아니다). 심볼릭 링크로 받은 폴더에서도 맞게 비교한다
