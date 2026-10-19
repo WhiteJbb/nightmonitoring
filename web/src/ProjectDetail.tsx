@@ -732,6 +732,8 @@ export function TerminalTab({ project: p, now }: Props) {
   const textOf = useRef<(() => string) | null>(null);
   const [picked, setPicked] = useState<{ pane: string; text: string } | null>(null);
   const picking = picked !== null && picked.pane === pane?.id;
+  // 다른 pane 으로 가면 끝낸다 (돌아왔을 때 예전 글이 새 터미널을 가리지 않게)
+  if (picked && !picking) setPicked(null);
   const autoFitted = useRef<string | null>(null);
   // 크기 맞추기는 입력 허용과 상관없다 (글자를 보내지 않는다). 다른 터미널이 붙어 있으면 그 화면까지 바뀌므로 안 한다
   const canFit = t.exists && !t.attached;

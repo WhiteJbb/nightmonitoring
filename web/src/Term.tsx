@@ -64,8 +64,11 @@ export function bufferText(term: Terminal): string {
   for (let i = 0; i < b.length; i++) {
     const line = b.getLine(i);
     if (!line) continue;
-    // 다음 줄로 이어지는 줄 끝의 빈칸은 글의 일부다
-    const s = line.translateToString(!b.getLine(i + 1)?.isWrapped);
+    // 다음 줄로 이어지는 줄 끝의 빈칸은 글의 일부다. 다만 두 칸 글자(한글)가 안 들어가 비워 둔 마지막 칸은 아니다
+    const joins = b.getLine(i + 1)?.isWrapped === true;
+    const last = line.getCell(line.length - 1);
+    const pad = joins && last?.getWidth() === 1 && last.getChars() === '';
+    const s = line.translateToString(!joins, 0, pad ? line.length - 1 : undefined);
     if (line.isWrapped && lines.length > 0) lines[lines.length - 1] += s;
     else lines.push(s);
   }
