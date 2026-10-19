@@ -59,8 +59,13 @@ describe('workDirs', () => {
   it('finds every process under the panes, most recently started first, and reads their folders', async () => {
     expect([etimeSeconds('05'), etimeSeconds('01:05'), etimeSeconds('02:01:05'), etimeSeconds('3-02:01:05')]).toEqual([5, 65, 7265, 266465]);
     // 10(pane 셸) → 20(codex) → 30(명령) → 40(손자), 50 은 다른 곳. 9 는 pid 가 한 바퀴 돌아 작지만 가장 최근에 떴다
-    const ps = ' 10 1 2-00:00:00\n 20 10 1-00:00:00\n 30 20 01:00\n 40 30 00:10\n 9 20 00:02\n 50 1 00:01\n 60 50 00:01\n';
-    expect(descendants(ps, [10]).map((p) => p.pid)).toEqual([9, 40, 30, 20]);
+    const ps = ' 10 1 2-00:00:00 -zsh\n 20 10 1-00:00:00 /opt/codex/bin/codex\n 30 20 01:00 /bin/zsh\n 40 30 00:10 node\n 9 20 00:02 python3\n 50 1 00:01 sleep\n 60 50 00:01 sleep\n';
+    expect(descendants(ps, [10]).map((p) => [p.pid, p.shell])).toEqual([
+      [9, false],
+      [40, false],
+      [30, true],
+      [20, false],
+    ]);
     expect(lsofCwds('p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\n')).toEqual(
       new Map([
         [20, '/home/me'],
@@ -75,9 +80,9 @@ describe('workDirs', () => {
       timedOut: false,
     }));
     expect(await workDirs('money')).toEqual([
-      { pid: 40, ppid: 30, dir: '/home/me/repos/app/src' },
-      { pid: 30, ppid: 20, dir: '/home/me/repos/app' },
-      { pid: 20, ppid: 10, dir: '/home/me' },
+      { pid: 40, ppid: 30, shell: false, dir: '/home/me/repos/app/src' },
+      { pid: 30, ppid: 20, shell: true, dir: '/home/me/repos/app' },
+      { pid: 20, ppid: 10, shell: false, dir: '/home/me' },
     ]);
     expect(mockRun).toHaveBeenCalledWith('lsof', ['-a', '-d', 'cwd', '-p', '9,40,30,20', '-Fpn']);
   });

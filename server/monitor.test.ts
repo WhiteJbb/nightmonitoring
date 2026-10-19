@@ -238,7 +238,7 @@ describe('followRepo', () => {
     try {
       const cfg = parseConfig({ projects: [{ name: 'money', repoPath: '/home/me', tmuxSession: 'money' }, { name: 'plain', repoPath: '/work/plain', tmuxSession: 'plain' }] }, '/base');
       const repos = ['/home/me/repos/trader', '/home/me/repos/other'];
-      let procs: { pid: number; ppid: number; dir: string }[] | null = [];
+      let procs: { pid: number; ppid: number; dir: string; shell?: boolean }[] | null = [];
       const asked: string[] = [];
       const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: '/home/me' };
       const raw = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' };
@@ -300,10 +300,17 @@ describe('followRepo', () => {
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
       // 계속 쓰는 셸(50)이 trader 에서 일하다 other 로 옮겨 가도 따라간다
-      procs = [{ pid: 50, ppid: 20, dir: '/home/me/repos/trader' }, agent];
+      procs = [{ pid: 50, ppid: 20, dir: '/home/me/repos/trader', shell: true }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/trader');
-      procs = [{ pid: 51, ppid: 50, dir: '/home/me/repos/other' }, { pid: 50, ppid: 20, dir: '/home/me/repos/other' }, agent];
+      procs = [{ pid: 51, ppid: 50, dir: '/home/me/repos/other' }, { pid: 50, ppid: 20, dir: '/home/me/repos/other', shell: true }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
+      // 그 셸이 다른 저장소에서 한 명령을 돌린 뒤 자기 저장소에서 새 명령을 돌려도 새 일이다 (셸 아래는 일꾼이 아니다)
+      procs = [{ pid: 52, ppid: 50, dir: '/home/me/repos/trader' }, { pid: 50, ppid: 20, dir: '/home/me/repos/other', shell: true }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/trader');
+      procs = [{ pid: 53, ppid: 50, dir: '/home/me/repos/other' }, { pid: 50, ppid: 20, dir: '/home/me/repos/other', shell: true }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
 

@@ -127,15 +127,21 @@ export function etimeSeconds(etime: string): number {
   return (clock ?? '').split(':').reduce((sum, part) => sum * 60 + Number(part), 0) + Number(days) * 86400;
 }
 
-/** ps -o pid=,ppid=,etime= 출력에서 roots 아래의 모든 자손. 최근에 뜬 것부터 (pid 는 한 바퀴 돌 수 있어 띄운 지 지난 시간으로 본다) */
-export function descendants(ps: string, roots: number[]): { pid: number; ppid: number; age: number }[] {
-  const children = new Map<number, { pid: number; ppid: number; age: number }[]>();
+type Proc = { pid: number; ppid: number; age: number; shell: boolean };
+
+/**
+ * ps -o pid=,ppid=,etime=,comm= 출력에서 roots 아래의 모든 자손. 최근에 뜬 것부터 (pid 는 한 바퀴 돌 수 있어 띄운 지 지난 시간으로 본다).
+ * shell: 셸이다 (그 아래 새 프로세스는 새 명령이다)
+ */
+export function descendants(ps: string, roots: number[]): Proc[] {
+  const children = new Map<number, Proc[]>();
   for (const line of ps.split('\n')) {
-    const [pid, ppid, etime] = line.trim().split(/\s+/);
+    const [pid, ppid, etime, ...comm] = line.trim().split(/\s+/);
     if (!Number(pid) || !etime) continue;
-    children.set(Number(ppid), [...(children.get(Number(ppid)) ?? []), { pid: Number(pid), ppid: Number(ppid), age: etimeSeconds(etime) }]);
+    const proc = { pid: Number(pid), ppid: Number(ppid), age: etimeSeconds(etime), shell: /^-?(?:.*\/)?(?:sh|bash|zsh|fish|dash|ksh)$/.test(comm.join(' ')) };
+    children.set(proc.ppid, [...(children.get(proc.ppid) ?? []), proc]);
   }
-  const found = new Map<number, { pid: number; ppid: number; age: number }>();
+  const found = new Map<number, Proc>();
   const stack = [...roots];
   while (stack.length) {
     for (const c of children.get(stack.pop()!) ?? []) {
@@ -162,8 +168,8 @@ export function lsofCwds(out: string): Map<number, string> {
  * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)와 그 작업 폴더. 최근에 뜬 것부터.
  * 에이전트를 홈에서 띄우고 명령은 다른 폴더에서 돌릴 때(Codex 의 workdir 등) 실제로 일하는 폴더를 찾는다
  */
-export async function workDirs(session: string): Promise<{ pid: number; ppid: number; dir: string }[] | null> {
-  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid=,etime='])]);
+export async function workDirs(session: string): Promise<{ pid: number; ppid: number; dir: string; shell: boolean }[] | null> {
+  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid=,etime=,comm='])]);
   // 못 읽은 것(null)과 명령이 없는 것([])은 다르다: 못 읽었다고 기억해 둔 프로세스를 잊으면 다음에 옛 것이 새 일로 보인다
   if (panes.code !== 0 || ps.code !== 0) return null;
   const procs = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean));
@@ -177,7 +183,7 @@ export async function workDirs(session: string): Promise<{ pid: number; ppid: nu
     if (r.code === null) return null;
     cwds = lsofCwds(r.stdout);
   }
-  return procs.map(({ pid, ppid }) => ({ pid, ppid, dir: cwds.get(pid) ?? '' })).filter((p) => p.dir);
+  return procs.map(({ pid, ppid, shell }) => ({ pid, ppid, shell, dir: cwds.get(pid) ?? '' })).filter((p) => p.dir);
 }
 
 /** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */
