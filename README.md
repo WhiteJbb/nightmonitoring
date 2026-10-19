@@ -7,6 +7,7 @@
 tmux에서 도는 AI 코딩 에이전트를 실시간 터미널로 보고, 키를 치고, 끝나거나 입력을 기다리면 푸시로 알려 줍니다.
 서버는 내 컴퓨터에서만 돌고, 밖에서는 Tailscale로 접속합니다.
 
+[![CI](https://github.com/WhiteJbb/nightshift/actions/workflows/ci.yml/badge.svg)](https://github.com/WhiteJbb/nightshift/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Node](https://img.shields.io/badge/node-%E2%89%A522.18-339933?logo=node.js&logoColor=white)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
