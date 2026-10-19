@@ -1,7 +1,9 @@
 // 웹에서 저장소 파일을 열고 고친다. 열 수 있는 파일은 Git 이 아는 것(추적 중이거나 .gitignore 에 걸리지 않은 새 파일)이고,
 // .env 처럼 무시된 파일은 호출부가 허락할 때만(터미널 입력이 허용된 프로젝트) 연다. 저장소 밖과 .git 안은 경로를 직접 줘도 열지 않는다.
+// Git 저장소가 아닌 폴더는 NightShift 쪽에 둔 빈 저장소로 같은 규칙을 쓴다 (그 폴더에는 아무것도 만들지 않는다).
 import { createHash, randomUUID } from 'node:crypto';
 import { chmod, cp, lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import type { FsOp } from '../shared/types.ts';
 import { run } from './exec.ts';
@@ -25,19 +27,55 @@ export class FileError extends Error {
 /** 내용의 지문. 저장할 때 연 뒤로 바뀌었는지 비교한다 */
 const versionOf = (buf: Buffer) => createHash('sha1').update(buf).digest('hex');
 
-/** 저장소의 맨 위 폴더. 프로젝트 경로가 저장소 안의 하위 폴더여도 경로는 Git 상태(바뀐 파일)처럼 맨 위 기준으로 쓴다 */
-async function rootOf(repo: string): Promise<string> {
+/** Git 저장소가 아닌 폴더마다 하나씩 두는 빈 저장소의 자리. 지운 파일의 휴지통도 그 안에 남는다 */
+const shadowBase = () => process.env.NIGHTSHIFT_SHADOW_DIR ?? path.join(import.meta.dirname, '..', '.nightshift', 'shadow');
+/** 저장소가 아닌 폴더에서 기본으로 무시하는 것: 비밀(.env)과 받아 온 의존성. 그 폴더의 .gitignore 도 그대로 읽는다 */
+const SHADOW_EXCLUDES = '.env\n.env.*\nnode_modules/\n.venv/\nvenv/\n__pycache__/\n.DS_Store\n';
+const shadows = new Map<string, Promise<string>>();
+function shadowOf(root: string): Promise<string> {
+  let made = shadows.get(root);
+  if (!made) {
+    const dir = path.join(shadowBase(), `${createHash('sha1').update(root).digest('hex')}.git`);
+    made = (async () => {
+      if (!(await exists(path.join(dir, 'HEAD')))) {
+        const r = await run('git', ['init', '-q', '--bare', '--template=', dir]);
+        if (r.code !== 0) throw new FileError(r.stderr.trim() || '파일 목록을 만들 준비를 하지 못했습니다', 500);
+      }
+      await mkdir(path.join(dir, 'info'), { recursive: true });
+      await writeFile(path.join(dir, 'info', 'exclude'), SHADOW_EXCLUDES);
+      return dir;
+    })();
+    made.catch(() => shadows.delete(root));
+    shadows.set(root, made);
+  }
+  return made;
+}
+
+type Git = (...args: string[]) => ReturnType<typeof run>;
+
+/**
+ * 파일 탭의 맨 위 폴더와 거기서 git 을 부르는 방법. Git 저장소면 저장소의 맨 위다 (프로젝트 경로가 하위 폴더여도 Git 상태의 바뀐 파일처럼 맨 위 기준).
+ * 저장소가 아니면(홈 폴더 전체가 저장소인 곳의 하위 폴더 포함) 그 폴더 자체를 밖에 둔 빈 저장소의 작업 폴더로 본다
+ */
+async function rootOf(repo: string): Promise<{ root: string; git: Git }> {
   const r = await run('git', ['-C', repo, 'rev-parse', '--show-toplevel']);
-  if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
-  const root = r.stdout.trim();
-  if (isHomeRoot(root)) throw new FileError('Git 저장소가 아닙니다', 400);
-  return root;
+  // 시간 초과(macOS 가 폴더 접근을 막아 세운 경우 등)는 저장소가 아닌 것과 다르다
+  if (r.code === null) throw new FileError(r.timedOut ? 'Git 이 응답하지 않습니다. macOS 가 이 폴더 접근을 막고 있을 수 있습니다' : r.stderr.trim(), 400);
+  const top = r.code === 0 ? r.stdout.trim() : null;
+  if (top && !isHomeRoot(top)) return { root: top, git: (...args) => run('git', ['-C', top, ...args]) };
+  const root = await realpath(repo).catch(() => null);
+  if (!root || !(await stat(root)).isDirectory()) throw new FileError('프로젝트 폴더가 없습니다', 400);
+  // 홈 폴더 전체(와 그 위)는 열지 않는다: 홈의 모든 파일(.ssh 등)이 목록에 오르고, 훑는 데도 한참 걸린다
+  const home = path.relative(root, await realpath(homedir()).catch(() => homedir()));
+  if (!home.startsWith('..')) throw new FileError('홈 폴더 전체는 파일 탭으로 열지 않습니다. 프로젝트 폴더를 경로로 지정하세요', 400);
+  const shadow = await shadowOf(root);
+  return { root, git: (...args) => run('git', ['--git-dir', shadow, '--work-tree', root, '-C', root, ...args]) };
 }
 
 /** 저장소 맨 위 기준 상대 경로 목록 (정렬). 저장소가 아니면 FileError */
 export async function listFiles(repo: string): Promise<string[]> {
-  const root = await rootOf(repo);
-  const [r, gone] = await Promise.all([run('git', ['-C', root, 'ls-files', '-z', '--cached', '--others', '--exclude-standard']), run('git', ['-C', root, 'ls-files', '-z', '--deleted'])]);
+  const { git } = await rootOf(repo);
+  const [r, gone] = await Promise.all([git('ls-files', '-z', '--cached', '--others', '--exclude-standard'), git('ls-files', '-z', '--deleted')]);
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
   // 추적 중이지만 지운 파일은 열 수 없으니 뺀다. 충돌 중인 파일은 단계마다 한 번씩 나온다
   const deleted = new Set(gone.stdout.split('\0'));
@@ -49,8 +87,8 @@ export async function listFiles(repo: string): Promise<string[]> {
  * 그 안의 수많은 파일은 담지 않는다.
  */
 export async function listIgnored(repo: string): Promise<string[]> {
-  const root = await rootOf(repo);
-  const r = await run('git', ['-C', root, 'ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory']);
+  const { git } = await rootOf(repo);
+  const r = await git('ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory');
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
   // 따옴표·역슬래시·제어 문자가 든 경로는 check-ignore 가 따옴표로 감싸 돌려줘 맞춰 볼 수 없다: 안전하게 뺀다
   // eslint-disable-next-line no-control-regex -- Git 이 따옴표로 감싸는 문자를 그대로 거른다
@@ -61,7 +99,7 @@ export async function listIgnored(repo: string): Promise<string[]> {
   const ignoredDirs = new Set<string>();
   for (let i = 0; i < dirs.length; i += 500) {
     // -z 는 --stdin 과만 된다. 줄 단위로 읽고, 한글 폴더 이름이 \355… 로 바뀌지 않게 quotePath 를 끈다
-    const c = await run('git', ['-C', root, '-c', 'core.quotePath=false', 'check-ignore', '--no-index', '--', ...dirs.slice(i, i + 500)]);
+    const c = await git('-c', 'core.quotePath=false', 'check-ignore', '--no-index', '--', ...dirs.slice(i, i + 500));
     for (const d of c.stdout.split('\n')) if (d) ignoredDirs.add(d);
   }
   return files
@@ -97,7 +135,7 @@ async function resolve(repo: string, rel: unknown, ignoredOk: boolean, maxBytes 
   let ignored: string[] | null = null;
   const known = async (f: string) => tracked.includes(f) || (ignoredOk && (ignored ??= await listIgnored(repo).catch(() => [])).includes(f));
   if (!(await known(rel))) throw new FileError(ignoredOk ? '열 수 없는 파일입니다' : '열 수 없는 파일입니다 (.gitignore 에 걸린 파일은 터미널 입력을 허용한 프로젝트에서만 엽니다)', 404);
-  const root = await rootOf(repo);
+  const { root } = await rootOf(repo);
   const abs = path.join(root, rel);
   const st = await lstat(abs).catch(() => null);
   if (!st?.isFile()) throw new FileError('일반 파일만 열 수 있습니다 (지워졌거나 링크입니다)', 404);
@@ -160,7 +198,7 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
   const conflict = () => new FileError('연 뒤로 파일이 바뀌었습니다 (에이전트가 고쳤을 수 있습니다). 다시 불러온 뒤 고치세요', 409);
   // 파일 다루기(옮기기·지우기)와 같은 줄에 선다: 저장 직전 확인과 바꿔 끼우기 사이에 파일이 옮겨지면 옛 이름으로 되살아난다.
   // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
-  return oneAtATime(`fs:${await rootOf(repo)}`, async () => {
+  return oneAtATime(`fs:${(await rootOf(repo)).root}`, async () => {
     const abs = await resolve(repo, rel, ignoredOk);
     // 같은 파일이 다른 프로젝트(겹친 저장소)에서도 열려 있을 수 있어 파일 줄에도 선다
     return oneAtATime(abs, () => save(abs));
@@ -192,7 +230,7 @@ export async function writeText(repo: string, rel: unknown, content: unknown, ve
 // ── 파일 다루기 (새 파일·폴더, 이동, 복사, 삭제). 터미널 입력과 같은 조건에서만 부른다 (app.ts).
 // 쓰기라서 목록 규칙 대신 "저장소 안, .git 밖"만 지킨다. 무시된 폴더 안이라도 셸로 할 수 있는 일이다.
 
-/** 지운 것은 .git 안 휴지통에 이만큼 둔다 (Git 에 없는 .env 같은 파일도 되살릴 수 있게) */
+/** 지운 것은 .git 안(저장소가 아닌 폴더는 그 빈 저장소 안) 휴지통에 이만큼 둔다 (Git 에 없는 .env 같은 파일도 되살릴 수 있게) */
 export const TRASH_KEEP_MS = 7 * 24 * 60 * 60 * 1000;
 
 const exists = (abs: string) => lstat(abs).then(() => true, () => false);
@@ -204,7 +242,7 @@ async function target(repo: string, rel: unknown): Promise<{ abs: string; rel: s
   if (path.posix.normalize(norm) !== norm || norm === '.' || norm === '..' || norm.startsWith('../')) throw new FileError('경로가 올바르지 않습니다', 400);
   // 대소문자를 가리지 않는 디스크(맥)에서는 .GIT 도 .git 이다
   if (norm.split('/').some((part) => part.toLowerCase() === '.git')) throw new FileError('.git 안은 건드리지 않습니다', 400);
-  const root = await rootOf(repo);
+  const { root } = await rootOf(repo);
   const realRoot = await realpath(root);
   // 실제 경로의 어느 부분이든 .git 이면 (하위 저장소의 .git 을 가리키는 링크 포함) 안 된다
   const inGit = (real: string) => path.relative(realRoot, real).split(path.sep).some((part) => part.toLowerCase() === '.git');
@@ -244,7 +282,7 @@ const inside = (child: string, parent: string) => child === parent || child.star
 
 /** 지운 것을 .git/nightshift-trash/<시각>/<경로> 로 옮긴다. 오래된 것은 이때 비운다 */
 async function toTrash(repo: string, abs: string, rel: string, now = Date.now()): Promise<void> {
-  const r = await run('git', ['-C', repo, 'rev-parse', '--absolute-git-dir']);
+  const r = await (await rootOf(repo)).git('rev-parse', '--absolute-git-dir');
   if (r.code !== 0) throw new FileError(r.stderr.trim() || 'Git 저장소가 아닙니다', 400);
   const trash = path.join(r.stdout.trim(), 'nightshift-trash');
   for (const name of await readdir(trash).catch(() => [])) {
@@ -264,7 +302,7 @@ async function toTrash(repo: string, abs: string, rel: string, now = Date.now())
 export async function fsOp(repo: string, op: FsOp | unknown, rel: unknown, to?: unknown): Promise<void> {
   // ponytail: 저장소 하나의 파일 다루기는 하나씩 (있는지 보고 옮기는 사이 다른 요청이 같은 자리를 덮지 않게). 드문 일이라 이걸로 충분하다.
   // 경로 검사도 줄 안에서 한다: 기다리는 사이 앞 요청이 폴더를 밖을 가리키는 링크로 바꿨을 수 있다
-  return oneAtATime(`fs:${await rootOf(repo)}`, async () => applyOp(repo, op, await target(repo, rel), to));
+  return oneAtATime(`fs:${(await rootOf(repo)).root}`, async () => applyOp(repo, op, await target(repo, rel), to));
 }
 
 async function applyOp(repo: string, op: unknown, src: { abs: string; rel: string }, to: unknown): Promise<void> {

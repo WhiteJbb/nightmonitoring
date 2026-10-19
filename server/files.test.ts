@@ -8,7 +8,11 @@ import { fsOp, listFiles, listIgnored, MAX_IMAGE_BYTES, readRaw, readText, write
 describe('files', () => {
   let repo: string;
   let outside: string;
+  let shadow: string;
   beforeAll(async () => {
+    // 저장소가 아닌 폴더용 빈 저장소를 NightShift 의 .nightshift 가 아니라 여기에 만든다
+    shadow = await mkdtemp(path.join(tmpdir(), 'nightshift-shadow-'));
+    process.env.NIGHTSHIFT_SHADOW_DIR = shadow;
     repo = await mkdtemp(path.join(tmpdir(), 'nightshift-files-'));
     outside = await mkdtemp(path.join(tmpdir(), 'nightshift-outside-'));
     execFileSync('git', ['init', '-q', repo]);
@@ -39,6 +43,8 @@ describe('files', () => {
   afterAll(async () => {
     await rm(repo, { recursive: true, force: true });
     await rm(outside, { recursive: true, force: true });
+    await rm(shadow, { recursive: true, force: true });
+    delete process.env.NIGHTSHIFT_SHADOW_DIR;
   });
 
   it('lists tracked and new files, never ignored or deleted ones', async () => {
@@ -46,15 +52,17 @@ describe('files', () => {
     // 프로젝트 경로가 하위 폴더여도 맨 위 기준 (Git 상태의 바뀐 파일 경로와 맞춘다)
     expect(await listFiles(path.join(repo, 'src'))).toContain('src/app.ts');
     expect((await readText(path.join(repo, 'src'), 'new.md')).content).toBe('# 새 파일\n');
-    await expect(listFiles(outside)).rejects.toMatchObject({ status: 400 });
+    await expect(listFiles(path.join(outside, 'nope'))).rejects.toMatchObject({ status: 400 });
   });
 
-  it('refuses a repository at the home folder (an accidental ~/.git would open every file there)', async () => {
+  it('never opens the whole home folder; under an accidental ~/.git a project folder opens as its own folder', async () => {
     const home = process.env.HOME;
     process.env.HOME = repo;
     try {
-      await expect(listFiles(path.join(repo, 'src'))).rejects.toMatchObject({ status: 400 });
+      expect(await listFiles(path.join(repo, 'src'))).toEqual(['app.ts']);
+      await expect(listFiles(repo)).rejects.toMatchObject({ status: 400 });
       await expect(readText(repo, 'new.md')).rejects.toMatchObject({ status: 400 });
+      await expect(listFiles(path.dirname(repo))).rejects.toMatchObject({ status: 400 }); // 홈 위도
     } finally {
       process.env.HOME = home;
     }
@@ -125,6 +133,34 @@ describe('files', () => {
     expect(await readFile(path.join(trash, when!, 'docs/guide/intro.md'), 'utf8')).toBe('hello\n');
     await rm(at('notes'), { recursive: true });
     await rm(at('docs-copy'), { recursive: true });
+  });
+
+  it('opens a folder that is not a Git repository the same way, without creating anything in it', async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-plain-'));
+    try {
+      await mkdir(path.join(dir, 'src'));
+      await writeFile(path.join(dir, 'src/main.py'), 'print(1)\n');
+      await writeFile(path.join(dir, '.env'), 'TOKEN=1\n');
+      await mkdir(path.join(dir, 'node_modules/x'), { recursive: true });
+      await writeFile(path.join(dir, 'node_modules/x/i.js'), 'x\n');
+      // .env 와 받아 온 의존성은 무시된 것으로 본다 (입력을 허용한 프로젝트에서만 .env 를 연다)
+      expect(await listFiles(dir)).toEqual(['src/main.py']);
+      expect(await listIgnored(dir)).toEqual(['.env']);
+      await expect(readText(dir, '.env')).rejects.toMatchObject({ status: 404 });
+      expect((await readText(dir, '.env', true)).content).toBe('TOKEN=1\n');
+      const opened = await readText(dir, 'src/main.py');
+      await writeText(dir, 'src/main.py', 'print(2)\n', opened.version);
+      expect(await readFile(path.join(dir, 'src/main.py'), 'utf8')).toBe('print(2)\n');
+      await fsOp(dir, 'newFile', 'notes.md');
+      expect(await listFiles(dir)).toEqual(['notes.md', 'src/main.py']);
+      // 지운 것은 그 폴더가 아니라 NightShift 쪽 빈 저장소의 휴지통에 남는다
+      await fsOp(dir, 'delete', 'notes.md');
+      expect((await readdir(dir)).sort()).toEqual(['.env', 'node_modules', 'src']);
+      const trashed = await Promise.all((await readdir(shadow)).map((d) => readdir(path.join(shadow, d, 'nightshift-trash')).catch(() => [])));
+      expect(trashed.flat()).toHaveLength(1);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
   });
 
   it('never touches .git or anything outside the repository', async () => {

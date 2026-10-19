@@ -24,7 +24,7 @@ server/
   control.ts           tmux 컨트롤 모드 프로토콜 파서 (%output 이스케이프 해제)
   termstream.ts        세션마다 `tmux -C attach` 하나를 띄워 pane 출력을 구독자에게 흘려보냄
   upload.ts            터미널에 붙여넣은 이미지 저장 (.nightshift/uploads)
-  files.ts             파일 탭: Git 이 아는 파일만 목록·읽기·저장 (연 뒤 바뀌었으면 409), 그림 미리보기 바이트
+  files.ts             파일 탭: Git 이 아는 파일만 목록·읽기·저장 (연 뒤 바뀌었으면 409), 그림 미리보기 바이트. 저장소가 아닌 폴더는 .nightshift/shadow 의 빈 저장소로
   logs.ts              로그 위치 추적 스캔, 패턴 매처, ANSI 처리, 프롬프트·스피너 판별
   status.ts            상태 판정 (순수 함수)
   monitor.ts           폴링 루프, 기준점·변경 시각·로그 위치 추적, 구독자 알림
@@ -141,7 +141,7 @@ v1의 원칙은 "웹에서 임의 명령을 실행할 수 없다"였다. 터미�
 | GET | `/api/projects/:id/files` | Git 이 아는 파일 목록 (`ls-files --cached --others --exclude-standard`). `ignored`: 입력 허용 프로젝트만, 무시된 파일(무시된 폴더 안은 제외) |
 | GET | `/api/projects/:id/file?path=` | 글 파일 내용과 지문(sha1). 400 / 404 / 413 / 415 |
 | GET | `/api/projects/:id/raw?path=` | 그림 파일 바이트(png·jpg·gif·webp·svg·ico·bmp·avif, 20MB까지). 여는 규칙은 `/file` 과 같다. `nosniff`, `no-store`, CSP `sandbox` (SVG 를 바로 열어도 스크립트가 돌지 않게). 400 / 404 / 413 / 415 |
-| POST | `/api/projects/:id/fs` | `{op, path, to?}` 파일 다루기: newFile·newDir·move·copy·delete(.git/nightshift-trash 로). 입력과 같은 조건, 저장소 안·.git 밖만, 저장소마다 하나씩. 400 / 403 / 404 / 409 |
+| POST | `/api/projects/:id/fs` | `{op, path, to?}` 파일 다루기: newFile·newDir·move·copy·delete(.git/nightshift-trash 로, 저장소가 아닌 폴더는 .nightshift/shadow 의 빈 저장소 안). 입력과 같은 조건, 저장소 안·.git 밖만, 저장소마다 하나씩. 400 / 403 / 404 / 409 |
 | PUT | `/api/projects/:id/file` | `{path, content, version}` 저장 (입력과 같은 조건). 지문이 다르면 409 |
 | POST | `/api/projects/:id/run/:kind` | `kind` = `test` \| `build`. 202 / 400 / 404 / 409 |
 | DELETE | `/api/projects/:id/run/:kind` | 실행 취소. 202 / 400 / 409 |
