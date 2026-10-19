@@ -66,6 +66,8 @@ describe('workDirs', () => {
       [30, true],
       [20, false],
     ]);
+    // 나이가 같으면(같은 초에 뜬 셸과 명령) 자식이 먼저다
+    expect(descendants(' 30 10 00:05 bash\n 31 30 00:05 python3\n', [10]).map((p) => p.pid)).toEqual([31, 30]);
     expect(lsofCwds('p20\nfcwd\nn/home/me\np30\nfcwd\nn/home/me/repos/app\n')).toEqual(
       new Map([
         [20, '/home/me'],

@@ -141,16 +141,18 @@ export function descendants(ps: string, roots: number[]): Proc[] {
     const proc = { pid: Number(pid), ppid: Number(ppid), age: etimeSeconds(etime), shell: /^-?(?:.*\/)?(?:sh|bash|zsh|fish|dash|ksh)$/.test(comm.join(' ')) };
     children.set(proc.ppid, [...(children.get(proc.ppid) ?? []), proc]);
   }
-  const found = new Map<number, Proc>();
-  const stack = [...roots];
+  const found = new Map<number, { proc: Proc; depth: number }>();
+  const stack = roots.map((pid) => ({ pid, depth: 0 }));
   while (stack.length) {
-    for (const c of children.get(stack.pop()!) ?? []) {
+    const { pid, depth } = stack.pop()!;
+    for (const c of children.get(pid) ?? []) {
       if (found.has(c.pid)) continue;
-      found.set(c.pid, c);
-      stack.push(c.pid);
+      found.set(c.pid, { proc: c, depth: depth + 1 });
+      stack.push({ pid: c.pid, depth: depth + 1 });
     }
   }
-  return [...found.values()].sort((a, b) => a.age - b.age);
+  // etime 은 초 단위라 셸과 그 셸이 막 띄운 명령의 나이가 같기 쉽다: 같으면 더 깊은(나중에 뜬) 쪽이 먼저다
+  return [...found.values()].sort((a, b) => a.proc.age - b.proc.age || b.depth - a.depth).map((f) => f.proc);
 }
 
 /** lsof -Fpn 출력(p<pid>, n<경로> 줄)에서 pid → 경로 */
