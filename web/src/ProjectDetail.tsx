@@ -4,9 +4,9 @@ import type { AgentKind, Commit, FileStat, InputKey, InputRequest, ProjectSnapsh
 import { NOT_A_REPO } from '../../shared/types.ts';
 import { AGENTS, StartSession } from './NewSession.tsx';
 import { FilesTab, useDismiss } from './Files.tsx';
-import { fitSize } from './termsize.ts';
+import { charWidth, fitSize, fontRange } from './termsize.ts';
 import { parseAnsi } from './ansi.ts';
-import { copyText, Term } from './Term.tsx';
+import { copyText, Term, TERM_FONT, TERM_FONT_SIZE } from './Term.tsx';
 import type { TermFeed, TermStatus } from './Term.tsx';
 import { api, ApiError, errorMessage } from './api.ts';
 import { dateTime, duration, relTime, STATE_LABEL } from './format.ts';
@@ -248,21 +248,29 @@ const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' 
 /** pane: 입력을 보낼 pane. 고른 pane 이 사라졌으면 null 이고, 다시 고를 때까지 보내지 않는다 */
 /** 터미널 번호: 윈도우 번호, 윈도우가 나뉘어 있으면 pane 번호까지 (예: "1", "0.1") */
 const paneNo = (x: TmuxPane, panes: TmuxPane[]) => (panes.some((y) => y.window === x.window && y.id !== x.id) ? `${x.window}.${x.index}` : String(x.window));
-/** 터미널 글을 보통 글로 보여 준다. 휴대폰의 길게 눌러 고르기·복사가 된다. 최근 출력(맨 아래)부터 보인다 */
-function PickText({ text, onDone }: { text: string; onDone: () => void }) {
+/** 글자 고르기 화면의 좌우 여백(px). styles.css 의 .pick .terminal 과 같다 */
+const PICK_PAD = 14;
+/** 터미널 글을 화면 가득 보통 글로 보여 준다. 휴대폰의 길게 눌러 고르기·복사가 된다. 최근 출력(맨 아래)부터 보인다 */
+function PickText({ text, cols, onDone }: { text: string; cols: number; onDone: () => void }) {
   const ref = useRef<HTMLPreElement>(null);
+  // 줄은 터미널 폭(cols)에서 나뉘어 오므로(에이전트는 직접 줄을 바꿔 보낸다) 그 칸 수가 화면 폭에 꽉 차는 크기로 그린다
+  const [fontSize] = useState(() => {
+    const [min, max] = fontRange();
+    const perPx = charWidth(`${TERM_FONT_SIZE}px ${TERM_FONT}`) / TERM_FONT_SIZE;
+    return Math.max(min, Math.min(max, Math.floor(((document.documentElement.clientWidth - 2 * PICK_PAD) / (cols * perPx)) * 10) / 10));
+  });
   useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, []);
   return (
-    <>
-      <pre ref={ref} className="terminal wrap-lines" tabIndex={0} aria-label="터미널 글 (길게 눌러 골라 복사)">
+    <div className="pick">
+      <pre ref={ref} className="terminal wrap-lines" style={{ fontSize, fontFamily: TERM_FONT }} tabIndex={0} aria-label="터미널 글 (길게 눌러 골라 복사)">
         {text}
       </pre>
       <button type="button" className="more-rows pick-done" onClick={onDone}>
         터미널로
       </button>
-    </>
+    </div>
   );
 }
 
@@ -734,7 +742,7 @@ export function TerminalTab({ project: p, now }: Props) {
     noticeTimer.current = setTimeout(() => setNotice(null), 2500);
   };
   // 휴대폰은 터미널 글자를 손가락으로 고를 수 없다. 꾹 누른 때의 글을 보통 글로 펼쳐 길게 눌러 골라 복사하게 한다 (pane 을 바꾸면 끝)
-  const [picked, setPicked] = useState<{ pane: string; text: string } | null>(null);
+  const [picked, setPicked] = useState<{ pane: string; text: string; cols: number } | null>(null);
   const picking = picked !== null && picked.pane === pane?.id;
   // 다른 pane 으로 가면 끝낸다 (돌아왔을 때 예전 글이 새 터미널을 가리지 않게)
   if (picked && !picking) setPicked(null);
@@ -1002,8 +1010,8 @@ export function TerminalTab({ project: p, now }: Props) {
                 visible && !away ? (
                   <>
                     {/* 터미널은 숨겨 두기만 해서 돌아가도 다시 연결하지 않는다 */}
-                    {picking && <PickText text={picked.text} onDone={() => setPicked(null)} />}
-                    <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} command={pane.command} full={full} onPick={(text) => setPicked({ pane: pane.id, text })} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+                    {picking && <PickText text={picked.text} cols={picked.cols} onDone={() => setPicked(null)} />}
+                    <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} command={pane.command} full={full} onPick={(text, cols) => setPicked({ pane: pane.id, text, cols })} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
                   </>
                 ) : (
                   <p className="dim term-paused">{pausedText}</p>
