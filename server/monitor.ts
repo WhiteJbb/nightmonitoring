@@ -289,7 +289,9 @@ export class Monitor {
     const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
     const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : [];
     // 지난번에 없던 프로세스만 새 일이다: 뒤에서 계속 도는 옛 프로세스(개발 서버 등)가 따라간 저장소를 되돌리지 않게 한다
-    const seen = this.workPids.get(p.id);
+    // 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면, 지금 도는 프로세스는 기억만 하고 그리로 옮기지 않는다
+    const followed = this.tracked.get(p.id)?.repoPath;
+    const seen = this.workPids.get(p.id) ?? (followed && followed !== p.repoPath ? new Set(procs.map((x) => x.pid)) : undefined);
     this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
     const fresh = procs.filter((x) => !seen?.has(x.pid)).map((x) => x.dir);
     const tried = new Set<string>();

@@ -293,6 +293,13 @@ describe('followRepo', () => {
       procs = [{ pid: 40, dir: '/home/me/repos/trader' }];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
+
+      // NightShift 를 다시 띄워도 그 개발 서버를 새 일로 보지 않는다 (기준점도 이어진다)
+      const kept = m.exportState().tracked.money?.baseline;
+      const again = new Monitor({ config: cfg, collector, runs: noRuns, now: () => T0, restore: JSON.parse(JSON.stringify(m.exportState())) });
+      await again.tick();
+      expect(again.snapshot.projects.find((p) => p.id === 'money')!.repoPath).toBe('/home/me/repos/other');
+      expect(again.exportState().tracked.money?.baseline).toEqual(kept);
     } finally {
       process.env.HOME = home;
     }
