@@ -144,7 +144,9 @@ export async function collectGit(repoPath: string): Promise<GitInfo> {
   // macOS 는 launchd 로 띄운 서버가 다운로드·문서·데스크탑 폴더를 읽으려 하면 허락이 날 때까지 멈춰 세운다 (시간 초과로 끝난다)
   if (inside.timedOut) return failed('Git 이 응답하지 않습니다. macOS 가 이 폴더 접근을 막고 있을 수 있습니다 (다운로드·문서·데스크탑 등): 시스템 설정 → 개인정보 보호 및 보안 → 전체 디스크 접근 권한에 node 를 추가하세요');
   if (inside.code === null) return failed(`git 을 실행할 수 없습니다: ${inside.stderr.trim()}`);
-  const [isInside, top = ''] = inside.stdout.trim().split('\n');
+  // 둘째 줄부터가 맨 위 폴더다 (폴더 이름에 줄바꿈이 있을 수 있다)
+  const [isInside, ...rest] = inside.stdout.replace(/\n$/, '').split('\n');
+  const top = rest.join('\n');
   if (inside.code !== 0 || isInside !== 'true' || isHomeRoot(top)) return failed(NOT_A_REPO);
 
   // 커밋이 하나도 없는 저장소에서는 HEAD 관련 명령이 실패한다 → 빈 값으로 취급.

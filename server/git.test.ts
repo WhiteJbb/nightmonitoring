@@ -151,7 +151,7 @@ describe('untracked files and fingerprint', () => {
 
 describe('nested repoPath', () => {
   it('reads changed files relative to the worktree root', async () => {
-    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-git-'));
+    const dir = await mkdtemp(path.join(tmpdir(), 'nightshift-git-\nx'));
     try {
       await mkdir(path.join(dir, 'web'));
       await writeFile(path.join(dir, 'web', 'new.ts'), 'a\nb\n');
