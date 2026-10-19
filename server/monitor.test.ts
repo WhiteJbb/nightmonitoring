@@ -238,7 +238,7 @@ describe('followRepo', () => {
     try {
       const cfg = parseConfig({ projects: [{ name: 'money', repoPath: '/home/me', tmuxSession: 'money' }, { name: 'plain', repoPath: '/work/plain', tmuxSession: 'plain' }] }, '/base');
       const repos = ['/home/me/repos/trader', '/home/me/repos/other'];
-      let procs: { pid: number; ppid: number; dir: string }[] = [];
+      let procs: { pid: number; ppid: number; dir: string }[] | null = [];
       const asked: string[] = [];
       const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: '/home/me' };
       const raw = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' };
@@ -289,8 +289,14 @@ describe('followRepo', () => {
       procs = [{ pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
-      // 그 개발 서버가 새 일꾼을 띄워도 마찬가지다
-      procs = [{ pid: 43, ppid: 40, dir: '/home/me/repos/trader' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
+      // 그 개발 서버가 같은 저장소의 다른 폴더에 새 일꾼을 띄워도 마찬가지다
+      procs = [{ pid: 43, ppid: 40, dir: '/home/me/repos/trader/packages/web' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
+      // 프로세스를 한 번 못 읽어도(ps 실패) 기억한 프로세스를 잊지 않는다
+      procs = null;
+      await m.tick();
+      procs = [{ pid: 43, ppid: 40, dir: '/home/me/repos/trader/packages/web' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
 

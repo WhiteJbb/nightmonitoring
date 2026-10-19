@@ -21,8 +21,8 @@ export interface Collector {
   discover?(): Promise<{ name: string; cwd: string }[]>;
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
-  /** 세션 안 에이전트가 돌리는 명령들과 그 작업 폴더 (최근에 뜬 것부터) */
-  workDirs?(session: string): Promise<{ pid: number; ppid: number; dir: string }[]>;
+  /** 세션 안 에이전트가 돌리는 명령들과 그 작업 폴더 (최근에 뜬 것부터). 읽지 못했으면 null (없는 것과 다르다) */
+  workDirs?(session: string): Promise<{ pid: number; ppid: number; dir: string }[] | null>;
   /** dir 이 든 저장소의 맨 위 폴더 (저장소가 아니면 null). 없으면 dir 을 그대로 쓴다 */
   repoRoot?(dir: string): Promise<string | null>;
 }
@@ -286,28 +286,18 @@ export class Monitor {
     const git = await this.opts.collector.git(p);
     if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
     const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
-    const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
-    const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : [];
-    // 지난번에 없던 프로세스만 새 일이다: 뒤에서 계속 도는 옛 프로세스(개발 서버 등)가 따라간 저장소를 되돌리지 않게 한다
-    // 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면, 지금 도는 프로세스는 기억만 하고 그리로 옮기지 않는다
     const followed = this.tracked.get(p.id)?.repoPath;
-    const seen = this.workPids.get(p.id) ?? (followed && followed !== p.repoPath ? new Set(procs.map((x) => x.pid)) : undefined);
-    this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
-    const byPid = new Map(procs.map((x) => [x.pid, x]));
-    const fresh = procs
-      .filter((x) => {
-        if (!seen) return true;
-        if (seen.has(x.pid)) return false;
-        // 가장 가까운, 전부터 돌던 조상과 폴더가 같으면 그 조상(남겨 둔 개발 서버 등)이 띄운 일꾼이다. 에이전트의 새 명령은 에이전트(홈)와 폴더가 다르다
-        let up = byPid.get(x.ppid);
-        while (up && !seen.has(up.pid)) up = byPid.get(up.ppid);
-        return up?.dir !== x.dir;
-      })
-      .map((x) => x.dir);
+    const fromHome = !path.relative(p.repoPath, homedir()).startsWith('..');
+    const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : null;
+    // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
+    const roots = new Map<string, string | null>();
+    for (const dir of new Set([cwd, followed, ...(procs ?? []).map((x) => x.dir)])) {
+      if (dir) roots.set(dir, this.opts.collector.repoRoot ? await this.opts.collector.repoRoot(dir) : dir);
+    }
+    const fresh = procs ? this.freshWork(p, procs, followed, (dir) => roots.get(dir) ?? null) : [];
     const tried = new Set<string>();
-    for (const dir of new Set([cwd, ...fresh, this.tracked.get(p.id)?.repoPath, ...procs.map((x) => x.dir)])) {
-      // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
-      const root = dir && (this.opts.collector.repoRoot ? await this.opts.collector.repoRoot(dir) : dir);
+    for (const dir of new Set([cwd, ...fresh, followed, ...(procs ?? []).map((x) => x.dir)])) {
+      const root = dir ? roots.get(dir) : null;
       if (!root || root === p.repoPath || tried.has(root)) continue;
       tried.add(root);
       const project = { ...p, repoPath: root };
@@ -315,6 +305,26 @@ export class Monitor {
       if (found.ok) return { project, git: found };
     }
     return { project: p, git };
+  }
+
+  /**
+   * 지난번에 없던, 에이전트가 새로 돌린 명령들의 폴더 (최근 것부터). 뒤에서 계속 도는 옛 프로세스(남겨 둔 개발 서버 등)와
+   * 그것이 띄운 일꾼은 따라간 저장소를 되돌리지 않게 뺀다. 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면 기억만 한다
+   */
+  private freshWork(p: ProjectConfig, procs: { pid: number; ppid: number; dir: string }[], followed: string | undefined, rootOf: (dir: string) => string | null): string[] {
+    const seen = this.workPids.get(p.id) ?? (followed && followed !== p.repoPath ? new Set(procs.map((x) => x.pid)) : undefined);
+    this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
+    if (!seen) return procs.map((x) => x.dir);
+    const byPid = new Map(procs.map((x) => [x.pid, x]));
+    return procs
+      .filter((x) => {
+        if (seen.has(x.pid)) return false;
+        // 가장 가까운, 전부터 돌던 조상과 같은 저장소면 그 조상이 띄운 일꾼이다. 에이전트의 새 명령은 에이전트(홈)와 저장소가 다르다
+        let up = byPid.get(x.ppid);
+        while (up && !seen.has(up.pid)) up = byPid.get(up.ppid);
+        return !up || rootOf(up.dir) !== rootOf(x.dir);
+      })
+      .map((x) => x.dir);
   }
 
   private async collectOne(config: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {

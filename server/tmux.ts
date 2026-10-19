@@ -162,17 +162,21 @@ export function lsofCwds(out: string): Map<number, string> {
  * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)와 그 작업 폴더. 최근에 뜬 것부터.
  * 에이전트를 홈에서 띄우고 명령은 다른 폴더에서 돌릴 때(Codex 의 workdir 등) 실제로 일하는 폴더를 찾는다
  */
-export async function workDirs(session: string): Promise<{ pid: number; ppid: number; dir: string }[]> {
+export async function workDirs(session: string): Promise<{ pid: number; ppid: number; dir: string }[] | null> {
   const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid=,etime='])]);
-  if (panes.code !== 0 || ps.code !== 0) return [];
+  // 못 읽은 것(null)과 명령이 없는 것([])은 다르다: 못 읽었다고 기억해 둔 프로세스를 잊으면 다음에 옛 것이 새 일로 보인다
+  if (panes.code !== 0 || ps.code !== 0) return null;
   const procs = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean));
   const pids = procs.map((p) => p.pid);
   if (!pids.length) return [];
-  const cwds =
-    process.platform === 'linux'
-      ? new Map(await Promise.all(pids.map(async (pid) => [pid, await readlink(`/proc/${pid}/cwd`).catch(() => '')] as const)))
-      : // 그 사이 끝난 프로세스는 빠진다 (lsof 는 그때 1 로 끝나지만 나머지는 알려 준다)
-        lsofCwds((await run('lsof', ['-a', '-d', 'cwd', '-p', pids.join(','), '-Fpn'])).stdout);
+  let cwds: Map<number, string>;
+  if (process.platform === 'linux') cwds = new Map(await Promise.all(pids.map(async (pid) => [pid, await readlink(`/proc/${pid}/cwd`).catch(() => '')] as const)));
+  else {
+    // 그 사이 끝난 프로세스는 빠진다 (lsof 는 그때 1 로 끝나지만 나머지는 알려 준다)
+    const r = await run('lsof', ['-a', '-d', 'cwd', '-p', pids.join(','), '-Fpn']);
+    if (r.code === null) return null;
+    cwds = lsofCwds(r.stdout);
+  }
   return procs.map(({ pid, ppid }) => ({ pid, ppid, dir: cwds.get(pid) ?? '' })).filter((p) => p.dir);
 }
 
