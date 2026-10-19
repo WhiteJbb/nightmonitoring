@@ -170,6 +170,17 @@ describe('files', () => {
     await expect(listFiles(path.join(repo, '.git'))).rejects.toMatchObject({ status: 400 });
     await expect(readText(path.join(repo, '.git'), 'config')).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(path.join(repo, '.git/hooks'), 'newFile', 'pre-commit')).rejects.toMatchObject({ status: 400 });
+    // git 이 알아보지 못하는 저장소 속(bare 저장소, 설정이 깨진 .git)도 모양으로 막는다
+    const bare = await mkdtemp(path.join(tmpdir(), 'nightshift-bare-'));
+    try {
+      execFileSync('git', ['init', '-q', '--bare', bare]);
+      await expect(listFiles(bare)).rejects.toMatchObject({ status: 400 });
+      await expect(fsOp(path.join(bare, 'hooks'), 'newFile', 'pre-commit')).rejects.toMatchObject({ status: 400 });
+      await writeFile(path.join(bare, 'config'), '[broken');
+      await expect(listFiles(bare)).rejects.toMatchObject({ status: 400 });
+    } finally {
+      await rm(bare, { recursive: true, force: true });
+    }
     for (const bad of ['../x', '/etc/passwd', '.git/config', '.GIT', '.Git/config', 'a/../../x', 'sub/.git/hooks/x', '.', ''])
       await expect(fsOp(repo, 'newFile', bad)).rejects.toMatchObject({ status: 400 });
     await expect(fsOp(repo, 'move', 'new.md', '../stolen.md')).rejects.toMatchObject({ status: 400 });

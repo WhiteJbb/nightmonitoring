@@ -55,22 +55,30 @@ function shadowOf(root: string): Promise<string> {
 
 type Git = (...args: string[]) => ReturnType<typeof run>;
 
+/** 폴더나 그 위가 Git 의 속(.git 이나 bare 저장소)인지. git 이 저장소로 못 알아봐도(설정이 깨졌거나 bare 를 막아 둔 경우) 모양으로 본다 */
+async function inGitMeta(dir: string): Promise<boolean> {
+  for (let d = dir; ; d = path.dirname(d)) {
+    if (path.basename(d).toLowerCase() === '.git') return true;
+    const [head, objects, refs] = await Promise.all(['HEAD', 'objects', 'refs'].map((n) => lstat(path.join(d, n)).catch(() => null)));
+    if (head?.isFile() && objects?.isDirectory() && refs?.isDirectory()) return true;
+    if (path.dirname(d) === d) return false;
+  }
+}
+
 /**
  * 파일 탭의 맨 위 폴더와 거기서 git 을 부르는 방법. Git 저장소면 저장소의 맨 위다 (프로젝트 경로가 하위 폴더여도 Git 상태의 바뀐 파일처럼 맨 위 기준).
  * 저장소가 아니면(홈 폴더 전체가 저장소인 곳의 하위 폴더 포함) 그 폴더 자체를 밖에 둔 빈 저장소의 작업 폴더로 본다
  */
 async function rootOf(repo: string): Promise<{ root: string; git: Git }> {
-  const r = await run('git', ['-C', repo, 'rev-parse', '--is-inside-git-dir', '--show-toplevel']);
+  const r = await run('git', ['-C', repo, 'rev-parse', '--show-toplevel']);
   // 시간 초과(macOS 가 폴더 접근을 막아 세운 경우 등)는 저장소가 아닌 것과 다르다
   if (r.code === null) throw new FileError(r.timedOut ? 'Git 이 응답하지 않습니다. macOS 가 이 폴더 접근을 막고 있을 수 있습니다' : r.stderr.trim(), 400);
-  // 첫 줄은 .git 안(이나 bare 저장소)인지, 그다음이 맨 위 폴더다 (이름에 줄바꿈이 있을 수 있다). .git 안에서는 맨 위를 못 구해 실패한다
-  const [inGitDir, ...rest] = r.stdout.replace(/\n$/, '').split('\n');
-  // .git 안을 보통 폴더처럼 열면 설정·훅을 고칠 수 있게 된다 (다음 git 명령이 그 훅을 돌린다)
-  if (inGitDir === 'true') throw new FileError('.git 안은 열지 않습니다', 400);
-  const top = r.code === 0 ? rest.join('\n') : null;
+  const top = r.code === 0 ? r.stdout.trim() : null;
   if (top && !isHomeRoot(top)) return { root: top, git: (...args) => run('git', ['-C', top, ...args]) };
   const root = await realpath(repo).catch(() => null);
   if (!root || !(await stat(root)).isDirectory()) throw new FileError('프로젝트 폴더가 없습니다', 400);
+  // .git 안을 보통 폴더처럼 열면 설정·훅을 고칠 수 있게 된다 (다음 git 명령이 그 훅을 돌린다)
+  if (await inGitMeta(root)) throw new FileError('.git 안은 열지 않습니다', 400);
   // 홈 폴더 전체(와 그 위)는 열지 않는다: 홈의 모든 파일(.ssh 등)이 목록에 오르고, 훑는 데도 한참 걸린다
   const home = path.relative(root, await realpath(homedir()).catch(() => homedir()));
   if (!home.startsWith('..')) throw new FileError('홈 폴더 전체는 파일 탭으로 열지 않습니다. 프로젝트 폴더를 경로로 지정하세요', 400);
