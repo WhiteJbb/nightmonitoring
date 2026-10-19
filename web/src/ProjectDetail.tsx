@@ -249,15 +249,20 @@ const CTRL: Record<string, InputKey> = { c: 'C-c', d: 'C-d', u: 'C-u', l: 'C-l' 
 /** 터미널 번호: 윈도우 번호, 윈도우가 나뉘어 있으면 pane 번호까지 (예: "1", "0.1") */
 const paneNo = (x: TmuxPane, panes: TmuxPane[]) => (panes.some((y) => y.window === x.window && y.id !== x.id) ? `${x.window}.${x.index}` : String(x.window));
 /** 터미널 글을 보통 글로 보여 준다. 휴대폰의 길게 눌러 고르기·복사가 된다. 최근 출력(맨 아래)부터 보인다 */
-function PickText({ text }: { text: string }) {
+function PickText({ text, onDone }: { text: string; onDone: () => void }) {
   const ref = useRef<HTMLPreElement>(null);
   useLayoutEffect(() => {
     if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
   }, []);
   return (
-    <pre ref={ref} className="terminal wrap-lines" tabIndex={0} aria-label="터미널 글 (길게 눌러 골라 복사)">
-      {text}
-    </pre>
+    <>
+      <pre ref={ref} className="terminal wrap-lines" tabIndex={0} aria-label="터미널 글 (길게 눌러 골라 복사)">
+        {text}
+      </pre>
+      <button type="button" className="pick-done" onClick={onDone}>
+        터미널로
+      </button>
+    </>
   );
 }
 
@@ -728,8 +733,7 @@ export function TerminalTab({ project: p, now }: Props) {
     if (noticeTimer.current) clearTimeout(noticeTimer.current);
     noticeTimer.current = setTimeout(() => setNotice(null), 2500);
   };
-  // 휴대폰은 터미널 글자를 손가락으로 고를 수 없다. 누른 때의 글을 보통 글로 펼쳐 길게 눌러 골라 복사하게 한다 (pane 을 바꾸면 끝)
-  const textOf = useRef<(() => string) | null>(null);
+  // 휴대폰은 터미널 글자를 손가락으로 고를 수 없다. 꾹 누른 때의 글을 보통 글로 펼쳐 길게 눌러 골라 복사하게 한다 (pane 을 바꾸면 끝)
   const [picked, setPicked] = useState<{ pane: string; text: string } | null>(null);
   const picking = picked !== null && picked.pane === pane?.id;
   // 다른 pane 으로 가면 끝낸다 (돌아왔을 때 예전 글이 새 터미널을 가리지 않게)
@@ -942,11 +946,6 @@ export function TerminalTab({ project: p, now }: Props) {
                   {statusLabel}
                 </span>
               )}
-              {!splitOn && visible && !away && (
-                <button type="button" className="more-rows" aria-pressed={picking} onClick={() => setPicked(picking || !pane ? null : { pane: pane.id, text: textOf.current?.() ?? '' })}>
-                  {picking ? '터미널로' : '글자 고르기'}
-                </button>
-              )}
               {t.panes.length > 1 && (
                 <button
                   type="button"
@@ -1003,8 +1002,8 @@ export function TerminalTab({ project: p, now }: Props) {
                 visible && !away ? (
                   <>
                     {/* 터미널은 숨겨 두기만 해서 돌아가도 다시 연결하지 않는다 */}
-                    {picking && <PickText text={picked.text} />}
-                    <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} command={pane.command} full={full} textOf={textOf} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
+                    {picking && <PickText text={picked.text} onDone={() => setPicked(null)} />}
+                    <Term key={`${pane.id}:${attempt}`} projectId={p.id} pane={pane.id} canInput={p.allowInput && !lost} command={pane.command} full={full} onPick={(text) => setPicked({ pane: pane.id, text })} onNotice={showNotice} onStatus={setStatus} onSize={(cols, rows) => setSize({ cols, rows })} />
                   </>
                 ) : (
                   <p className="dim term-paused">{pausedText}</p>

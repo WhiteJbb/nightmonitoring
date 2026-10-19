@@ -1083,9 +1083,23 @@ pre {
     display: none;
   }
 }
-/* 글자 고르기: 터미널은 연결을 둔 채 숨기고 그 글을 보여 준다 */
+/* 글자 고르기: 터미널은 연결을 둔 채 숨기고 그 글을 보여 준다. 돌아가는 버튼은 글 위 오른쪽 위에 띄운다 */
+.term-view.picking {
+  position: relative;
+}
 .term-view.picking .xterm-host {
   display: none;
+}
+.pick-done {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  font-size: var(--fs-sm);
+  /* 밑의 글이 비치지 않게 (틀 안은 늘 어둡다) */
+  background: #161a22;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.14),
+    0 6px 24px rgba(0, 0, 0, 0.5);
 }
 .term-paused {
   margin: 0;
