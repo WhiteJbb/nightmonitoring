@@ -137,8 +137,8 @@ export class Monitor {
   private now: () => number;
   private startedAt: string;
   private tracked = new Map<string, Tracked>();
-  /** 프로젝트마다 지난 tick 에 본, 에이전트가 돌리던 프로세스들 (followRepo) */
-  private workPids = new Map<string, Set<number>>();
+  /** 프로젝트마다 지난 tick 에 본, 에이전트가 돌리던 프로세스들과 그때의 저장소 (followRepo) */
+  private workSeen = new Map<string, Map<number, string | null>>();
   /** 설정에 없지만 떠 있는 tmux 세션에서 만든 임시 프로젝트. 세션이 사라지면 같이 사라진다. */
   private discovered: ProjectConfig[] = [];
   private collected = new Map<string, Collected>();
@@ -308,17 +308,19 @@ export class Monitor {
   }
 
   /**
-   * 지난번에 없던, 에이전트가 새로 돌린 명령들의 폴더 (최근 것부터). 뒤에서 계속 도는 옛 프로세스(남겨 둔 개발 서버 등)와
-   * 그것이 띄운 일꾼은 따라간 저장소를 되돌리지 않게 뺀다. 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면 기억만 한다
+   * 에이전트가 새로 일하기 시작한 폴더들 (최근 것부터): 지난번에 없던 명령과, 계속 쓰는 셸이 다른 저장소로 옮겨 간 것.
+   * 뒤에서 계속 도는 옛 프로세스(남겨 둔 개발 서버 등)와 그것이 띄운 일꾼은 따라간 저장소를 되돌리지 않게 뺀다.
+   * 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면 기억만 한다
    */
   private freshWork(p: ProjectConfig, procs: { pid: number; ppid: number; dir: string }[], followed: string | undefined, rootOf: (dir: string) => string | null): string[] {
-    const seen = this.workPids.get(p.id) ?? (followed && followed !== p.repoPath ? new Set(procs.map((x) => x.pid)) : undefined);
-    this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
+    const now = new Map(procs.map((x) => [x.pid, rootOf(x.dir)]));
+    const seen = this.workSeen.get(p.id) ?? (followed && followed !== p.repoPath ? now : undefined);
+    this.workSeen.set(p.id, now);
     if (!seen) return procs.map((x) => x.dir);
     const byPid = new Map(procs.map((x) => [x.pid, x]));
     return procs
       .filter((x) => {
-        if (seen.has(x.pid)) return false;
+        if (seen.has(x.pid)) return seen.get(x.pid) !== now.get(x.pid);
         // 가장 가까운, 전부터 돌던 조상과 같은 저장소면 그 조상이 띄운 일꾼이다. 에이전트의 새 명령은 에이전트(홈)와 저장소가 다르다
         let up = byPid.get(x.ppid);
         while (up && !seen.has(up.pid)) up = byPid.get(up.ppid);

@@ -299,6 +299,13 @@ describe('followRepo', () => {
       procs = [{ pid: 43, ppid: 40, dir: '/home/me/repos/trader/packages/web' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
+      // 계속 쓰는 셸(50)이 trader 에서 일하다 other 로 옮겨 가도 따라간다
+      procs = [{ pid: 50, ppid: 20, dir: '/home/me/repos/trader' }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/trader');
+      procs = [{ pid: 51, ppid: 50, dir: '/home/me/repos/other' }, { pid: 50, ppid: 20, dir: '/home/me/repos/other' }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
 
       // NightShift 를 다시 띄워도 그 개발 서버를 새 일로 보지 않는다 (기준점도 이어진다)
       const kept = m.exportState().tracked.money?.baseline;
