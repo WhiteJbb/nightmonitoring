@@ -75,9 +75,9 @@ describe('workDirs', () => {
       timedOut: false,
     }));
     expect(await workDirs('money')).toEqual([
-      { pid: 40, dir: '/home/me/repos/app/src' },
-      { pid: 30, dir: '/home/me/repos/app' },
-      { pid: 20, dir: '/home/me' },
+      { pid: 40, ppid: 30, dir: '/home/me/repos/app/src' },
+      { pid: 30, ppid: 20, dir: '/home/me/repos/app' },
+      { pid: 20, ppid: 10, dir: '/home/me' },
     ]);
     expect(mockRun).toHaveBeenCalledWith('lsof', ['-a', '-d', 'cwd', '-p', '9,40,30,20', '-Fpn']);
   });

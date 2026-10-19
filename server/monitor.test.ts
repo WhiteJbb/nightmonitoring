@@ -238,7 +238,7 @@ describe('followRepo', () => {
     try {
       const cfg = parseConfig({ projects: [{ name: 'money', repoPath: '/home/me', tmuxSession: 'money' }, { name: 'plain', repoPath: '/work/plain', tmuxSession: 'plain' }] }, '/base');
       const repos = ['/home/me/repos/trader', '/home/me/repos/other'];
-      let procs: { pid: number; dir: string }[] = [];
+      let procs: { pid: number; ppid: number; dir: string }[] = [];
       const asked: string[] = [];
       const pane = { id: '%1', window: 0, windowName: 'w', index: 0, command: 'codex', active: true, cols: 80, lines: [], cwd: '/home/me' };
       const raw = { configured: true, exists: true, createdAt: null, attached: false, lastActivityAt: null, output: [], panes: [pane], waitingPrompt: null, attachCommand: 'x' };
@@ -261,10 +261,9 @@ describe('followRepo', () => {
       const money = () => m.snapshot.projects.find((p) => p.id === 'money')!;
 
       // Codex 가 홈에서 떠 있지만 명령은 저장소의 하위 폴더에서 돌린다 (MCP 서버 같은 건 홈에 있다). 저장소 맨 위를 따라간다
-      procs = [
-        { pid: 30, dir: '/home/me/repos/trader/src' },
-        { pid: 20, dir: '/home/me' },
-      ];
+      // 20 은 홈에서 뜬 에이전트, 그 아래가 명령들이다
+      const agent = { pid: 20, ppid: 10, dir: '/home/me' };
+      procs = [{ pid: 30, ppid: 20, dir: '/home/me/repos/trader/src' }, agent];
       await m.tick();
       expect(money()).toMatchObject({ repoPath: '/home/me/repos/trader', git: { ok: true } });
       const baseline = m.exportState().tracked.money?.baseline;
@@ -272,25 +271,26 @@ describe('followRepo', () => {
       expect(asked).toEqual(['money']);
 
       // 같은 저장소의 다른 하위 폴더에서 돌려도 같은 프로젝트다 (추적 기록이 이어진다)
-      procs = [{ pid: 31, dir: '/home/me/repos/trader/tests' }];
+      procs = [{ pid: 31, ppid: 20, dir: '/home/me/repos/trader/tests' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/trader');
       expect(m.exportState().tracked.money?.baseline).toEqual(baseline);
 
       // 명령이 끝나 쉬는 동안에도 유지한다
-      procs = [];
+      procs = [agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/trader');
 
       // 다른 저장소에서 새 일을 시작하면 그리로. 그사이 trader 에 개발 서버가 뜬다
-      procs = [
-        { pid: 41, dir: '/home/me/repos/other' },
-        { pid: 40, dir: '/home/me/repos/trader' },
-      ];
+      procs = [{ pid: 41, ppid: 20, dir: '/home/me/repos/other' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
       // other 의 명령이 끝나도, 뒤에서 계속 도는 trader 의 개발 서버가 되돌리지 않는다
-      procs = [{ pid: 40, dir: '/home/me/repos/trader' }];
+      procs = [{ pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
+      await m.tick();
+      expect(money().repoPath).toBe('/home/me/repos/other');
+      // 그 개발 서버가 새 일꾼을 띄워도 마찬가지다
+      procs = [{ pid: 43, ppid: 40, dir: '/home/me/repos/trader' }, { pid: 40, ppid: 20, dir: '/home/me/repos/trader' }, agent];
       await m.tick();
       expect(money().repoPath).toBe('/home/me/repos/other');
 

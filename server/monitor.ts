@@ -22,7 +22,7 @@ export interface Collector {
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
   /** 세션 안 에이전트가 돌리는 명령들과 그 작업 폴더 (최근에 뜬 것부터) */
-  workDirs?(session: string): Promise<{ pid: number; dir: string }[]>;
+  workDirs?(session: string): Promise<{ pid: number; ppid: number; dir: string }[]>;
   /** dir 이 든 저장소의 맨 위 폴더 (저장소가 아니면 null). 없으면 dir 을 그대로 쓴다 */
   repoRoot?(dir: string): Promise<string | null>;
 }
@@ -293,7 +293,17 @@ export class Monitor {
     const followed = this.tracked.get(p.id)?.repoPath;
     const seen = this.workPids.get(p.id) ?? (followed && followed !== p.repoPath ? new Set(procs.map((x) => x.pid)) : undefined);
     this.workPids.set(p.id, new Set(procs.map((x) => x.pid)));
-    const fresh = procs.filter((x) => !seen?.has(x.pid)).map((x) => x.dir);
+    const byPid = new Map(procs.map((x) => [x.pid, x]));
+    const fresh = procs
+      .filter((x) => {
+        if (!seen) return true;
+        if (seen.has(x.pid)) return false;
+        // 가장 가까운, 전부터 돌던 조상과 폴더가 같으면 그 조상(남겨 둔 개발 서버 등)이 띄운 일꾼이다. 에이전트의 새 명령은 에이전트(홈)와 폴더가 다르다
+        let up = byPid.get(x.ppid);
+        while (up && !seen.has(up.pid)) up = byPid.get(up.ppid);
+        return up?.dir !== x.dir;
+      })
+      .map((x) => x.dir);
     const tried = new Set<string>();
     for (const dir of new Set([cwd, ...fresh, this.tracked.get(p.id)?.repoPath, ...procs.map((x) => x.dir)])) {
       // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
