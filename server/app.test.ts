@@ -87,6 +87,29 @@ describe('API', () => {
     }
   });
 
+  it('on a loopback bind takes the *.ts.net name tailscale serve relays, without allowedHosts', () => {
+    const status = vi.fn(() => ({ json: vi.fn() }));
+    const next = vi.fn();
+    const g = guard({ host: '127.0.0.1' }) as unknown as (req: object, res: object, next: () => void) => void;
+    const name = 'training.tail1234.ts.net';
+    g({ method: 'GET', headers: { host: name } }, { status }, next);
+    // 변경 요청은 그 이름의 https 출처에서만: 다른 tailnet 의 Funnel 페이지나 다른 포트는 막는다
+    g({ method: 'POST', headers: { host: name, origin: `https://${name}` } }, { status }, next);
+    g({ method: 'POST', headers: { host: `${name}:8443`, origin: `https://${name}:8443` } }, { status }, next);
+    expect(next).toHaveBeenCalledTimes(3);
+    for (const origin of ['https://evil.tail9999.ts.net', `https://${name}:8443`, `http://${name}`]) {
+      status.mockClear();
+      g({ method: 'POST', headers: { host: name, origin } }, { status }, next);
+      expect(status).toHaveBeenCalledWith(403);
+    }
+    // 기기 이름을 바꾼 뒤 allowedHosts 에 남은 옛 이름은 새 이름으로의 변경 요청을 못 보낸다
+    status.mockClear();
+    const renamed = guard({ host: '127.0.0.1', allowedHosts: ['old.tail1234.ts.net'] }) as unknown as (req: object, res: object, next: () => void) => void;
+    renamed({ method: 'POST', headers: { host: name, origin: 'https://old.tail1234.ts.net' } }, { status }, next);
+    expect(status).toHaveBeenCalledWith(403);
+    expect(next).toHaveBeenCalledTimes(3);
+  });
+
   it('on a Tailscale bind accepts its own address, MagicDNS names and allowedHosts only', () => {
     const status = vi.fn(() => ({ json: vi.fn() }));
     const next = vi.fn();
@@ -116,5 +139,6 @@ describe('API', () => {
     const res = await fetch(`${base}/api/nope`);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: '없는 API 입니다' });
+    expect(res.headers.get('content-security-policy')).toBe("frame-ancestors 'none'");
   });
 });

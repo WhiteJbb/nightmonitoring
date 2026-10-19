@@ -85,8 +85,8 @@ npm run setup
 `npm run setup` 하나로 끝납니다.
 
 - Node 버전을 확인하고, 의존성을 설치하고, 빌드합니다. git·tmux가 없으면 설치합니다(Homebrew, Linux는 apt).
-- Tailscale이 켜져 있으면 `tailscale serve`로 휴대폰용 https 주소를 열고 그 이름을 config의 `allowedHosts`에 적습니다. 그 기기의 443을 이미 다른 데 쓰고 있으면 건드리지 않습니다.
-- 로그인하면 자동으로 뜨게 등록합니다(macOS launchd, Linux systemd 사용자 서비스). 서버가 떴는지 확인한 뒤 접속 주소와 로그·재시작·끄기 명령을 보여 줍니다.
+- Tailscale이 켜져 있으면 `tailscale serve`로 휴대폰용 https 주소를 열고, 휴대폰 알림의 링크가 그 주소로 열리게 이름을 config의 `allowedHosts`에 적습니다. 그 기기의 443을 이미 다른 데 쓰고 있으면 건드리지 않습니다.
+- 로그인하면 자동으로 뜨게 등록합니다(macOS launchd, Linux systemd 사용자 서비스). 서버가 떴는지, 휴대폰 주소가 실제로 열리는지 확인한 뒤 접속 주소와 로그·재시작·끄기 명령을 보여 줍니다. 휴대폰 주소를 열지 못했으면 그 이유와 할 일을 마지막에 다시 보여 줍니다.
 - `nightshift` 명령을 PATH에 겁니다(`npm link`). 그다음부터는 어느 폴더에서나 아래처럼 씁니다.
 - 다시 돌려도 됩니다. 업데이트는 `nightshift update`(= `git pull && npm run setup`)입니다.
 
@@ -206,7 +206,7 @@ git clone https://github.com/WhiteJbb/nightshift.git ~/nightshift && cd ~/nights
 tailscale serve --bg --https=443 http://127.0.0.1:4477
 ```
 
-그리고 WSL 쪽 `config/nightshift.json`에 Windows 기기의 이름을 적습니다(`tailscale status`로 확인).
+휴대폰 알림의 링크도 이 주소로 열리게 하려면 WSL 쪽 `config/nightshift.json`에 Windows 기기의 이름을 적습니다(`tailscale status`로 확인).
 
 ```json
 { "allowedHosts": ["my-pc.tailnet-name.ts.net"] }
@@ -422,7 +422,7 @@ npm run demo
 tailscale serve --bg --https=443 http://127.0.0.1:4477   # https://<기기이름>.<tailnet>.ts.net 으로 노출
 ```
 
-중계를 거치면 Host 헤더가 그 이름으로 들어오므로 config **파일**에 허용할 이름을 적어야 합니다(적지 않으면 "허용되지 않은 Host"로 거부).
+중계를 거치면 Host 헤더가 그 이름으로 들어옵니다. 서버는 `*.ts.net` 이름을 따로 적지 않아도 받으니, serve를 손으로 켜거나 기기 이름을 바꿔도 됩니다. 휴대폰 알림의 링크도 이 주소로 열리게 하려면 config **파일**에 이름을 적습니다.
 
 ```json
 { "allowedHosts": ["my-mac.tailnet-name.ts.net"] }
@@ -509,7 +509,7 @@ npm run build      # 타입 체크 + 프론트엔드 프로덕션 빌드 (dist/w
 | config를 고쳤는데 반영이 안 됨 | 화면 위쪽의 config 오류 배너와 서버 로그 확인. `host`·`port`는 재시작 필요 |
 | 재시작했더니 이전 기록이 그대로 남아 있음 | 정상 동작. "모니터링 새로 시작" 버튼 또는 `--fresh` |
 | 터미널 아래에 입력 줄이 안 보임 | 설정 화면에서 그 프로젝트의 "터미널 입력 허용"을 켜기. demo mode, 그리고 loopback·Tailscale이 아닌 `host`에서는 동작하지 않음 |
-| Tailscale 주소로 열면 `허용되지 않은 Host` | `nightshift setup`을 다시 돌리면 그 이름을 `allowedHosts`에 적습니다. 직접 하려면 config 파일의 `allowedHosts`에 `<기기>.<tailnet>.ts.net`을 추가하고 `nightshift restart` |
+| 프록시 주소로 열면 `허용되지 않은 Host` | `*.ts.net`은 그대로 받습니다(0.9.0 이하라면 `nightshift update`). 그 밖의 이름이면 config 파일의 `allowedHosts`에 추가하고 `nightshift restart` |
 | 입력했는데 반응이 없음 | 올바른 pane을 선택했는지 확인. `.nightshift/input.log`에 기록이 남는지 확인 |
 | 휴대폰 알림이 오지 않음 | 설정 화면의 "시험 알림 보내기"로 확인. 앱에서 구독한 주제와 주소의 주제가 같은지, 휴대폰의 ntfy 알림 권한이 켜져 있는지 확인 |
 | Mac 알림이 오지 않음 | 시스템 설정 → 알림에서 "스크립트 편집기" 허용 여부 확인. 서버 시작 직후의 상태는 알리지 않고 이후의 **변화**만 알립니다 |
