@@ -121,10 +121,12 @@ export class TermStreams {
   }
 
   /** 첫 화면: 스크롤백 + 현재 화면 + 커서·모드. 화면과 커서를 한 번에 읽고, 그 뒤에 온 출력부터 이어진다 */
-  private seed(client: Client, sub: Sub) {
+  private seed(client: Client, sub: Sub, join?: boolean) {
+    // 일반 화면은 -J 로 꺾인 줄을 한 줄로 받는다: 같은 폭의 xterm 이 똑같이 꺾어 그리면서 이어진 줄임을 알아, 복사할 때 다시 잇는다.
+    // 대체 화면은 크기가 바뀌어도 tmux 가 다시 꺾지 않아 옛 폭으로 꺾인 줄이 남으므로 줄 그대로 받는다. 어느 화면인지 먼저 묻는다
+    if (join === undefined) return this.command(client, [`display -p -t ${sub.pane} '#{alternate_on}'`, (ok, out) => this.seed(client, sub, ok && out[0] === '0')]);
     let lines: string[] | null = null; // capture 가 실패하면 null 로 남아 상태 응답을 무시한다
-    // -J: 폭이 넘쳐 꺾인 줄은 한 줄로 받는다. 같은 폭의 xterm 이 똑같이 꺾어 그리면서 이어진 줄임을 알아, 복사할 때 다시 잇는다
-    const capture = `capture-pane -p -e -J -t ${sub.pane} -S -${SEED_SCROLLBACK}`;
+    const capture = `capture-pane -p -e${join ? ' -J' : ''} -t ${sub.pane} -S -${SEED_SCROLLBACK}`;
     const state = `display -p -t ${sub.pane} '${STATE_FORMAT}'`;
     this.command(
       client,
@@ -138,6 +140,8 @@ export class TermStreams {
           sub.cols = Number(f[0]);
           sub.rows = Number(f[1]);
           const alt = flag(f[4]);
+          // 묻고 받는 사이에 대체 화면으로 바뀌었으면 줄 그대로 다시 받는다 (그동안의 출력은 다시 받은 화면에 들어 있다)
+          if (join && alt) return this.seed(client, sub, false);
           const prelude = alt ? '\x1b[?1049h' : '';
           const cursor = `\x1b[${Number(f[3]) + 1};${Number(f[2]) + 1}H`;
           const modes = modeCodes({ cursor: flag(f[5]), keypadCursor: flag(f[6]), wrap: flag(f[7]), mouseStandard: flag(f[8]), mouseButton: flag(f[9]), mouseAll: flag(f[10]), mouseSgr: flag(f[11]), bracketPaste: flag(f[13]) });
