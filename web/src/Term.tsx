@@ -411,7 +411,12 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       if (e.touches.length !== 1 || !cb.current.onPick) return;
       pressX = e.touches[0]!.clientX;
       pressY = e.touches[0]!.clientY;
-      press = setTimeout(() => cb.current.onPick?.(bufferText(term)), LONG_PRESS_MS);
+      press = setTimeout(() => {
+        // 같은 손가락을 계속 움직여도 숨긴 터미널을 스크롤하지 않게 이 동작은 여기서 끝낸다
+        lastY = null;
+        velocity = 0;
+        cb.current.onPick?.(bufferText(term));
+      }, LONG_PRESS_MS);
     };
     const onTouchMove = (e: TouchEvent) => {
       const p = e.touches[0];
