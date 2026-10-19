@@ -6,20 +6,24 @@ import { FilesTab } from './Files.tsx';
 
 // 편집기 자체는 codeeditor.test.tsx 가 본다. 여기서는 같은 약속(값·onChange·읽기 전용·⌘S)을 지키는 입력칸으로 바꿔 파일 탭의 흐름만 본다
 vi.mock('./CodeEditor.tsx', () => ({
-  default: ({ value, onChange, readOnly, onSave, ariaLabel }: { value: string; onChange: (v: string) => void; readOnly: boolean; onSave: () => void; ariaLabel: string }) => (
-    <textarea
-      aria-label={ariaLabel}
-      value={value}
-      readOnly={readOnly}
-      onChange={(e) => onChange(e.target.value)}
-      onKeyDown={(e) => {
-        if ((e.metaKey || e.ctrlKey) && e.key === 's') {
-          e.preventDefault();
-          onSave();
-        }
-      }}
-    />
-  ),
+  default: ({ value, onChange, readOnly, onSave, ariaLabel }: { value: string; onChange: (v: string) => void; readOnly: boolean; onSave: () => void; ariaLabel: string }) => {
+    // 편집기 조각을 받지 못한 것처럼 (lazy 가 실패하면 React 는 그 자리에서 던진다)
+    if (value === 'CHUNK GONE') throw new Error('Failed to fetch dynamically imported module');
+    return (
+      <textarea
+        aria-label={ariaLabel}
+        value={value}
+        readOnly={readOnly}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => {
+          if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+            e.preventDefault();
+            onSave();
+          }
+        }}
+      />
+    );
+  },
 }));
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -70,6 +74,18 @@ test('lists changed files first, opens one, saves with ⌘S against the version 
   fireEvent.change(editor(), { target: { value: 'const a = 4;\n' } });
   fireEvent.click(screen.getByRole('button', { name: '저장' }));
   expect((await screen.findByRole('alert')).textContent).toContain('바뀌었습니다');
+});
+
+test('an editor that cannot be loaded shows a notice with a reload button in its place; the rest of the tab keeps working', async () => {
+  fetchMock.mockImplementation(async (url) => (String(url).endsWith('/files') ? json(200, { files: ['src/app.ts'], ignored: [] }) : json(200, { content: 'CHUNK GONE', version: 'v1' })));
+  const quiet = vi.spyOn(console, 'error').mockImplementation(() => {});
+  render(<FilesTab project={project()} />);
+  fireEvent.click((await screen.findAllByRole('button', { name: 'src/app.ts' }))[0]!);
+  expect((await screen.findByRole('alert')).textContent).toContain('편집기를 불러오지 못했습니다');
+  expect(screen.getByRole('button', { name: '새로고침' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: '← 목록' }));
+  await screen.findByRole('heading', { name: '바뀐 파일 (1)' });
+  quiet.mockRestore();
 });
 
 test('all files show as a folder tree that remembers what is open; ignored files are marked; search lists matches flat', async () => {

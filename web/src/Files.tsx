@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, MouseEvent, ReactNode, RefObject } from 'react';
 import type { FsOp, ProjectSnapshot } from '../../shared/types.ts';
 import { api, ApiError, errorMessage } from './api.ts';
@@ -7,6 +7,29 @@ import { api, ApiError, errorMessage } from './api.ts';
 const CodeEditor = lazy(() => import('./CodeEditor.tsx'));
 // Markdown 미리보기(markdown-it)도 켤 때만 받는다
 const MarkdownPreview = lazy(() => import('./MarkdownPreview.tsx'));
+
+/**
+ * 편집기·미리보기를 못 받았을 때(main.tsx 가 한 번 다시 열어 봐도 안 될 때) 파일 탭이 통째로 까매지지 않게 그 자리에 안내를 띄운다.
+ * 목록으로 돌아가거나 다른 탭으로 가는 것은 그대로 된다
+ */
+class LoadFailed extends Component<{ what: string; children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="notice error" role="alert">
+        <strong>{this.props.what}를 불러오지 못했습니다.</strong>
+        <p>서버와 연결이 끊겼거나 서버가 새로 빌드됐을 수 있습니다. 새로고침하면 다시 받아 옵니다.</p>
+        <button type="button" className="more-rows" onClick={() => location.reload()}>
+          새로고침
+        </button>
+      </div>
+    );
+  }
+}
 
 /** 편집기 대신 그림으로 보여 줄 파일 (서버 readRaw 와 같은 확장자) */
 const isImage = (path: string) => /\.(png|jpe?g|gif|webp|svg|ico|bmp|avif)$/i.test(path);
@@ -749,14 +772,18 @@ function Editor({ project: p, path, onClose, onOpen }: { project: ProjectSnapsho
         <>
           {/* 미리보기 동안 편집기는 숨기기만 한다: 되돌아오면 되돌리기 기록·커서가 그대로다 */}
           <div hidden={previewing}>
-            <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
-              <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
-            </Suspense>
+            <LoadFailed what="편집기">
+              <Suspense fallback={<p className="dim">편집기를 불러오는 중…</p>}>
+                <CodeEditor ariaLabel={`${path} 내용`} path={path} value={text} readOnly={!p.allowInput || loading || orphan || mixed} wrap={wrap} onChange={edit} onSave={save} />
+              </Suspense>
+            </LoadFailed>
           </div>
           {previewing && (
-            <Suspense fallback={<p className="dim">미리보기를 불러오는 중…</p>}>
-              <MarkdownPreview projectId={p.id} path={path} text={text} onOpen={onOpen} onSave={save} />
-            </Suspense>
+            <LoadFailed what="미리보기">
+              <Suspense fallback={<p className="dim">미리보기를 불러오는 중…</p>}>
+                <MarkdownPreview projectId={p.id} path={path} text={text} onOpen={onOpen} onSave={save} />
+              </Suspense>
+            </LoadFailed>
           )}
         </>
       )}
