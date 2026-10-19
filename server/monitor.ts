@@ -1,12 +1,15 @@
+import { realpath } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
 import type { GitBaseline, GitInfo, ProjectSnapshot, RunKind, RunResult, RunSummary, SinceBaseline, Snapshot, TmuxInfo } from '../shared/types.ts';
 import { NOT_A_REPO } from '../shared/types.ts';
 import type { Config, ProjectConfig } from './config.ts';
-import { collectGit, collectSince } from './git.ts';
+import { collectGit, collectSince, repoRoot } from './git.ts';
 import type { LogPos, LogScan } from './logs.ts';
 import { findPrompt, isBusy, promptChoices, scanLog, stripAnsi, stripVolatile } from './logs.ts';
 import type { MonitorState } from './state.ts';
 import { judge } from './status.ts';
-import { capturePane, listPanes, listSessions } from './tmux.ts';
+import { capturePane, listPanes, listSessions, workDirs } from './tmux.ts';
 
 export type RawTmux = Omit<TmuxInfo, 'lastOutputChangeAt'>;
 
@@ -19,6 +22,10 @@ export interface Collector {
   discover?(): Promise<{ name: string; cwd: string }[]>;
   /** pos 이후의 로그만 검사한다. null 이면 현재 끝 위치만 잰다. */
   logErrors(p: ProjectConfig, pos: LogPos | null): Promise<LogScan>;
+  /** 세션 안 에이전트가 돌리는 명령들과 그 작업 폴더 (최근에 뜬 것부터). 읽지 못했으면 null (없는 것과 다르다) */
+  workDirs?(session: string): Promise<{ pid: number; ppid: number; dir: string; shell?: boolean }[] | null>;
+  /** dir 이 든 저장소의 맨 위 폴더 (저장소가 아니면 null). 없으면 dir 을 그대로 쓴다 */
+  repoRoot?(dir: string): Promise<string | null>;
 }
 
 /** 복사해서 붙여 넣을 명령이므로 셸에 안전하게 인용한다. */
@@ -35,6 +42,8 @@ export function realCollector(config: Config): Collector {
     git: (p) => collectGit(p.repoPath),
     since: (p, baseline, git) => collectSince(p.repoPath, baseline, git),
     logErrors: (p, pos) => (p.logFile ? scanLog(p.logFile, config.errorPatterns, config.errorIgnorePatterns, pos) : Promise.resolve(NO_LOG)),
+    workDirs,
+    repoRoot,
     // ponytail: tmux() 가 같은 목록을 다시 읽는다 (tick 당 ls 두 번). 느려지면 한 tick 안에서 캐시.
     async discover() {
       const [{ sessions }, panes] = await Promise.all([listSessions(), listPanes()]);
@@ -129,6 +138,8 @@ export class Monitor {
   private now: () => number;
   private startedAt: string;
   private tracked = new Map<string, Tracked>();
+  /** 프로젝트마다 지난 tick 에 본, 에이전트가 돌리던 프로세스들과 그때의 저장소 (followRepo) */
+  private workSeen = new Map<string, Map<number, string | null>>();
   /** 설정에 없지만 떠 있는 tmux 세션에서 만든 임시 프로젝트. 세션이 사라지면 같이 사라진다. */
   private discovered: ProjectConfig[] = [];
   private collected = new Map<string, Collected>();
@@ -269,19 +280,58 @@ export class Monitor {
 
   /**
    * 저장소가 아닌 경로로 등록된 프로젝트는 pane 이 Git 저장소 안으로 cd 하면 그 저장소를 따라간다 (config 는 바꾸지 않는다).
-   * 한 번 따라간 저장소는 pane 이 다른 곳으로 가도 저장소인 동안 유지한다.
+   * 홈 폴더(나 그 위)로 등록된 세션은 에이전트를 홈에서 띄운 것이라, 에이전트가 명령을 돌리는 폴더(Codex 의 workdir 등)의 저장소도 따라간다.
+   * 한 번 따라간 저장소는 pane 이 다른 곳으로 가도 저장소인 동안 유지하고, 에이전트가 다른 저장소에서 일하기 시작하면 그리로 옮긴다.
    */
   private async followRepo(p: ProjectConfig, raw: RawTmux): Promise<{ project: ProjectConfig; git: GitInfo }> {
     const git = await this.opts.collector.git(p);
     if (git.ok || git.error !== NOT_A_REPO) return { project: p, git };
     const cwd = raw.panes.find((x) => x.active)?.cwd || raw.panes[0]?.cwd;
-    for (const dir of new Set([cwd, this.tracked.get(p.id)?.repoPath])) {
-      if (!dir || dir === p.repoPath) continue;
-      const project = { ...p, repoPath: dir };
+    const followed = this.tracked.get(p.id)?.repoPath;
+    // 홈이 링크일 수 있다 (설정 경로는 실제 폴더로 적었을 수 있다)
+    const real = (dir: string) => realpath(dir).catch(() => dir);
+    const [where, home] = await Promise.all([real(p.repoPath), real(homedir())]);
+    const fromHome = !path.relative(where, home).startsWith('..');
+    const procs = fromHome && raw.exists && p.tmuxSession && this.opts.collector.workDirs ? await this.opts.collector.workDirs(p.tmuxSession) : null;
+    // 같은 저장소의 하위 폴더들은 맨 위로 모은다 (폴더마다 다른 프로젝트로 보면 추적 기록이 매번 새로 시작된다)
+    const roots = new Map<string, string | null>();
+    for (const dir of new Set([cwd, followed, ...(procs ?? []).map((x) => x.dir)])) {
+      if (dir) roots.set(dir, this.opts.collector.repoRoot ? await this.opts.collector.repoRoot(dir) : dir);
+    }
+    const fresh = procs ? this.freshWork(p, procs, followed, (dir) => roots.get(dir) ?? null) : [];
+    const tried = new Set<string>();
+    for (const dir of new Set([cwd, ...fresh, followed, ...(procs ?? []).map((x) => x.dir)])) {
+      const root = dir ? roots.get(dir) : null;
+      if (!root || root === p.repoPath || tried.has(root)) continue;
+      tried.add(root);
+      const project = { ...p, repoPath: root };
       const found = await this.opts.collector.git(project);
       if (found.ok) return { project, git: found };
     }
     return { project: p, git };
+  }
+
+  /**
+   * 에이전트가 새로 일하기 시작한 폴더들 (최근 것부터): 지난번에 없던 명령과, 계속 쓰는 셸이 다른 저장소로 옮겨 간 것.
+   * 뒤에서 계속 도는 옛 프로세스(남겨 둔 개발 서버 등)와 그것이 띄운 일꾼은 따라간 저장소를 되돌리지 않게 뺀다.
+   * 처음 볼 때(재시작 직후 포함) 이미 따라간 저장소가 있으면 기억만 한다
+   */
+  private freshWork(p: ProjectConfig, procs: { pid: number; ppid: number; dir: string; shell?: boolean }[], followed: string | undefined, rootOf: (dir: string) => string | null): string[] {
+    const now = new Map(procs.map((x) => [x.pid, rootOf(x.dir)]));
+    const seen = this.workSeen.get(p.id) ?? (followed && followed !== p.repoPath ? now : undefined);
+    this.workSeen.set(p.id, now);
+    if (!seen) return procs.map((x) => x.dir);
+    const byPid = new Map(procs.map((x) => [x.pid, x]));
+    return procs
+      .filter((x) => {
+        if (seen.has(x.pid)) return seen.get(x.pid) !== now.get(x.pid);
+        // 가장 가까운, 전부터 돌던 조상이 셸이 아니고(서버 등) 같은 저장소면 그 조상이 띄운 일꾼이다.
+        // 에이전트의 새 명령은 에이전트(홈)와 저장소가 다르고, 계속 쓰는 셸 아래의 새 프로세스는 새 명령이다
+        let up = byPid.get(x.ppid);
+        while (up && !seen.has(up.pid)) up = byPid.get(up.ppid);
+        return !up || up.shell === true || rootOf(up.dir) !== rootOf(x.dir);
+      })
+      .map((x) => x.dir);
   }
 
   private async collectOne(config: ProjectConfig, raw: RawTmux, nowIso: string): Promise<Collected> {

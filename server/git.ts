@@ -134,6 +134,13 @@ export function isHomeRoot(top: string): boolean {
   }
 }
 
+/** dir 이 든 저장소의 맨 위 폴더. 저장소가 아니거나 홈 폴더 전체가 저장소면 null */
+export async function repoRoot(dir: string): Promise<string | null> {
+  const r = await git(dir, 'rev-parse', '--show-toplevel');
+  const top = r.code === 0 ? r.stdout.replace(/\n$/, '') : '';
+  return top && !isHomeRoot(top) ? top : null;
+}
+
 export async function collectGit(repoPath: string): Promise<GitInfo> {
   try {
     if (!statSync(repoPath).isDirectory()) return failed('저장소 경로가 디렉터리가 아닙니다');

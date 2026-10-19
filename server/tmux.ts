@@ -1,3 +1,4 @@
+import { readlink } from 'node:fs/promises';
 import type { TmuxPane } from '../shared/types.ts';
 import { run } from './exec.ts';
 import { keepSgr, stripAnsi } from './logs.ts';
@@ -118,6 +119,73 @@ async function nameScriptAgents(panes: PaneMeta[]): Promise<void> {
     const name = tty ? agentOnTty(ps.stdout, tty) : null;
     if (name) p.command = name;
   }
+}
+
+/** ps 의 etime ([[일-]시:]분:초) → 초 */
+export function etimeSeconds(etime: string): number {
+  const [days, clock] = etime.includes('-') ? etime.split('-') : ['0', etime];
+  return (clock ?? '').split(':').reduce((sum, part) => sum * 60 + Number(part), 0) + Number(days) * 86400;
+}
+
+type Proc = { pid: number; ppid: number; age: number; shell: boolean };
+
+/**
+ * ps -o pid=,ppid=,etime=,comm= 출력에서 roots 아래의 모든 자손. 최근에 뜬 것부터 (pid 는 한 바퀴 돌 수 있어 띄운 지 지난 시간으로 본다).
+ * shell: 셸이다 (그 아래 새 프로세스는 새 명령이다)
+ */
+export function descendants(ps: string, roots: number[]): Proc[] {
+  const children = new Map<number, Proc[]>();
+  for (const line of ps.split('\n')) {
+    const [pid, ppid, etime, ...comm] = line.trim().split(/\s+/);
+    if (!Number(pid) || !etime) continue;
+    const proc = { pid: Number(pid), ppid: Number(ppid), age: etimeSeconds(etime), shell: /^-?(?:.*\/)?(?:sh|bash|zsh|fish|dash|ksh)$/.test(comm.join(' ')) };
+    children.set(proc.ppid, [...(children.get(proc.ppid) ?? []), proc]);
+  }
+  const found = new Map<number, { proc: Proc; depth: number }>();
+  const stack = roots.map((pid) => ({ pid, depth: 0 }));
+  while (stack.length) {
+    const { pid, depth } = stack.pop()!;
+    for (const c of children.get(pid) ?? []) {
+      if (found.has(c.pid)) continue;
+      found.set(c.pid, { proc: c, depth: depth + 1 });
+      stack.push({ pid: c.pid, depth: depth + 1 });
+    }
+  }
+  // etime 은 초 단위라 셸과 그 셸이 막 띄운 명령의 나이가 같기 쉽다: 같으면 더 깊은(나중에 뜬) 쪽이 먼저다
+  return [...found.values()].sort((a, b) => a.proc.age - b.proc.age || b.depth - a.depth).map((f) => f.proc);
+}
+
+/** lsof -Fpn 출력(p<pid>, n<경로> 줄)에서 pid → 경로 */
+export function lsofCwds(out: string): Map<number, string> {
+  const cwds = new Map<number, string>();
+  let pid = 0;
+  for (const line of out.split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1));
+    else if (line.startsWith('n') && pid) cwds.set(pid, line.slice(1));
+  }
+  return cwds;
+}
+
+/**
+ * 세션의 pane 들 아래에서 도는 프로세스(에이전트가 돌리는 명령 등)와 그 작업 폴더. 최근에 뜬 것부터.
+ * 에이전트를 홈에서 띄우고 명령은 다른 폴더에서 돌릴 때(Codex 의 workdir 등) 실제로 일하는 폴더를 찾는다
+ */
+export async function workDirs(session: string): Promise<{ pid: number; ppid: number; dir: string; shell: boolean }[] | null> {
+  const [panes, ps] = await Promise.all([run('tmux', ['list-panes', '-s', '-t', `=${session}`, '-F', '#{pane_pid}']), run('ps', ['-A', '-o', 'pid=,ppid=,etime=,comm='])]);
+  // 못 읽은 것(null)과 명령이 없는 것([])은 다르다: 못 읽었다고 기억해 둔 프로세스를 잊으면 다음에 옛 것이 새 일로 보인다
+  if (panes.code !== 0 || ps.code !== 0) return null;
+  const procs = descendants(ps.stdout, panes.stdout.split('\n').map(Number).filter(Boolean));
+  const pids = procs.map((p) => p.pid);
+  if (!pids.length) return [];
+  let cwds: Map<number, string>;
+  if (process.platform === 'linux') cwds = new Map(await Promise.all(pids.map(async (pid) => [pid, await readlink(`/proc/${pid}/cwd`).catch(() => '')] as const)));
+  else {
+    // 그 사이 끝난 프로세스는 빠진다 (lsof 는 그때 1 로 끝나지만 나머지는 알려 준다)
+    const r = await run('lsof', ['-a', '-d', 'cwd', '-p', pids.join(','), '-Fpn']);
+    if (r.code === null) return null;
+    cwds = lsofCwds(r.stdout);
+  }
+  return procs.map(({ pid, ppid, shell }) => ({ pid, ppid, shell, dir: cwds.get(pid) ?? '' })).filter((p) => p.dir);
 }
 
 /** SGR 만 남긴 줄들. 끝의 빈 줄을 버리고 최근 limit 줄만 남긴다. */
