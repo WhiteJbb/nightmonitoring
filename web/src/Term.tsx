@@ -40,6 +40,10 @@ export function copyText(text: string): boolean {
     void navigator.clipboard.writeText(text).catch(() => {});
     return true;
   }
+  return copyNow(text);
+}
+/** 숨긴 입력칸을 골라 execCommand('copy') 로 바로 쓴다. 키·클릭 직후에만 되고, 됐는지 바로 안다 */
+function copyNow(text: string): boolean {
   const prev = document.activeElement as HTMLElement | null;
   const ta = document.createElement('textarea');
   ta.value = text;
@@ -315,7 +319,8 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       // Ctrl+Shift+C 는 크롬의 요소 검사 키라 고른 글이 없어도 막는다. 고른 글이 없는 Ctrl+C 는 그대로 중단(^C)
       if (ev.code === 'KeyC' && (mods === 'ctrl+shift' || (!mac && mods === 'ctrl' && term.hasSelection()))) {
         if (ev.type === 'keydown' && term.hasSelection()) {
-          const ok = copyText(term.getSelection());
+          // 키를 누른 그때라 바로 쓰고 결과를 안다 (navigator.clipboard 는 거절돼도 나중에야 안다)
+          const ok = copyNow(term.getSelection());
           // 다음 Ctrl+C 는 중단으로 가게 고른 것을 푼다. 못 했으면 남겨 두어 다시 눌러도 중단되지 않게 한다
           if (ok) term.clearSelection();
           cb.current.onNotice?.(ok ? '복사됨' : '복사하지 못했습니다');

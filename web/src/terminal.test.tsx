@@ -306,6 +306,17 @@ test('on Windows/Linux, Ctrl+Shift+C copies instead of opening the inspector, Ct
   expect(xterm().selection).toBe('keep me');
   expect(screen.getByText('복사하지 못했습니다')).toBeTruthy();
   expect(press({ key: 'c', code: 'KeyC', ctrlKey: true }).handled).toBe(false);
+  // https 에서도 키로 복사할 땐 결과를 바로 아는 쪽으로 쓴다 (navigator.clipboard 는 거절돼도 늦게 안다)
+  const writeText = vi.fn(() => Promise.reject(new Error('denied')));
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
+  vi.stubGlobal('isSecureContext', true);
+  try {
+    expect(press({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true }).prevented).toBe(true);
+    expect(writeText).not.toHaveBeenCalled();
+    expect(xterm().selection).toBe('keep me');
+  } finally {
+    delete (navigator as { clipboard?: unknown }).clipboard;
+  }
   // Ctrl+V 는 xterm(^V) 대신 브라우저의 붙여넣기로 간다
   expect(press({ key: 'v', code: 'KeyV', ctrlKey: true })).toEqual({ handled: false, prevented: false });
   expect(press({ key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, prevented: false });
