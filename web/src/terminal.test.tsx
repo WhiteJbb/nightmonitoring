@@ -299,6 +299,13 @@ test('on Windows/Linux, Ctrl+Shift+C copies instead of opening the inspector, Ct
   expect(press({ key: 'ㅊ', code: 'KeyC', ctrlKey: true })).toEqual({ handled: false, prevented: true });
   expect(copied).toBe('error line');
   expect(press({ key: 'c', code: 'KeyC', ctrlKey: true }).handled).toBe(true);
+  // 복사를 못 했으면 고른 것을 남겨, 다시 누른 Ctrl+C 가 중단으로 가지 않는다
+  exec.mockImplementation(() => false);
+  xterm().selection = 'keep me';
+  expect(press({ key: 'c', code: 'KeyC', ctrlKey: true })).toEqual({ handled: false, prevented: true });
+  expect(xterm().selection).toBe('keep me');
+  expect(screen.getByText('복사하지 못했습니다')).toBeTruthy();
+  expect(press({ key: 'c', code: 'KeyC', ctrlKey: true }).handled).toBe(false);
   // Ctrl+V 는 xterm(^V) 대신 브라우저의 붙여넣기로 간다
   expect(press({ key: 'v', code: 'KeyV', ctrlKey: true })).toEqual({ handled: false, prevented: false });
   expect(press({ key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, prevented: false });

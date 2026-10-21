@@ -316,8 +316,8 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       if (ev.code === 'KeyC' && (mods === 'ctrl+shift' || (!mac && mods === 'ctrl' && term.hasSelection()))) {
         if (ev.type === 'keydown' && term.hasSelection()) {
           const ok = copyText(term.getSelection());
-          // 다음 Ctrl+C 는 중단으로 가게 고른 것을 푼다
-          term.clearSelection();
+          // 다음 Ctrl+C 는 중단으로 가게 고른 것을 푼다. 못 했으면 남겨 두어 다시 눌러도 중단되지 않게 한다
+          if (ok) term.clearSelection();
           cb.current.onNotice?.(ok ? '복사됨' : '복사하지 못했습니다');
         }
         ev.preventDefault();
