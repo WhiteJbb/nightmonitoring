@@ -32,6 +32,17 @@ const { FakeTerminal } = vi.hoisted(() => {
       this.key = h;
     }
     focus() {}
+    /** 마우스로 고른 글 */
+    selection = '';
+    hasSelection() {
+      return this.selection !== '';
+    }
+    getSelection() {
+      return this.selection;
+    }
+    clearSelection() {
+      this.selection = '';
+    }
     loadAddon() {}
     osc: Record<number, (data: string) => boolean> = {};
     parser = { registerOscHandler: (id: number, h: (data: string) => boolean) => void (this.osc[id] = h) };
@@ -136,6 +147,10 @@ async function renderTab(p: ProjectSnapshot) {
   await tick();
   return view;
 }
+/** 보는 컴퓨터의 OS (navigator.platform). 터미널을 만들 때 읽으므로 renderTab 전에 부른다. jsdom 의 기본값은 '' (맥이 아님) */
+function platform(value: string) {
+  Object.defineProperty(navigator, 'platform', { configurable: true, value });
+}
 /** 서버가 첫 화면을 보냈다 */
 const init = (cols = 120, rows = 30, data = 'hello') =>
   act(() => {
@@ -153,6 +168,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   cleanup();
+  delete (navigator as { platform?: string }).platform;
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -234,6 +250,7 @@ test('Shift+Enter in the terminal sends ESC+CR (a newline in Claude Code), plain
 });
 
 test('mac line-editing keys are sent like Terminal and iTerm do', async () => {
+  platform('MacIntel');
   fetchMock.mockResolvedValue(json(200, { ok: true }));
   await renderTab(project(ONE));
   await init();
@@ -245,11 +262,70 @@ test('mac line-editing keys are sent like Terminal and iTerm do', async () => {
   press({ key: 'ArrowRight', altKey: true });
   await tick();
   expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x01\x1b\x7f\x1bf');
-  // 그 밖의 키는 xterm 이 그대로 처리한다
+  // 그 밖의 키는 xterm 이 그대로 처리한다. 맥의 Ctrl+C 는 글을 골라 두었어도 중단(⌘C 가 복사), Ctrl+← 는 바꾸지 않는다
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true }))).toBe(true);
+  xterm().selection = 'picked';
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'c', code: 'KeyC', ctrlKey: true }))).toBe(true);
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true }))).toBe(true);
 });
 
-test('Ctrl+V reads an image from this browser\'s clipboard, uploads it and pastes the path; without one it sends ^V; keys typed meanwhile follow', async () => {
+test('on Windows/Linux, Ctrl+Shift+C copies instead of opening the inspector, Ctrl+C copies only a selection, and Ctrl+V is the browser paste', async () => {
+  platform('Win32');
+  const exec = vi.fn(() => true);
+  Object.defineProperty(document, 'execCommand', { value: exec, configurable: true });
+  let copied = '';
+  exec.mockImplementation(() => {
+    copied = (document.body.lastElementChild as HTMLTextAreaElement).value;
+    return true;
+  });
+  await renderTab(project(ONE));
+  await init();
+  const press = (init: KeyboardEventInit) => {
+    const ev = new KeyboardEvent('keydown', { cancelable: true, ...init });
+    let handled = true;
+    act(() => void (handled = xterm().key!(ev)));
+    return { handled, prevented: ev.defaultPrevented };
+  };
+  // 고른 글이 없어도 크롬의 요소 검사로 넘기지 않는다
+  expect(press({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, prevented: true });
+  expect(exec).not.toHaveBeenCalled();
+  xterm().selection = 'npm test';
+  expect(press({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, prevented: true });
+  expect(copied).toBe('npm test');
+  expect(xterm().selection).toBe('');
+  expect(screen.getByText('복사됨')).toBeTruthy();
+  // Ctrl+C: 고른 글이 있으면 복사만, 없으면 xterm 이 ^C 를 보낸다 (한글 입력 중이라 key 가 'ㅊ' 여도)
+  xterm().selection = 'error line';
+  expect(press({ key: 'ㅊ', code: 'KeyC', ctrlKey: true })).toEqual({ handled: false, prevented: true });
+  expect(copied).toBe('error line');
+  expect(press({ key: 'c', code: 'KeyC', ctrlKey: true }).handled).toBe(true);
+  // Ctrl+V 는 xterm(^V) 대신 브라우저의 붙여넣기로 간다
+  expect(press({ key: 'v', code: 'KeyV', ctrlKey: true })).toEqual({ handled: false, prevented: false });
+  expect(press({ key: 'V', code: 'KeyV', ctrlKey: true, shiftKey: true })).toEqual({ handled: false, prevented: false });
+  await tick();
+  expect(posts()).toEqual([]);
+});
+
+test('on Windows/Linux, Ctrl+←/→ move by word and Ctrl+Backspace deletes a word; the ⌘ keys are left alone', async () => {
+  platform('Linux x86_64');
+  fetchMock.mockResolvedValue(json(200, { ok: true }));
+  await renderTab(project(ONE));
+  await init();
+  const press = (init: KeyboardEventInit) => act(() => void xterm().key!(new KeyboardEvent('keydown', init)));
+  press({ key: 'ArrowLeft', ctrlKey: true });
+  await tick();
+  press({ key: 'Backspace', ctrlKey: true });
+  await tick();
+  press({ key: 'ArrowRight', ctrlKey: true });
+  await tick();
+  press({ key: 'ArrowLeft', altKey: true });
+  await tick();
+  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x1bb\x1b\x7f\x1bf\x1bb');
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'ArrowLeft', metaKey: true }))).toBe(true);
+});
+
+test('Ctrl+V on a Mac reads an image from this browser\'s clipboard, uploads it and pastes the path; without one it sends ^V; keys typed meanwhile follow', async () => {
+  platform('MacIntel');
   let items = [{ types: ['text/plain', 'image/png'], getType: async (t: string) => new Blob(['png!'], { type: t }) }];
   let release = () => {};
   const read = () => new Promise<typeof items>((r) => (release = () => r(items)));
