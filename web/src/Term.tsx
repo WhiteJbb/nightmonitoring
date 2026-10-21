@@ -305,13 +305,13 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     // 보는 컴퓨터의 터미널과 같게 (서버가 맥이든 Windows 든 손에 익은 키 그대로): xterm 이 안 보내거나 다르게 보내는 키를 고친다
     //  공통: Shift+Enter → ESC+CR (Claude Code·Codex 줄바꿈), Alt(⌥)+←/→ → 단어 이동(ESC b/f), Alt(⌥)+⌫ → 단어 지우기(ESC DEL)
     //  맥(Terminal·iTerm): ⌘←/⌘→ → 줄 처음·끝(^A/^E), ⌘⌫ → 줄 지우기(^U). ⌘K 는 이 화면의 스크롤백만 지운다
-    //  Windows·Linux(Windows Terminal 등): Ctrl+←/→ → 단어 이동, Ctrl+Backspace → 단어 지우기
+    //  Windows·Linux(VS Code 터미널처럼): Ctrl+Backspace → 단어 지우기(^W). Ctrl+←/→ 는 xterm 대로 보낸다 (ESC b/f 로 바꾸면 vim 입력 모드가 끝난다)
     const KEYS: Record<string, string> = {
       'shift+Enter': '\x1b\r',
       'alt+ArrowLeft': '\x1bb',
       'alt+ArrowRight': '\x1bf',
       'alt+Backspace': '\x1b\x7f',
-      ...(mac ? { 'meta+ArrowLeft': '\x01', 'meta+ArrowRight': '\x05', 'meta+Backspace': '\x15' } : { 'ctrl+ArrowLeft': '\x1bb', 'ctrl+ArrowRight': '\x1bf', 'ctrl+Backspace': '\x1b\x7f' }),
+      ...(mac ? { 'meta+ArrowLeft': '\x01', 'meta+ArrowRight': '\x05', 'meta+Backspace': '\x15' } : { 'ctrl+Backspace': '\x17' }),
     };
     term.attachCustomKeyEventHandler((ev) => {
       const mods = [ev.metaKey && 'meta', ev.ctrlKey && 'ctrl', ev.altKey && 'alt', ev.shiftKey && 'shift'].filter(Boolean).join('+');

@@ -324,21 +324,18 @@ test('on Windows/Linux, Ctrl+Shift+C copies instead of opening the inspector, Ct
   expect(posts()).toEqual([]);
 });
 
-test('on Windows/Linux, Ctrl+←/→ move by word and Ctrl+Backspace deletes a word; the ⌘ keys are left alone', async () => {
+test('on Windows/Linux, Ctrl+Backspace deletes a word (^W) while Ctrl+←/→ stay as xterm sends them; the ⌘ keys are left alone', async () => {
   platform('Linux x86_64');
   fetchMock.mockResolvedValue(json(200, { ok: true }));
   await renderTab(project(ONE));
   await init();
   const press = (init: KeyboardEventInit) => act(() => void xterm().key!(new KeyboardEvent('keydown', init)));
-  press({ key: 'ArrowLeft', ctrlKey: true });
-  await tick();
   press({ key: 'Backspace', ctrlKey: true });
-  await tick();
-  press({ key: 'ArrowRight', ctrlKey: true });
   await tick();
   press({ key: 'ArrowLeft', altKey: true });
   await tick();
-  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x1bb\x1b\x7f\x1bf\x1bb');
+  expect(posts().map(([, body]) => atob(body.data!)).join('')).toBe('\x17\x1bb');
+  expect(xterm().key!(new KeyboardEvent('keydown', { key: 'ArrowLeft', ctrlKey: true }))).toBe(true);
   expect(xterm().key!(new KeyboardEvent('keydown', { key: 'ArrowLeft', metaKey: true }))).toBe(true);
 });
 
