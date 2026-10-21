@@ -40,6 +40,10 @@ export function copyText(text: string): boolean {
     void navigator.clipboard.writeText(text).catch(() => {});
     return true;
   }
+  return copyNow(text);
+}
+/** 숨긴 입력칸을 골라 execCommand('copy') 로 바로 쓴다. 키·클릭 직후에만 되고, 됐는지 바로 안다 */
+function copyNow(text: string): boolean {
   const prev = document.activeElement as HTMLElement | null;
   const ta = document.createElement('textarea');
   ta.value = text;
@@ -57,6 +61,8 @@ export function copyText(text: string): boolean {
   return ok;
 }
 const decode = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+/** 보는 컴퓨터가 맥(아이패드 포함)인가. 키는 서버가 아니라 이 브라우저의 OS 를 따른다 (xterm 처럼 navigator.platform 으로 본다) */
+const isApple = () => /^(Mac|iPhone|iPad|iPod)/.test(navigator.platform);
 
 /** pane 의 출력 이벤트를 받는 곳. on 은 이벤트마다, down 은 연결이 끊길 때 불린다. 돌려주는 함수로 그만 받는다 */
 /** 터미널에 있는 글 (일반 화면이면 스크롤백까지). 폭이 넘쳐 꺾인 줄은 다시 한 줄로 잇는다 */
@@ -117,6 +123,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
   useEffect(() => {
     const el = host.current;
     if (!el) return;
+    const mac = isApple();
     const term = new Terminal({
       cols: 80,
       rows: 24,
@@ -128,7 +135,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       cursorBlink: canInput,
       // Option+←/→/Backspace 를 터미널처럼 단어 이동·삭제(Meta)로 쓴다
       macOptionIsMeta: true,
-      // 프로그램이 마우스를 받을 때(Claude Code)도 Option+끌기로 터미널 글자를 직접 고른다 (Cmd+C 로 복사)
+      // 프로그램이 마우스를 받을 때(Claude Code)도 Option+끌기로 터미널 글자를 직접 고른다 (Cmd+C 로 복사). Windows·Linux 는 xterm 이 Shift+끌기로 한다
       macOptionClickForcesSelection: true,
       theme: { background: '#05070c', foreground: '#e8ebf2', cursor: '#e8ebf2', selectionBackground: 'rgba(255, 255, 255, 0.25)' },
     });
@@ -143,7 +150,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       if (!b64 || b64 === '?') return true;
       try {
         const ok = copyText(new TextDecoder().decode(decode(b64)));
-        cb.current.onNotice?.(ok ? '복사됨' : '복사하지 못했습니다 (Option+끌기로 고른 뒤 Cmd+C)');
+        cb.current.onNotice?.(ok ? '복사됨' : `복사하지 못했습니다 (${mac ? 'Option+끌기로 고른 뒤 Cmd+C' : 'Shift+끌기로 고른 뒤 Ctrl+Shift+C'})`);
       } catch {
         // 깨진 base64 는 무시한다
       }
@@ -295,20 +302,34 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
     };
     el.addEventListener('paste', onPaste, { capture: true });
 
-    // 맥 터미널(Terminal·iTerm)과 같게: xterm 이 안 보내거나 다르게 보내는 키를 고친다
-    //  Shift+Enter → ESC+CR (Claude Code·Codex 줄바꿈), ⌘←/⌘→ → 줄 처음·끝(^A/^E), ⌘⌫ → 줄 지우기(^U),
-    //  ⌥←/⌥→ → 단어 이동(ESC b/f), ⌥⌫ → 단어 지우기(ESC DEL). ⌘K 는 이 화면의 스크롤백만 지운다
-    const MAC_KEYS: Record<string, string> = {
+    // 보는 컴퓨터의 터미널과 같게 (서버가 맥이든 Windows 든 손에 익은 키 그대로): xterm 이 안 보내거나 다르게 보내는 키를 고친다
+    //  공통: Shift+Enter → ESC+CR (Claude Code·Codex 줄바꿈), Alt(⌥)+←/→ → 단어 이동(ESC b/f), Alt(⌥)+⌫ → 단어 지우기(ESC DEL)
+    //  맥(Terminal·iTerm): ⌘←/⌘→ → 줄 처음·끝(^A/^E), ⌘⌫ → 줄 지우기(^U). ⌘K 는 이 화면의 스크롤백만 지운다
+    //  Windows·Linux(VS Code 터미널처럼): Ctrl+Backspace → 단어 지우기(^W). Ctrl+←/→ 는 xterm 대로 보낸다 (ESC b/f 로 바꾸면 vim 입력 모드가 끝난다)
+    const KEYS: Record<string, string> = {
       'shift+Enter': '\x1b\r',
-      'meta+ArrowLeft': '\x01',
-      'meta+ArrowRight': '\x05',
-      'meta+Backspace': '\x15',
       'alt+ArrowLeft': '\x1bb',
       'alt+ArrowRight': '\x1bf',
       'alt+Backspace': '\x1b\x7f',
+      ...(mac ? { 'meta+ArrowLeft': '\x01', 'meta+ArrowRight': '\x05', 'meta+Backspace': '\x15' } : { 'ctrl+Backspace': '\x17' }),
     };
     term.attachCustomKeyEventHandler((ev) => {
       const mods = [ev.metaKey && 'meta', ev.ctrlKey && 'ctrl', ev.altKey && 'alt', ev.shiftKey && 'shift'].filter(Boolean).join('+');
+      // 복사: ⌘C(맥)는 브라우저가 한다. Windows·Linux 터미널처럼 Ctrl+Shift+C 와, 고른 글이 있을 때의 Ctrl+C 도 복사한다.
+      // Ctrl+Shift+C 는 크롬의 요소 검사 키라 고른 글이 없어도 막는다. 고른 글이 없는 Ctrl+C 는 그대로 중단(^C)
+      if (ev.code === 'KeyC' && (mods === 'ctrl+shift' || (!mac && mods === 'ctrl' && term.hasSelection()))) {
+        if (ev.type === 'keydown' && term.hasSelection()) {
+          // 키를 누른 그때라 바로 쓰고 결과를 안다 (navigator.clipboard 는 거절돼도 나중에야 안다)
+          const ok = copyNow(term.getSelection());
+          // 다음 Ctrl+C 는 중단으로 가게 고른 것을 푼다. 못 했으면 남겨 두어 다시 눌러도 중단되지 않게 한다
+          if (ok) term.clearSelection();
+          cb.current.onNotice?.(ok ? '복사됨' : '복사하지 못했습니다');
+        }
+        ev.preventDefault();
+        return false;
+      }
+      // Windows·Linux 의 Ctrl+V·Ctrl+Shift+V 는 브라우저 붙여넣기에 맡긴다 (글은 xterm 이, 이미지는 onPaste 가 받는다)
+      if (!mac && ev.code === 'KeyV' && (mods === 'ctrl' || mods === 'ctrl+shift')) return false;
       // 한글 입력 중엔 key 가 'ㅍ' 이라 자판 위치(code)로 본다
       if (mods === 'ctrl' && ev.code === 'KeyV' && canInput && readClipboard) {
         // 앞의 붙여넣기가 아직 끝나지 않았으면 이번 것은 무시한다
@@ -322,7 +343,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
         ev.preventDefault();
         return false;
       }
-      const seq = MAC_KEYS[combo];
+      const seq = KEYS[combo];
       if (seq === undefined || !canInput) return true;
       if (ev.type === 'keydown') send(seq);
       ev.preventDefault();
@@ -336,7 +357,7 @@ export function Term({ projectId, pane, canInput, command, full = false, focus =
       e.preventDefault();
       navigator.clipboard.readText().then(
         (text) => text && term.paste(text),
-        () => cb.current.onNotice?.('클립보드를 읽지 못했습니다. Cmd+V 로 붙여넣으세요'),
+        () => cb.current.onNotice?.(`클립보드를 읽지 못했습니다. ${mac ? 'Cmd+V' : 'Ctrl+V'} 로 붙여넣으세요`),
       );
     };
     // xterm 이 먼저 받아 멈추지 않게 잡는 단계에서 듣는다
